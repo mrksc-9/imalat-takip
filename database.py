@@ -189,6 +189,25 @@ def get_db():
         conn.row_factory = sqlite3.Row
         return conn
 
+def ensure_column(cursor, table, column, col_type_sql, default_val=None):
+    """Hem PostgreSQL hem SQLite için tabloya eksik sütunu güvenle ekler."""
+    use_pg = is_postgres()
+    if use_pg:
+        def_clause = f" DEFAULT {default_val}" if default_val is not None else ""
+        try:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type_sql}{def_clause}")
+        except Exception as e:
+            print(f"Postgres column migration note ({table}.{column}): {e}")
+    else:
+        try:
+            cursor.execute(f"PRAGMA table_info({table})")
+            cols = [c[1] for c in cursor.fetchall()]
+            if column not in cols:
+                def_clause = f" DEFAULT {default_val}" if default_val is not None else ""
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type_sql}{def_clause}")
+        except Exception as e:
+            print(f"SQLite column migration note ({table}.{column}): {e}")
+
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
@@ -280,18 +299,16 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(projects)")
-        p_cols = [c[1] for c in cursor.fetchall()]
-        if 'cutting_start_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN cutting_start_date TEXT DEFAULT ''")
-        if 'fitup_start_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN fitup_start_date TEXT DEFAULT ''")
-        if 'fitup_end_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN fitup_end_date TEXT DEFAULT ''")
-        if 'welding_end_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN welding_end_date TEXT DEFAULT ''")
-        if 'welding_cleaning_end_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN welding_cleaning_end_date TEXT DEFAULT ''")
-        if 'paint_end_date' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN paint_end_date TEXT DEFAULT ''")
-        if 'color' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN color TEXT DEFAULT '#3b82f6'")
-        if 'pos_prefix' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN pos_prefix TEXT DEFAULT ''")
-        if 'order_status' not in p_cols: cursor.execute("ALTER TABLE projects ADD COLUMN order_status TEXT DEFAULT 'Bekliyor'")
+    ensure_column(cursor, "projects", "cutting_start_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "fitup_start_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "fitup_end_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "welding_end_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "welding_cleaning_end_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "paint_end_date", "TEXT", "''")
+    ensure_column(cursor, "projects", "color", "TEXT", "'#3b82f6'")
+    ensure_column(cursor, "projects", "pos_prefix", "TEXT", "''")
+    ensure_column(cursor, "projects", "order_status", "TEXT", "'Bekliyor'")
+    ensure_column(cursor, "projects", "status", "TEXT", "'Aktif'")
 
     # 5. ASSEMBLIES (MONTAJ / MARKA LİSTESİ) TABLOSU
     cursor.execute(f'''
@@ -366,12 +383,13 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(parts)")
-        pt_cols = [c[1] for c in cursor.fetchall()]
-        if 'cut_quantity' not in pt_cols: cursor.execute("ALTER TABLE parts ADD COLUMN cut_quantity INTEGER DEFAULT 0")
-        if 'remaining_quantity' not in pt_cols: cursor.execute("ALTER TABLE parts ADD COLUMN remaining_quantity INTEGER DEFAULT 0")
-        if 'length' not in pt_cols: cursor.execute("ALTER TABLE parts ADD COLUMN length REAL DEFAULT 0")
+    ensure_column(cursor, "parts", "cut_quantity", "INTEGER", "0")
+    ensure_column(cursor, "parts", "remaining_quantity", "INTEGER", "0")
+    ensure_column(cursor, "parts", "length", "REAL", "0")
+    ensure_column(cursor, "parts", "is_profile", "INTEGER", "0")
+    ensure_column(cursor, "parts", "machine_type", "TEXT", "''")
+    ensure_column(cursor, "parts", "operator_name", "TEXT", "''")
+    ensure_column(cursor, "parts", "notes", "TEXT", "''")
 
     # 8. SİPARİŞ VERİLEN MALZEMELER (ORDERED)
     cursor.execute(f'''
@@ -394,12 +412,9 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(material_orders_ordered)")
-        moo_cols = [c[1] for c in cursor.fetchall()]
-        if 'approval_status' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approval_status TEXT DEFAULT 'Onaylandı'")
-        if 'approved_by' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approved_by TEXT DEFAULT 'Sistem'")
-        if 'approved_date' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approved_date TEXT DEFAULT ''")
+    ensure_column(cursor, "material_orders_ordered", "approval_status", "TEXT", "'Onaylandı'")
+    ensure_column(cursor, "material_orders_ordered", "approved_by", "TEXT", "'Sistem'")
+    ensure_column(cursor, "material_orders_ordered", "approved_date", "TEXT", "''")
 
     # 9. SİPARİŞ GELEN MALZEMELER (RECEIVED)
     cursor.execute(f'''
@@ -420,34 +435,45 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(material_orders_received)")
-        mor_cols = [c[1] for c in cursor.fetchall()]
-        if 'invoice_photo_url' not in mor_cols:
-            cursor.execute("ALTER TABLE material_orders_received ADD COLUMN invoice_photo_url TEXT DEFAULT ''")
+    ensure_column(cursor, "material_orders_received", "invoice_photo_url", "TEXT", "''")
 
     # 10. MAKİNELER TABLOSU
     cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS machines (
         id {pk_type},
         name TEXT UNIQUE NOT NULL,
+        code TEXT DEFAULT '',
         type TEXT DEFAULT 'Kesim',
+        capacity_ton_day REAL DEFAULT 10.0,
+        hourly_rate REAL DEFAULT 0.0,
+        operator_name TEXT DEFAULT '',
+        status TEXT DEFAULT 'Aktif',
+        notes TEXT DEFAULT '',
         is_active INTEGER DEFAULT 1
     )
     ''')
 
+    ensure_column(cursor, "machines", "code", "TEXT", "''")
+    ensure_column(cursor, "machines", "type", "TEXT", "'Kesim'")
+    ensure_column(cursor, "machines", "capacity_ton_day", "REAL", "10.0")
+    ensure_column(cursor, "machines", "hourly_rate", "REAL", "0.0")
+    ensure_column(cursor, "machines", "operator_name", "TEXT", "''")
+    ensure_column(cursor, "machines", "status", "TEXT", "'Aktif'")
+    ensure_column(cursor, "machines", "notes", "TEXT", "''")
+    ensure_column(cursor, "machines", "is_active", "INTEGER", "1")
+
     cursor.execute("SELECT COUNT(*) as count FROM machines")
     if cursor.fetchone()['count'] == 0:
         default_machines = [
-            ("Plazma 1 (Sac/Plaka)", "Kesim"),
-            ("Sac Lazer 1 (Sac/Plaka)", "Kesim"),
-            ("Profil Lazer 1 (Profil)", "Kesim"),
-            ("Bant Testere 1 (Profil)", "Kesim"),
-            ("Oksijen Kesim (Plaka)", "Kesim"),
-            ("Hol 3 - Çatım & Kaynak 1", "İmalat"),
-            ("Boyahane - Kumlama & Boya", "Yüzey İşlem")
+            ("Ajan 260A Plazma", "PLZ-1", "Plazma", 12.0, 0, "Ali Kesici", "Aktif"),
+            ("Ermaksan 4kW Sac Lazer", "LZR-1", "Sac Lazer", 15.0, 0, "Mehmet Lazer", "Aktif"),
+            ("Bystronic 10kW Profil Lazer", "PLZR-1", "Profil Lazer", 18.0, 0, "Hakan Profil", "Aktif"),
+            ("Kasto Şerit Testere 1", "TST-1", "Bant Testere", 8.0, 0, "Mustafa Testere", "Aktif"),
+            ("Messer Oksijen Kesim", "OKS-1", "Oksijen Kesim", 10.0, 0, "Kemal Alev", "Aktif"),
+            ("Hol 3 - Çatım & Kaynak 1", "CTM-1", "Çatım & Kaynak", 20.0, 0, "Ahmet Usta", "Aktif"),
+            ("Boyahane - Kumlama & Boya", "BYA-1", "Yüzey İşlem", 25.0, 0, "Hasan Boyacı", "Aktif")
         ]
-        cursor.executemany("INSERT OR IGNORE INTO machines (name, type) VALUES (?, ?)", default_machines)
+        cursor.executemany("INSERT OR IGNORE INTO machines (name, code, type, capacity_ton_day, hourly_rate, operator_name, status) VALUES (?, ?, ?, ?, ?, ?, ?)", default_machines)
 
     # 11. ÖN İMALAT PLAN / MAKİNE TAKVİMİ
     cursor.execute(f'''
@@ -506,11 +532,8 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(qa_inspections)")
-        qa_cols = [c[1] for c in cursor.fetchall()]
-        if 'workstation' not in qa_cols: cursor.execute("ALTER TABLE qa_inspections ADD COLUMN workstation TEXT DEFAULT ''")
-        if 'photo_url' not in qa_cols: cursor.execute("ALTER TABLE qa_inspections ADD COLUMN photo_url TEXT DEFAULT ''")
+    ensure_column(cursor, "qa_inspections", "workstation", "TEXT", "''")
+    ensure_column(cursor, "qa_inspections", "photo_url", "TEXT", "''")
 
     # 14. BOYA / YÜZEY İŞLEM KAYITLARI
     cursor.execute(f'''
@@ -556,15 +579,11 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(shipments)")
-        ship_cols = [c[1] for c in cursor.fetchall()]
-        if 'accounting_status' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_status TEXT DEFAULT 'Bekliyor'")
-        if 'accounting_processed_by' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_processed_by TEXT")
-        if 'accounting_processed_at' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_processed_at TIMESTAMP")
-        if 'accounting_invoice_no' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_invoice_no TEXT")
-        if 'accounting_notes' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_notes TEXT")
-
+    ensure_column(cursor, "shipments", "accounting_status", "TEXT", "'Bekliyor'")
+    ensure_column(cursor, "shipments", "accounting_processed_by", "TEXT", "NULL")
+    ensure_column(cursor, "shipments", "accounting_processed_at", "TIMESTAMP", "NULL")
+    ensure_column(cursor, "shipments", "accounting_invoice_no", "TEXT", "''")
+    ensure_column(cursor, "shipments", "accounting_notes", "TEXT", "''")
 
     # 16. SEVKİYAT KALEMLERİ
     cursor.execute(f'''
@@ -597,13 +616,10 @@ def init_db():
     )
     ''')
 
-    if not use_pg:
-        cursor.execute("PRAGMA table_info(system_settings)")
-        sys_cols = [c[1] for c in cursor.fetchall()]
-        if 'app_title' not in sys_cols: cursor.execute("ALTER TABLE system_settings ADD COLUMN app_title TEXT DEFAULT 'ORDUMAK ÇELİK İMALAT MES'")
-        if 'app_subtitle' not in sys_cols: cursor.execute("ALTER TABLE system_settings ADD COLUMN app_subtitle TEXT DEFAULT 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi'")
-        if 'company_logo_url' not in sys_cols: cursor.execute("ALTER TABLE system_settings ADD COLUMN company_logo_url TEXT DEFAULT '/static/img/ordumak_logo.png'")
-        if 'company_website_url' not in sys_cols: cursor.execute("ALTER TABLE system_settings ADD COLUMN company_website_url TEXT DEFAULT 'https://ordumak.com'")
+    ensure_column(cursor, "system_settings", "app_title", "TEXT", "'ORDUMAK ÇELİK İMALAT MES'")
+    ensure_column(cursor, "system_settings", "app_subtitle", "TEXT", "'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi'")
+    ensure_column(cursor, "system_settings", "company_logo_url", "TEXT", "'/static/img/ordumak_logo.png'")
+    ensure_column(cursor, "system_settings", "company_website_url", "TEXT", "'https://ordumak.com'")
 
     cursor.execute('SELECT COUNT(*) as count FROM system_settings')
     if cursor.fetchone()['count'] == 0:
@@ -1039,18 +1055,45 @@ def get_project_summary(project_id):
 
     return proj_dict
 
-def get_machines():
+def get_machines(active_only=False):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM machines ORDER BY type, name")
+    if active_only:
+        cursor.execute("SELECT * FROM machines WHERE is_active = 1 ORDER BY type, name")
+    else:
+        cursor.execute("SELECT * FROM machines ORDER BY type, name")
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
-def add_machine(name, m_type='Kesim'):
+def get_machine_by_id(machine_id):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO machines (name, type) VALUES (?, ?)", (name.strip(), m_type.strip()))
+    cursor.execute("SELECT * FROM machines WHERE id = ?", (machine_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def add_machine(name, m_type='Kesim', code='', capacity_ton_day=10.0, hourly_rate=0.0, operator_name='', status='Aktif', notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR IGNORE INTO machines (name, code, type, capacity_ton_day, hourly_rate, operator_name, status, notes, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+    """, (name.strip(), code.strip(), m_type.strip(), float(capacity_ton_day or 10.0), float(hourly_rate or 0.0), operator_name.strip(), status.strip(), notes.strip()))
+    m_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return m_id
+
+def update_machine(machine_id, name, m_type='Kesim', code='', capacity_ton_day=10.0, hourly_rate=0.0, operator_name='', status='Aktif', notes='', is_active=1):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE machines
+        SET name = ?, code = ?, type = ?, capacity_ton_day = ?, hourly_rate = ?, operator_name = ?, status = ?, notes = ?, is_active = ?
+        WHERE id = ?
+    """, (name.strip(), code.strip(), m_type.strip(), float(capacity_ton_day or 10.0), float(hourly_rate or 0.0), operator_name.strip(), status.strip(), notes.strip(), int(is_active), machine_id))
     conn.commit()
     conn.close()
 

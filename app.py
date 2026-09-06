@@ -16,7 +16,7 @@ from database import (
     get_db, init_db, log_activity, hash_password,
     get_global_metrics, get_project_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings,
-    get_machines, add_machine, delete_machine,
+    get_machines, get_machine_by_id, add_machine, update_machine, delete_machine,
     get_all_role_permissions, update_role_permission,
     can_user_edit, get_next_dispatch_no,
     get_user_by_id, update_user_profile,
@@ -190,8 +190,8 @@ def ensure_db_and_auth():
         except Exception as e:
             print(f"Veritabani hazirlama uyarisi: {e}")
 
-    # Item 19: Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir
-    if request.endpoint in ('login', 'static') or (request.path and request.path.startswith('/static/')):
+    # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW ve Manifest hariç)
+    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json'))):
         return
     if 'user' not in session:
         return redirect(url_for('login'))
@@ -1207,17 +1207,42 @@ def api_makine_ekle():
     """Yeni makine / istasyon ekler."""
     name = request.form.get('name', '').strip()
     m_type = request.form.get('type', 'Kesim').strip()
+    code = request.form.get('code', '').strip()
+    capacity = float(request.form.get('capacity_ton_day') or 10.0)
+    hourly_rate = float(request.form.get('hourly_rate') or 0.0)
+    operator = request.form.get('operator_name', '').strip()
+    status = request.form.get('status', 'Aktif').strip()
+    notes = request.form.get('notes', '').strip()
+
     if name:
-        add_machine(name, m_type)
-        flash(f"'{name}' makinesi/istasyonu eklendi.", "success")
-    return redirect(url_for('on_imalat_plan'))
+        add_machine(name, m_type, code, capacity, hourly_rate, operator, status, notes)
+        flash(f"'{name}' tezgahı/istasyonu başarıyla eklendi.", "success")
+    return redirect(request.referrer or url_for('on_imalat_plan'))
+
+@app.route('/api/makineler/<int:machine_id>/duzenle', methods=['POST'])
+def api_makine_duzenle(machine_id):
+    """Mevcut makine / tezgah bilgilerini günceller."""
+    name = request.form.get('name', '').strip()
+    m_type = request.form.get('type', 'Kesim').strip()
+    code = request.form.get('code', '').strip()
+    capacity = float(request.form.get('capacity_ton_day') or 10.0)
+    hourly_rate = float(request.form.get('hourly_rate') or 0.0)
+    operator = request.form.get('operator_name', '').strip()
+    status = request.form.get('status', 'Aktif').strip()
+    notes = request.form.get('notes', '').strip()
+    is_active = int(request.form.get('is_active', 1))
+
+    if name:
+        update_machine(machine_id, name, m_type, code, capacity, hourly_rate, operator, status, notes, is_active)
+        flash(f"'{name}' tezgah bilgileri başarıyla güncellendi.", "success")
+    return redirect(request.referrer or url_for('on_imalat_plan'))
 
 @app.route('/api/makineler/<int:machine_id>/sil', methods=['POST'])
 def api_makine_sil(machine_id):
     """Makine / istasyonu siler."""
     delete_machine(machine_id)
-    flash("Makine silindi.", "info")
-    return redirect(url_for('on_imalat_plan'))
+    flash("Tezgah silindi.", "info")
+    return redirect(request.referrer or url_for('on_imalat_plan'))
 
 
 # =========================================================================
@@ -2768,27 +2793,159 @@ def api_toplanti_aksiyon_sil(item_id):
 # 19. CANLI SOHBET & FOTOĞRAFLI İLETİŞİM SİSTEMİ
 # =========================================================================
 def generate_steel_ai_response(msg, user_name='Değerli Personel'):
+    """ORDUMAK Akıllı Çelik İmalat & MES Yapay Zeka Danışmanı"""
     text = (msg or '').strip().lower()
     
-    if any(k in text for k in ['ağırlık', 'hesapla', 'tonaj', 'kg', 'formül']):
-        return f"📐 **Çelik / Sac Ağırlık Formülü:**\n- `Ağırlık (kg) = Kalınlık (mm) × Genişlik (mm) × Boy (mm) × 0.00000785`\n- *Örnek:* 10mm × 1500mm × 6000mm sac = `10 × 1500 × 6000 × 7.85 / 1.000.000 = 706.5 kg`\n\nProfil ağırlıklarında ise standart çelik cetvelindeki metre ağırlığı (kg/m) boy ile çarpılır."
-    
-    if any(k in text for k in ['s235', 's275', 's355', 'kalite', 'st37', 'st52', 'malzeme']):
-        return f"🔩 **Yapısal Çelik Kaliteleri (EN 10025):**\n- **S235JR (Eski St37):** Akma dayanımı min. 235 MPa. Tali elemanlar, aşıklar, gerdirmeler için uygundur.\n- **S275JR (Eski St44):** Akma dayanımı min. 275 MPa. Standart kiriş ve kolonlar için dengeli tercih.\n- **S355JR/J2 (Eski St52):** Akma dayanımı min. 355 MPa. Ağır yük taşıyan ana kolonlar, vinç kirişleri ve yüksek gerilmeli düğüm noktaları için zorunludur.\n- *Kaynak Uyarısı:* S355 çeliklerde et kalınlığı arttıkça ön ısıtma ve uygun elektrod/gaz seçimine dikkat edilmelidir."
-    
-    if any(k in text for k in ['kaynak', 'kalite', 'muayene', 'tolerans', 'en 1090', 'iso 5817', 'ndt']):
-        return f"🛡️ **Kalite & Kaynak Standartları (EN 1090 / ISO 5817):**\n- **Görsel Muayene (VT):** Kaynak dikişlerinde gözenek, yanma oluğu (undercut) ve nüfuziyetsizlik kontrol edilir.\n- **Tahribatsız Muayene (NDT):** T-bağlantıları ve alın kaynaklarında MT (Manyetik) veya UT (Ultrasonik) testleri uygulanır.\n- **Kabul Seviyesi:** EXC2 ve EXC3 yapılarda genellikle EN ISO 5817 Seviye B veya C aranır."
-    
-    if any(k in text for k in ['boya', 'kumlama', 'sa 2.5', 'mikron', 'dft', 'ral']):
-        return f"🎨 **Yüzey İşlem & Boya Standartları (ISO 12944 / ISO 8501):**\n- **Kumlama Derecesi:** Çelik yüzeyinde hadde kabuğu ve pas tamamen temizlenmeli, en az **Sa 2.5** pürüzlülük sağlanmalıdır.\n- **Kuru Film Kalınlığı (DFT):** Şartnamede belirtilen mikron kalınlığı (örn. 80-120 µm) boya kalınlık ölçer ile kontrol edilmeli ve yüzey kuru iken ölçülmelidir."
-    
-    if any(k in text for k in ['kesim', 'fire', 'lazer', 'plazma', 'nesting', 'testere']):
-        return f"⚡ **Ön İmalat Kesim & Yerleşim (Nesting) Tavsiyesi:**\n- Plaka kesimlerinde (Plazma/Lazer) parça arası boşluklar sac kalınlığı kadar (min. t mm) bırakılmalıdır.\n- Ortak kenar kesimi (Common Cut) ile gaz ve zaman tasarrufu sağlanabilir.\n- Profil kesimlerinde testere açı payı ve bıçak kalınlığı (3-4 mm) hesaba katılmalıdır."
-    
+    # 1. Canlı Fabrika ve Proje Durumu Analizi
+    if any(k in text for k in ['fabrika', 'durum', 'özet', 'rapor', 'tonaj durumu', 'üretim durumu', 'neredeyiz', 'canlı']):
+        try:
+            m = get_global_metrics()
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT code, name, customer, target_tonnage, status FROM projects WHERE status != 'Tamamlandı' ORDER BY target_tonnage DESC LIMIT 5")
+            active_projs = c.fetchall()
+            conn.close()
+            
+            proj_txt = ""
+            for p in active_projs:
+                p_dict = dict(p) if hasattr(p, 'keys') else {'code': p[0], 'name': p[1], 'customer': p[2], 'target_tonnage': p[3]}
+                proj_txt += f"  • **{p_dict.get('code')}** ({p_dict.get('name')}): `{p_dict.get('target_tonnage', 0):.1f} Ton`\n"
+            
+            return (
+                f"🏭 **ORDUMAK Fabrika Canlı Üretim & Tonaj Brifingi:**\n\n"
+                f"📊 **Genel İcmal:**\n"
+                f"- **Toplam Taahhüt Edilen Tonaj:** `{m.get('total_tonnage', 0):.2f} Ton`\n"
+                f"- **⚡ Kesilen Malzeme:** `{m.get('cut_tonnage', 0):.2f} Ton` (%{m.get('cut_pct', 0)})\n"
+                f"- **🔨 İmalatı (Montaj/Kaynak) Biten:** `{m.get('fab_completed_tonnage', 0):.2f} Ton` (%{m.get('fab_pct', 0)})\n"
+                f"- **🎨 Boyanan İmalat:** `{m.get('paint_completed_tonnage', 0):.2f} Ton` (%{m.get('paint_pct', 0)})\n"
+                f"- **🚛 Sevk Edilen:** `{m.get('shipped_tonnage', 0):.2f} Ton` (%{m.get('ship_pct', 0)})\n"
+                f"- **📦 Fabrika / Atölye İçi Stok:** `{m.get('factory_stock_tonnage', 0):.2f} Ton`\n\n"
+                f"🏗️ **Öne Çıkan Aktif Projeler:**\n{proj_txt if proj_txt else '  • Aktif proje bulunmuyor.'}\n\n"
+                f"💡 *Tavsiye:* Kesimden çıkan parçaların montaj holüne hızlı aktarımı için atölye içi vinç lojistiğini ve kalite kontrol onaylarını takip ediniz."
+            )
+        except Exception as e:
+            print(f"AI metrics error: {e}")
+
+    # 2. Ağırlık ve Geometri Formülleri
+    if any(k in text for k in ['ağırlık', 'hesapla', 'tonaj', 'kg', 'formül', 'sac ağırlık', 'profil ağırlık']):
+        return (
+            f"📐 **Mühendislik Ağırlık Hesaplama Formülleri:**\n\n"
+            f"• **Sac & Plaka:**\n"
+            f"  `Ağırlık (kg) = Kalınlık (mm) × Genişlik (mm) × Boy (mm) × 0.00000785`\n"
+            f"  *Örnek:* 12 mm × 1500 mm × 6000 mm = `12 × 1500 × 6000 × 7.85 / 10^6 = 847.8 kg`\n\n"
+            f"• **Dairesel Boru:**\n"
+            f"  `Ağırlık (kg/m) = (Dış Çap - Et Kalınlığı) × Et Kalınlığı × 0.02466`\n\n"
+            f"• **Kutu Profil:**\n"
+            f"  `Ağırlık (kg/m) = (Genişlik + Yükseklik - 2 × Et Kalınlığı) × 2 × Et Kalınlığı × 0.00785`\n\n"
+            f"Profil ağırlıklarında ise standart çelik cetvelindeki metre ağırlığı (kg/m) boy ile çarpılır."
+        )
+
+    # 3. Cıvata ve Tork Değerleri
+    if any(k in text for k in ['cıvata', 'civata', 'tork', 'nm', 'en 14399', '10.9', '8.8', 'hv', 'hr', 'öngerilme', 'sıkma']):
+        return (
+            f"🔩 **EN 14399 / ISO 898-1 Yapısal Cıvata Sıkma & Tork Standartları:**\n\n"
+            f"| Çap | Kalite 8.8 Tork (Nm) | Kalite 10.9 Tork (Nm) | Min. Ön Germe (kN) |\n"
+            f"| :--- | :---: | :---: | :---: |\n"
+            f"| **M16** | 170 - 190 Nm | 240 - 260 Nm | ~90 kN |\n"
+            f"| **M20** | 330 - 360 Nm | 470 - 510 Nm | ~140 kN |\n"
+            f"| **M24** | 570 - 620 Nm | 810 - 870 Nm | ~205 kN |\n"
+            f"| **M27** | 830 - 900 Nm | 1180 - 1280 Nm | ~265 kN |\n"
+            f"| **M30** | 1130 - 1230 Nm | 1600 - 1750 Nm | ~325 kN |\n\n"
+            f"⚠️ **Kritik Kurallar:**\n"
+            f"1. Sürtünmeli birleşimlerde (Slip-Critical) temas yüzeyleri boyasız veya özel sürtünme katsayılı astar ile kaplanmalıdır.\n"
+            f"2. Tork anahtarlarının kalibrasyon sertifikaları güncel olmalı, sıkma işlemi merkezden dışa doğru kademeli (%50 -> %100) yapılmalıdır."
+        )
+
+    # 4. Kaynak Standartları ve EN 1090
+    if any(k in text for k in ['kaynak', 'en 1090', 'iso 5817', 'wps', 'pqr', 'wpqr', 'exc2', 'exc3', 'ön ısıtma', 'preheat', 'tav', 'elektrod', 'tel', 'sg2', 'gazaltı']):
+        return (
+            f"🛡️ **EN 1090-2 & EN ISO 5817 Kaynak Mühendisliği Şartları:**\n\n"
+            f"1. **Uygulama Sınıfları (Execution Class):**\n"
+            f"   • **EXC2:** Standart binalar, depolar. NDT oranı alın kaynaklarında min. %10, köşe kaynaklarında %5.\n"
+            f"   • **EXC3:** Vinçli sanayi yapıları, köprüler, dinamik yükler. Kaynakçılar EN ISO 9606-1 onaylı, WPS/WPQR zorunludur. Alın kaynaklarında %100 VT + %20-%50 UT/MT.\n"
+            f"2. **Ön Isıtma (Preheat - EN 1011-2):**\n"
+            f"   • S355 kalite ve et kalınlığı `t > 20 mm` olan birleşimlerde çatlak riskini önlemek için min. **100°C - 150°C** ön ısıtma tavsiye edilir.\n"
+            f"3. **Sarf Malzeme Seçimi:**\n"
+            f"   • S235 / S275 için: `ER70S-6 (SG2)` veya `E7018 / E42 2 B`.\n"
+            f"   • S355 için: `SG3` gazaltı teli veya `E7018-1` düşük hidrojenli bazik elektrot."
+        )
+
+    # 5. Boya, Kumlama ve Korozyon (ISO 12944)
+    if any(k in text for k in ['boya', 'kumlama', 'sa 2.5', 'mikron', 'dft', 'iso 12944', 'c3', 'c4', 'c5', 'astar', 'epoksi', 'poliüretan', 'dew point', 'çiğ']):
+        return (
+            f"🎨 **ISO 12944 & ISO 8501 Çelik Yüzey Koruma Kılavuzu:**\n\n"
+            f"1. **Yüzey Hazırlığı:**\n"
+            f"   • Kumlama Derecesi: Min. **Sa 2.5** (Neredeyse beyaz metal - ISO 8501-1).\n"
+            f"   • Yüzey Pürüzlülüğü: Orta (Medium G - Grit 40-75 µm).\n"
+            f"2. **İklimsel Uygulama Şartları:**\n"
+            f"   • Yüzey sıcaklığı, havanın Çiğ Noktası (Dew Point) sıcaklığından **en az 3°C yüksek** olmalıdır.\n"
+            f"   • Bağıl nem (RH) **<%85** olmalıdır.\n"
+            f"3. **Örnek C3 / C4 Dayanım Boya Katmanları:**\n"
+            f"   • *1. Kat (Astar):* Çinko Fosfatlı / Epoksi Astar (`60-80 µm DFT`)\n"
+            f"   • *2. Kat (Ara Kat):* Epoksi MIO (Micaceous Iron Oxide) (`80-100 µm DFT`)\n"
+            f"   • *3. Kat (Son Kat):* Alifatik Poliüretan (`50-60 µm DFT`) -> Toplam `~200-240 µm DFT`."
+        )
+
+    # 6. Kesim, Fire ve Yerleşim (Nesting)
+    if any(k in text for k in ['kesim', 'fire', 'lazer', 'plazma', 'nesting', 'testere', 'yerleşim', 'optimizasyon']):
+        return (
+            f"⚡ **Ön İmalat Kesim & Yerleşim (Nesting) Verimlilik Taktikleri:**\n\n"
+            f"1. **Ortak Kenar Kesimi (Common Line Cutting):**\n"
+            f"   • Dikdörtgen/kare flanş ve bayrak plakalarında ortak kenar kesimi yaparak delme (pierce) sayısını %40, kesim süresini %25 düşürebilirsiniz.\n"
+            f"2. **Plazma / Lazer Boşlukları (Kerf & Margin):**\n"
+            f"   • Plakalar arası mesafe sac kalınlığı `t` kadar (min. 5-8 mm), plaka kenarından ise min. 10 mm boşluk bırakılmalıdır.\n"
+            f"3. **Profil Kesim Fire Önleme:**\n"
+            f"   • 12 metre ve 6 metre standart boyları kombine ederek sipariş öncesi kesim simülasyonu yapın. Testere bıçak kalınlığı (3.5 mm) ve açı payı (10-15 mm) fire hesabına katılmalıdır."
+        )
+
+    # 7. Çelik Kaliteleri
+    if any(k in text for k in ['s235', 's275', 's355', 'kalite', 'st37', 'st52', 'malzeme', 'akma']):
+        return (
+            f"🔩 **Yapısal Çelik Kaliteleri ve Mukavemet Değerleri (EN 10025-2):**\n\n"
+            f"• **S235JR (Eski St37-2):** Akma Dayanımı fy = 235 MPa, Çekme fu = 360-510 MPa. Tali çelikler, aşık, kuşak, rüzgar gerdirmeleri.\n"
+            f"• **S275JR (Eski St44-2):** Akma Dayanımı fy = 275 MPa, Çekme fu = 430-580 MPa. Standart ara kat kirişleri ve sundurmalar.\n"
+            f"• **S355JR / J2 (Eski St52-3):** Akma Dayanımı fy = 355 MPa, Çekme fu = 470-630 MPa. Ağır yük taşıyan ana kolonlar, vinç kirişleri, kafes makaslar, flanş plakaları.\n"
+            f"• *Darbe Enerjisi Notu:* `JR` = +20°C 27J, `J0` = 0°C 27J, `J2` = -20°C 27J darbe tokluğuna sahiptir."
+        )
+
+    # 8. Tekla ve İmalat Pozlama
     if any(k in text for k in ['tekla', 'poz', 'marka', 'assembly', 'part']):
-        return f"🏗️ **Tekla & İmalat Pozlama Kuralı:**\n- **Montaj Markası (Assembly):** Atölyede birleştirilip şantiyeye tek parça giden eleman (örn. `C-101`, `B-201`).\n- **Tekil Poz (Part):** CNC'de kesilen sac ve profil parçaları (örn. `PL-1`, `p1`, `flans-10`).\n- Kesim girişinde Prefix ile eşleşmeyen pozları tam marka koduyla girerek otomatik profil eşleştirmesi yapabilirsiniz."
+        return (
+            f"🏗️ **Tekla Structures & İmalat Entegrasyonu:**\n\n"
+            f"• **Montaj Markası (Assembly / Marka):** Atölyede çatılıp kaynaklanan ve şantiyeye bağımsız giden komple elemandır (Örn: `K-101`, `KOL-1`, `MAKAS-3`).\n"
+            f"• **Tekil Poz (Single Part / Poz):** CNC plazma/lazer veya testerede kesilen bağımsız parçadır (Örn: `p1`, `PL-12`, `flans-1`).\n"
+            f"• *İpucu:* Kesim girişinde parça kodu yerine ana montaj markasını girerseniz, sistem otomatik olarak o markanın Tekla parça ağacını çözümler ve ağırlıkları otomatik doldurur."
+        )
+
+    return (
+        f"🤖 Merhaba {user_name}! Ben **ORDUMAK AI Mühendisi & MES Asistanı**.\n\n"
+        f"Aşağıdaki alanlarda teknik analiz ve hesaplama yapabilirim:\n"
+        f"1. 🏭 **Canlı Fabrika Tonajı & Proje Durumu** (Kesim, imalat, boya ve sevk ilerlemeleri)\n"
+        f"2. 🛡️ **EN 1090-2 EXC2/EXC3 & ISO 5817 Kaynak Şartları** (WPS, NDT, ön ısıtma)\n"
+        f"3. 🔩 **EN 14399 8.8 / 10.9 Ön Germeli Cıvata Tork Değerleri** (Nm ve kN hesapları)\n"
+        f"4. 🎨 **ISO 12944 Korozyon ve Boya Sistemleri** (Sa 2.5 kumlama, çiğ noktası, DFT mikron)\n"
+        f"5. ⚡ **Kesim & Yerleşim (Nesting) Optimizasyonu** (Ortak kenar, plazma/lazer boşlukları)\n"
+        f"6. 📐 **Çelik Ağırlık ve Mukavemet Formülleri** (Plaka, profil, boru tonajları)\n\n"
+        f"Bana doğrudan bir soru sorabilir veya hesaplama yaptırabilirsiniz!"
+    )
+
+@app.route('/api/ai/sor', methods=['POST'])
+def api_ai_sor():
+    """ORDUMAK AI Mühendisi - Bağımsız Soru-Cevap API'si"""
+    data = request.get_json() or {}
+    question = data.get('question', '').strip()
+    u = session.get('user', {})
+    user_name = u.get('full_name', 'Mühendis')
+    if not question:
+        return jsonify({'status': 'error', 'message': 'Soru metni boş olamaz.'}), 400
     
-    return f"🤖 Merhaba {user_name}! ORDUMAK Çelik İmalat AI Danışmanıyım.\n\nSana aşağıdaki konularda anında yardımcı olabilirim:\n1. 📐 **Ağırlık ve Tonaj Hesapları** (Sac, profil, boru)\n2. 🔩 **Çelik Kaliteleri ve Malzeme Seçimi** (S235, S275, S355)\n3. ⚡ **Kesim Optimizasyonu & Makine Parametreleri** (Plazma, Sac/Profil Lazer)\n4. 🛡️ **Kaynak ve Kalite Standartları** (EN 1090, ISO 5817, NDT)\n5. 🎨 **Boya, Kumlama ve DFT Mikron Ölçümleri** (Sa 2.5, RAL)\n6. 📦 **Sevkiyat ve Montaj Sıralaması**\n\nHerhangi bir teknik sorunuzu veya hesaplama talebinizi doğrudan sorabilirsiniz!"
+    reply = generate_steel_ai_response(question, user_name)
+    return jsonify({
+        'status': 'success',
+        'question': question,
+        'answer': reply,
+        'timestamp': datetime.now().strftime('%H:%M:%S')
+    })
 
 @app.route('/api/chat/<channel>')
 def api_chat_get(channel):
@@ -2857,7 +3014,7 @@ def api_veritabani_yedek_indir():
     cur_u = session.get('user', {})
     if cur_u.get('role') not in ('admin', 'patron'):
         flash("Yetkisiz erişim! Sadece Yöneticiler veritabanı yedeği indirebilir.", "danger")
-        return redirect(url_for('index'))
+        return redirect(url_for('raporlar'))
     db_file = os.path.join(BASE_DIR, 'imalat_takip.db')
     if os.path.exists(db_file):
         return send_file(
@@ -2866,7 +3023,86 @@ def api_veritabani_yedek_indir():
             download_name=f"imalat_takip_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
         )
     flash("Yerel SQLite veritabanı dosyası bulunamadı (PostgreSQL kullanılıyor olabilir).", "warning")
-    return redirect(url_for('index'))
+    return redirect(url_for('raporlar'))
+
+@app.route('/api/veritabani/geri-yukle', methods=['POST'])
+def api_veritabani_geri_yukle():
+    """Yedekten SQLite veritabanını güvenle geri yükler."""
+    cur_u = session.get('user', {})
+    if cur_u.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Sadece sistem yöneticileri veritabanını geri yükleyebilir.", "danger")
+        return redirect(url_for('raporlar'))
+    
+    db_file = os.path.join(BASE_DIR, 'imalat_takip.db')
+    restored = False
+    
+    # 1. Dosya yükleme kontrolü
+    if 'backup_file' in request.files and request.files['backup_file'].filename != '':
+        file = request.files['backup_file']
+        if not file.filename.lower().endswith(('.db', '.sqlite', '.sqlite3')):
+            flash("Geçersiz dosya formatı! Lütfen geçerli bir .db yedek dosyası yükleyin.", "danger")
+            return redirect(url_for('raporlar'))
+        
+        # Mevcut veritabanının güvenlik yedeğini al
+        if os.path.exists(db_file):
+            safety_backup = os.path.join(BASE_DIR, f"imalat_takip_pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            try:
+                import shutil
+                shutil.copy2(db_file, safety_backup)
+            except Exception as e:
+                print(f"Safety backup error: {e}")
+        
+        file.save(db_file)
+        restored = True
+    elif request.form.get('backup_path'):
+        local_path = request.form.get('backup_path').strip()
+        if not os.path.exists(local_path):
+            flash(f"Belirtilen yedek dosya yolu bulunamadı: {local_path}", "danger")
+            return redirect(url_for('raporlar'))
+        
+        if os.path.exists(db_file):
+            safety_backup = os.path.join(BASE_DIR, f"imalat_takip_pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db")
+            try:
+                import shutil
+                shutil.copy2(db_file, safety_backup)
+            except Exception as e:
+                print(f"Safety backup error: {e}")
+        
+        import shutil
+        shutil.copy2(local_path, db_file)
+        restored = True
+    else:
+        flash("Lütfen bir .db yedek dosyası seçin veya dosya yolu girin.", "warning")
+        return redirect(url_for('raporlar'))
+    
+    if restored:
+        try:
+            init_db()
+        except Exception as e:
+            print(f"Init DB post-restore warning: {e}")
+            
+        log_activity(
+            action="Veritabanı Geri Yüklendi",
+            entity_type="system",
+            details="Veritabanı yedekten başarıyla geri yüklendi.",
+            username=cur_u.get('username'),
+            user_id=cur_u.get('id'),
+            ip_address=request.remote_addr
+        )
+        flash("Veritabanı yedekten başarıyla geri yüklendi ve tüm sistem verileri güncellendi!", "success")
+    
+    return redirect(url_for('raporlar'))
+
+@app.route('/sw.js')
+def service_worker():
+    """Service Worker dosyasını doğru headerlar ile sunar."""
+    sw_path = os.path.join(BASE_DIR, 'static', 'sw.js')
+    if os.path.exists(sw_path):
+        resp = send_file(sw_path, mimetype='application/javascript')
+        resp.headers['Service-Worker-Allowed'] = '/'
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+    return "/* Service worker not found */", 404
 
 @app.route('/manifest.json')
 def pwa_manifest():

@@ -57,8 +57,16 @@ class TestImalatTakipApp(unittest.TestCase):
         c = conn.cursor()
         c.execute("SELECT id FROM shipments LIMIT 1")
         row = c.fetchone()
+        if not row:
+            c.execute("SELECT id FROM projects LIMIT 1")
+            p_row = c.fetchone()
+            p_id = p_row['id'] if p_row else 1
+            c.execute("INSERT INTO shipments (project_id, dispatch_no, vehicle_plate, dispatch_date, total_quantity, total_tonnage) VALUES (?, 'SEVK-TEST', '34TEST01', '2026-09-07', 10, 5.5)", (p_id,))
+            s_id = c.lastrowid
+            conn.commit()
+        else:
+            s_id = row['id']
         conn.close()
-        s_id = row['id'] if row else 1
         response = self.client.get(f'/sevk/{s_id}')
         self.assertEqual(response.status_code, 200)
         self.assertIn('SEVKİYAT İRSALİYESİ'.encode('utf-8'), response.data)

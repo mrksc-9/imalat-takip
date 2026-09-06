@@ -1,181 +1,195 @@
-{% extends "layout.html" %}
+﻿{% extends "layout.html" %}
 
-{% block title %}Genel İcmal Raporları & Sistem Ayarları - Çelik İmalat MES{% endblock %}
-{% block page_title %}Genel İcmal Raporları & Firma Ayarları{% endblock %}
+{% block title %}Firma & Sistem Ayarları, Yedekleme - ORDUMAK MES{% endblock %}
+{% block page_title %}Firma & Sistem Ayarları ve Veritabanı Yönetimi{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
 
-    <!-- 1. GENEL TONAJ VE AŞAMA İCMAL TABLOSU -->
-    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-5 overflow-hidden">
-        <div class="flex items-center justify-between mb-4">
-            <div>
-                <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                    <i class="fa-solid fa-chart-line text-blue-400"></i>
-                    <span>Tüm Projeler Genel Üretim & Tonaj İcmali</span>
-                </h3>
-                <p class="text-xs text-slate-400 mt-0.5">Fabrika geneli toplam hedef, kesilen, imalatı biten, boyanan ve sevk edilen tonaj özeti</p>
-            </div>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
-                <thead>
-                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
-                        <th class="py-2.5 px-3">Proje Kodu</th>
-                        <th class="py-2.5 px-2">Proje Adı</th>
-                        <th class="py-2.5 px-2 text-right">Toplam Tonaj</th>
-                        <th class="py-2.5 px-2 text-right text-yellow-400">Kesilen Tonaj</th>
-                        <th class="py-2.5 px-2 text-right text-amber-400">İmalatı Biten</th>
-                        <th class="py-2.5 px-2 text-right text-purple-400">Boyanan</th>
-                        <th class="py-2.5 px-2 text-right text-emerald-400">Sevk Edilen</th>
-                        <th class="py-2.5 px-2 text-right text-sky-400">Atölye Stoğu</th>
-                        <th class="py-2.5 px-2 text-center">Genel Durum</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800/60 text-slate-200">
-                    {% for p in projects %}
-                    <tr class="hover:bg-slate-900/50 transition-colors">
-                        <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ p.code }}</td>
-                        <td class="py-2.5 px-2 font-medium text-white">{{ p.name }}</td>
-                        <td class="py-2.5 px-2 text-right font-mono font-bold">{{ p.total_tonnage | format_num }} Ton</td>
-                        <td class="py-2.5 px-2 text-right font-mono text-yellow-400 font-bold">{{ p.cut_tonnage | format_num }} (%{{ p.cut_pct }})</td>
-                        <td class="py-2.5 px-2 text-right font-mono text-amber-400 font-bold">{{ p.fab_completed_tonnage | format_num }} (%{{ p.fab_pct }})</td>
-                        <td class="py-2.5 px-2 text-right font-mono text-purple-400 font-bold">{{ p.paint_completed_tonnage | format_num }} (%{{ p.paint_pct }})</td>
-                        <td class="py-2.5 px-2 text-right font-mono text-emerald-400 font-bold">{{ p.shipped_tonnage | format_num }} (%{{ p.ship_pct }})</td>
-                        <td class="py-2.5 px-2 text-right font-mono text-sky-400 font-bold">{{ p.factory_stock_tonnage | format_num }} Ton</td>
-                        <td class="py-2.5 px-2 text-center">
-                            {% if p.ship_pct >= 100 %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Tamamlandı</span>
-                            {% elif p.fab_pct > 0 %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">İmalatta</span>
-                            {% else %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">Başlamadı</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="bg-slate-900 font-bold text-white border-t-2 border-slate-700">
-                        <td colspan="2" class="py-3 px-3 uppercase text-[11px]">GENEL FABRİKA TOPLAMI:</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-white">{{ metrics.total_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-yellow-400">{{ metrics.cut_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-amber-400">{{ metrics.fab_completed_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-purple-400">{{ metrics.paint_completed_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-emerald-400">{{ metrics.shipped_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-right font-mono font-black text-sky-400">{{ metrics.factory_stock_tonnage | format_num }} Ton</td>
-                        <td class="py-3 px-2 text-center text-slate-400">-</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <!-- 2. AYARLAR KARTI (SİSTEM BAŞLIK, LOGO VE RESMİ İRSALİYE BİLGİLERİ) -->
+    <!-- 1. AYARLAR KARTI (SİSTEM BAŞLIK, LOGO VE RESMİ İRSALİYE BİLGİLERİ) -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         <!-- A) SİSTEM BAŞLIK, LOGO VE WEB SİTESİ AYARLARI -->
-        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2 mb-4">
-                <i class="fa-solid fa-paintbrush text-amber-400"></i>
-                <span>Sistem Başlığı, Ordumak Logo & Web Sitesi</span>
-            </h3>
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+            <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2 mb-4">
+                    <i class="fa-solid fa-paintbrush text-amber-400"></i>
+                    <span>Sistem Başlığı, Logo & Web Sitesi</span>
+                </h3>
 
-            <form action="{{ url_for('api_ayarlar_baslik_guncelle') }}" method="POST" enctype="multipart/form-data" class="space-y-4 text-xs">
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Sistem Ana Başlığı (Sidebar & Üst Bar) *</label>
-                    <input type="text" name="app_title" value="{{ settings.app_title or 'ÇELİK İMALAT MES' }}" required
-                           {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                           class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold focus:outline-none focus:border-amber-500">
-                </div>
+                <form action="{{ url_for('api_ayarlar_baslik_guncelle') }}" method="POST" enctype="multipart/form-data" class="space-y-4 text-xs">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Sistem Ana Başlığı (Sidebar & Üst Bar) *</label>
+                        <input type="text" name="app_title" value="{{ settings.app_title or 'ÇELİK İMALAT MES' }}" required
+                               {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold focus:outline-none focus:border-amber-500">
+                    </div>
 
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Sistem Alt Başlığı</label>
-                    <input type="text" name="app_subtitle" value="{{ settings.app_subtitle or 'ORDUMAK ENDÜSTRİYEL İMALAT YÖNETİM SİSTEMİ' }}"
-                           {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                           class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
-                </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Sistem Alt Başlığı</label>
+                        <input type="text" name="app_subtitle" value="{{ settings.app_subtitle or 'ORDUMAK ENDÜSTRİYEL İMALAT YÖNETİM SİSTEMİ' }}"
+                               {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+                    </div>
 
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Firma Web Sitesi URL (Logo Tıklandığında Açılır)</label>
-                    <input type="url" name="company_website_url" value="{{ settings.company_website_url or 'https://ordumak.com.tr' }}"
-                           {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                           placeholder="https://ordumak.com.tr" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500">
-                </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Firma Web Sitesi URL (Logo Tıklandığında Açılır)</label>
+                        <input type="url" name="company_website_url" value="{{ settings.company_website_url or 'https://ordumak.com.tr' }}"
+                               {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                               placeholder="https://ordumak.com.tr" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-amber-500">
+                    </div>
 
-                {% if current_user.role in ('admin', 'patron') %}
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Yeni Firma Logosu Yükle (SVG / PNG)</label>
-                    <input type="file" name="company_logo" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-white hover:file:bg-amber-500">
-                    <p class="text-[10px] text-slate-500 mt-1">Sol üst köşedeki Ordumak logosunu değiştirmek için yeni görsel yükleyebilirsiniz.</p>
-                </div>
+                    {% if current_user.role in ('admin', 'patron') %}
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Yeni Firma Logosu Yükle (SVG / PNG)</label>
+                        <input type="file" name="company_logo" accept="image/*" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-600 file:text-white hover:file:bg-amber-500">
+                        <p class="text-[10px] text-slate-500 mt-1">Sol üst köşedeki firma logosunu güncellemek için yeni görsel yükleyebilirsiniz.</p>
+                    </div>
 
-                <div class="pt-2 border-t border-slate-800 flex justify-end">
-                    <button type="submit" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-600/30">
-                        Başlık ve Logo Ayarlarını Kaydet
-                    </button>
-                </div>
-                {% endif %}
-            </form>
+                    <div class="pt-2 border-t border-slate-800 flex justify-end">
+                        <button type="submit" class="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-xl font-bold shadow-md shadow-amber-600/30">
+                            Başlık ve Logo Ayarlarını Kaydet
+                        </button>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
         </div>
 
         <!-- B) RESMİ İRSALİYE & FİRMA BAŞLIK BİLGİLERİ -->
-        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2 mb-4">
-                <i class="fa-solid fa-sliders text-cyan-400"></i>
-                <span>Resmi İrsaliye & Firma İletişim Bilgileri</span>
-            </h3>
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+            <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2 mb-4">
+                    <i class="fa-solid fa-sliders text-cyan-400"></i>
+                    <span>Resmi İrsaliye & Firma İletişim Bilgileri</span>
+                </h3>
 
-            <form action="{{ url_for('api_ayarlar_guncelle') }}" method="POST" class="space-y-4 text-xs">
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Firma Ticari Unvanı *</label>
-                    <input type="text" name="company_name" value="{{ settings.company_name or 'ORDUMAK ÇELİK YAPI ENDÜSTRİ' }}" required
-                           {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                           class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
-                </div>
-
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Faaliyet Alanı / Alt Başlık</label>
-                    <input type="text" name="company_sub_title" value="{{ settings.company_sub_title or 'Ağır Çelik Konstrüksiyon & İmalat Sanayi' }}"
-                           {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                           class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
-                </div>
-
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Fabrika / İletişim Adresi</label>
-                    <textarea name="company_address" rows="2"
-                              {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                              class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none">{{ settings.company_address or '' }}</textarea>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
+                <form action="{{ url_for('api_ayarlar_guncelle') }}" method="POST" class="space-y-4 text-xs">
                     <div>
-                        <label class="block text-slate-400 mb-1 font-semibold">Telefon</label>
-                        <input type="text" name="company_phone" value="{{ settings.company_phone or '' }}"
+                        <label class="block text-slate-400 mb-1 font-semibold">Firma Ticari Unvanı *</label>
+                        <input type="text" name="company_name" value="{{ settings.company_name or 'ORDUMAK ÇELİK YAPI ENDÜSTRİ' }}" required
+                               {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Faaliyet Alanı / Alt Başlık</label>
+                        <input type="text" name="company_sub_title" value="{{ settings.company_sub_title or 'Ağır Çelik Konstrüksiyon & İmalat Sanayi' }}"
                                {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
                                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
                     </div>
+
                     <div>
-                        <label class="block text-slate-400 mb-1 font-semibold">E-Posta</label>
-                        <input type="email" name="company_email" value="{{ settings.company_email or '' }}"
-                               {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
-                               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        <label class="block text-slate-400 mb-1 font-semibold">Fabrika / İletişim Adresi</label>
+                        <textarea name="company_address" rows="2"
+                                  {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none">{{ settings.company_address or '' }}</textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 mb-1 font-semibold">Telefon</label>
+                            <input type="text" name="company_phone" value="{{ settings.company_phone or '' }}"
+                                   {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1 font-semibold">E-Posta</label>
+                            <input type="email" name="company_email" value="{{ settings.company_email or '' }}"
+                                   {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                        </div>
+                    </div>
+
+                    {% if current_user.role in ('admin', 'patron') %}
+                    <div class="pt-2 border-t border-slate-800 flex justify-end">
+                        <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-md shadow-blue-600/30">
+                            Firma İletişim Bilgilerini Güncelle
+                        </button>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 2. VERİTABANI YEDEKLEME VE GERİ YÜKLEME (RESTORE) MODÜLÜ -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-database text-emerald-400"></i>
+                    <span>Veritabanı Yedekleme & Geri Yükleme (Restore)</span>
+                </h3>
+                <p class="text-xs text-slate-400 mt-0.5">Tüm projeler, kesimler, siparişler, kalite kontrolleri ve kullanıcı verilerini yedekleyin veya eski bir yedekten anında geri yükleyin.</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <i class="fa-solid fa-shield-halved mr-1"></i> Güvenli Kurtarma Korumalı
+            </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <!-- Sol: Yedek İndir -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2 mb-2">
+                        <i class="fa-solid fa-cloud-arrow-down text-blue-400"></i>
+                        <span>1. Mevcut Canlı Veritabanını İndir (.db)</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 leading-relaxed mb-4">
+                        Sistemdeki tüm kayıtların anlık tam yedeğini tek tıkla bilgisayarınıza indirin. Yedek dosyası zaman damgasıyla adlandırılır (örn: <code class="text-blue-300 font-mono text-[11px]">imalat_takip_backup_20260907_021500.db</code>).
+                    </p>
+                </div>
+                <div class="pt-3 border-t border-slate-800">
+                    <a href="{{ url_for('api_veritabani_yedek_indir') }}" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-blue-600/20 transition-all">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Canlı Veritabanı Yedeğini İndir</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Sağ: Yedek Geri Yükle -->
+            <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2 mb-2">
+                        <i class="fa-solid fa-cloud-arrow-up text-emerald-400"></i>
+                        <span>2. Yedekten Geri Yükle (.db Dosyası Seç / Yükle)</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 leading-relaxed mb-3">
+                        Daha önce indirdiğiniz bir <code class="text-emerald-300 font-mono text-[11px]">.db</code> yedek dosyasını yükleyerek veya yerel dosya yolunu belirterek sistemi o ana döndürebilirsiniz.
+                    </p>
+                    <div class="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[11px] text-amber-300 mb-3 flex items-start gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5 shrink-0"></i>
+                        <span>Geri yükleme öncesinde sistem mevcut veritabanınızı otomatik olarak <strong>güvenlik yedeğine</strong> kaydeder; veri kaybı yaşanmaz.</span>
                     </div>
                 </div>
 
                 {% if current_user.role in ('admin', 'patron') %}
-                <div class="pt-2 border-t border-slate-800 flex justify-end">
-                    <button type="submit" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-md shadow-blue-600/30">
-                        Firma İletişim Bilgilerini Güncelle
+                <form action="{{ url_for('api_veritabani_geri_yukle') }}" method="POST" enctype="multipart/form-data" class="space-y-3 pt-2 border-t border-slate-800 text-xs" onsubmit="return confirm('DİKKAT: Seçilen veritabanı yedeği geri yüklenecektir. Devam etmek istiyor musunuz?');">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Yedek Dosyası Seç (.db / .sqlite):</label>
+                        <input type="file" name="backup_file" accept=".db,.sqlite,.sqlite3" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500">
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">veya Sunucu / Yerel Dosya Yolu Girin:</label>
+                        <input type="text" name="backup_path" placeholder="Örn: C:\Users\ordum\Downloads\imalat_takip_backup_20260906_230431.db" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-emerald-500">
+                    </div>
+
+                    <button type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-600/20 transition-all">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        <span>Veritabanını Bu Yedekten Geri Yükle</span>
                     </button>
+                </form>
+                {% else %}
+                <div class="text-center py-4 text-xs text-slate-500 italic border-t border-slate-800">
+                    Veritabanı geri yükleme yetkisi yalnızca sistem yöneticilerine açıktır.
                 </div>
                 {% endif %}
-            </form>
+            </div>
         </div>
-
     </div>
 
 </div>
 {% endblock %}
-

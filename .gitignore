@@ -1,9 +1,33 @@
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.log
 .env
+.venv/
 venv/
 env/
+ENV/
+
+# IDE & Editörler
 .vscode/
 .idea/
+*.suo
+*.user
+
+# Veritabanı Yedekleri ve Geçici Dosyalar
+*.db-journal
+*.db-wal
+*.db-shm
+imalat_takip_backup_*.db
+imalat_takip_pre_restore_*.db
+
+# Yüklenen Geçici Chat/QA Fotoğrafları (İsteğe bağlı)
+static/uploads/chat/*
+!static/uploads/chat/.gitkeep
+static/uploads/qa/*
+!static/uploads/qa/.gitkeep
+
+# İşletim Sistemi Dosyaları
+.DS_Store
+Thumbs.db
