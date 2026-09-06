@@ -60,7 +60,7 @@
                     <label class="block text-xs font-medium text-slate-300 mb-1.5">Rol / Yetki Seviyesi</label>
                     <select name="role" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500">
                         {% for r in roles %}
-                        <option value="{{ r.id }}" {% if user.role == r.id %}selected{% endif %}>{{ r.name }}</option>
+                        <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r | upper }}</option>
                         {% endfor %}
                     </select>
                     <p class="text-[10px] text-slate-500 mt-1">Yalnızca yönetici kendi veya atanmış rolünü buradan ayarlayabilir.</p>

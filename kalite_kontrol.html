@@ -81,7 +81,7 @@
                         <!-- Fotoğraf sütunu -->
                         <td class="py-2.5 px-2 text-center">
                             {% if q.photo_url %}
-                            <button onclick="viewQaPhoto('{{ url_for('static', filename=q.photo_url) }}', '{{ q.assembly_pos }}')" class="p-1 text-teal-400 hover:text-teal-300 rounded hover:bg-teal-900/40 transition-colors" title="Fotoğrafı Görüntüle">
+                            <button onclick="viewQaPhoto('{{ q.photo_url }}', '{{ q.assembly_pos }}')" class="p-1 text-teal-400 hover:text-teal-300 rounded hover:bg-teal-900/40 transition-colors" title="Fotoğrafı Görüntüle">
                                 <i class="fa-solid fa-image text-base"></i>
                             </button>
                             {% else %}

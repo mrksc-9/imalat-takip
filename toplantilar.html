@@ -1,0 +1,444 @@
+{% extends "layout.html" %}
+
+{% block title %}Toplantı & Karar Takibi - Çelik İmalat MES{% endblock %}
+{% block page_title %}Proje / Toplantı & Karar Takip Sistemi{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR: Proje Filtreleme & Eylemler -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-handshake text-indigo-400"></i>
+                <span>Toplantı Notları, Alınan Kararlar ve Aksiyon Takibi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Şantiye, üretim ve koordinasyon toplantılarını kaydedin; görev sorumlularını ve tamamlama durumlarını anlık takip edin.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <!-- Proje Filtresi -->
+            <form method="GET" action="{{ url_for('toplantilar') }}" class="flex items-center gap-2">
+                <select name="proje_id" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium">
+                    <option value="">-- Tüm Projeler / Genel --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+
+            <button onclick="openModal('addMeetingModal')" class="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
+                <i class="fa-solid fa-plus"></i>
+                <span>Yeni Toplantı Kaydet</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- TOPLANTI LİSTESİ -->
+    <div class="space-y-5">
+        {% for m in meetings %}
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl transition-all hover:bg-slate-900/40 relative overflow-hidden">
+            <!-- Sol Renkli Çizgi -->
+            <div class="absolute top-0 left-0 bottom-0 w-1.5 {% if m.status == 'Tamamlandı' %}bg-emerald-500{% elif m.status == 'Devam Ediyor' %}bg-amber-500{% else %}bg-blue-500{% endif %}"></div>
+
+            <!-- Üst Başlık & Tarih & Butonlar -->
+            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pb-3 border-b border-slate-800/80 pl-2">
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        {% if m.project_code %}
+                        <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                            {{ m.project_code }}
+                        </span>
+                        {% else %}
+                        <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                            Genel Toplantı
+                        </span>
+                        {% endif %}
+
+                        <h4 class="text-base font-bold text-white">{{ m.title }}</h4>
+
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold {% if m.status == 'Tamamlandı' %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20{% elif m.status == 'Devam Ediyor' %}bg-amber-500/10 text-amber-400 border border-amber-500/20{% else %}bg-blue-500/10 text-blue-400 border border-blue-500/20{% endif %}">
+                            {{ m.status }}
+                        </span>
+                    </div>
+
+                    <div class="flex items-center gap-4 text-xs text-slate-400 mt-1.5 flex-wrap">
+                        <span><i class="fa-regular fa-calendar text-indigo-400 mr-1"></i><b>{{ m.meeting_date | format_date }}</b> {% if m.meeting_time %}({{ m.meeting_time }}){% endif %}</span>
+                        {% if m.location %}
+                        <span><i class="fa-solid fa-location-dot text-rose-400 mr-1"></i>{{ m.location }}</span>
+                        {% endif %}
+                        {% if m.organizer %}
+                        <span><i class="fa-solid fa-user-tie text-blue-400 mr-1"></i>Yönetici: <b>{{ m.organizer }}</b></span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Eylemler -->
+                <div class="flex items-center gap-2">
+                    <button onclick="openAddActionModal('{{ m.id }}', '{{ m.title }}')" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>+ Aksiyon / Görev Ekle</span>
+                    </button>
+                    <button onclick="openEditMeetingModal({{ m | tojson | forceescape }})" class="p-1.5 text-blue-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Düzenle">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <form action="{{ url_for('api_toplanti_sil', meeting_id=m.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu toplantı kaydını ve aksiyonlarını silmek istediğinizden emin misiniz?');">
+                        <button type="submit" class="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-900/30 rounded-lg transition-colors" title="Sil">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Katılanlar Rozetleri -->
+            {% if m.attendees %}
+            <div class="pt-3 pl-2 flex items-center gap-2 flex-wrap text-xs">
+                <span class="text-slate-400 font-bold uppercase text-[10px]"><i class="fa-solid fa-users text-slate-500 mr-1"></i>Katılanlar:</span>
+                {% for att in m.attendees.split(',') %}
+                {% if att.strip() %}
+                <span class="px-2.5 py-0.5 rounded-md bg-slate-900 text-slate-300 border border-slate-800 font-medium text-[11px]">
+                    {{ att.strip() }}
+                </span>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Konuşulan Konular & Alınan Kararlar -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-slate-800/60 pl-2 text-xs">
+                {% if m.summary %}
+                <div class="p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1 mb-1">
+                        <i class="fa-solid fa-comments text-blue-400"></i> Konuşulan Konular & Gündem
+                    </span>
+                    <p class="text-slate-200 whitespace-pre-line leading-relaxed">{{ m.summary }}</p>
+                </div>
+                {% endif %}
+
+                {% if m.decisions %}
+                <div class="p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl">
+                    <span class="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1 mb-1">
+                        <i class="fa-solid fa-gavel"></i> Alınan Kararlar
+                    </span>
+                    <p class="text-slate-200 whitespace-pre-line leading-relaxed">{{ m.decisions }}</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- AKSİYON VE GÖREVLER TABLOSU -->
+            <div class="mt-4 pl-2">
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-check"></i>
+                            <span>Sorumluluk ve Aksiyon Maddeleri ({{ m.actions|length }})</span>
+                        </span>
+                    </div>
+
+                    {% if m.actions|length > 0 %}
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse font-sans">
+                            <thead>
+                                <tr class="border-b border-slate-800 text-slate-400 text-[10px] uppercase font-semibold">
+                                    <th class="py-2 px-2">Aksiyon / Yapılacak İş</th>
+                                    <th class="py-2 px-2">Sorumlu</th>
+                                    <th class="py-2 px-2">Termin Tarihi</th>
+                                    <th class="py-2 px-2 text-center">Durum</th>
+                                    <th class="py-2 px-2 text-right">İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                                {% for act in m.actions %}
+                                <tr class="hover:bg-slate-800/40 transition-colors">
+                                    <td class="py-2 px-2 font-medium text-white">{{ act.description }}</td>
+                                    <td class="py-2 px-2">
+                                        <span class="inline-flex items-center gap-1 font-semibold text-slate-300">
+                                            <i class="fa-solid fa-user-gear text-slate-500 text-[10px]"></i>
+                                            {{ act.responsible_person or '-' }}
+                                        </span>
+                                    </td>
+                                    <td class="py-2 px-2 font-mono text-slate-400 text-[11px]">{{ act.due_date | format_date if act.due_date else '-' }}</td>
+                                    <td class="py-2 px-2 text-center">
+                                        <form action="{{ url_for('api_toplanti_aksiyon_durum_guncelle', item_id=act.id) }}" method="POST" class="inline">
+                                            <select name="status" onchange="this.form.submit()" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer
+                                                {% if act.status == 'Tamamlandı' %}text-emerald-400 border-emerald-500/40{% elif act.status == 'Devam Ediyor' %}text-amber-400 border-amber-500/40{% elif act.status == 'Beklemede' %}text-purple-400 border-purple-500/40{% else %}text-rose-400 border-rose-500/40{% endif %}">
+                                                <option value="Devam Ediyor" {% if act.status == 'Devam Ediyor' %}selected{% endif %}>⏳ Devam Ediyor</option>
+                                                <option value="Tamamlandı" {% if act.status == 'Tamamlandı' %}selected{% endif %}>✅ Tamamlandı</option>
+                                                <option value="Beklemede" {% if act.status == 'Beklemede' %}selected{% endif %}>⏸️ Beklemede</option>
+                                                <option value="İptal" {% if act.status == 'İptal' %}selected{% endif %}>❌ İptal</option>
+                                            </select>
+                                        </form>
+                                    </td>
+                                    <td class="py-2 px-2 text-right">
+                                        <form action="{{ url_for('api_toplanti_aksiyon_sil', item_id=act.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu aksiyonu silmek istediğinizden emin misiniz?');">
+                                            <button type="submit" class="text-rose-400 hover:text-rose-300 p-1" title="Sil">
+                                                <i class="fa-solid fa-trash-can text-xs"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-slate-500 italic py-1">Bu toplantıya henüz aksiyon maddesi eklenmedi.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+        {% else %}
+        <div class="py-12 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            <i class="fa-solid fa-clipboard-list text-3xl mb-2 text-slate-600 block"></i>
+            Henüz kayıtlı bir toplantı bulunmuyor. "Yeni Toplantı Kaydet" butonu ile toplantı ekleyebilirsiniz.
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- 1. MODAL: YENİ TOPLANTI EKLE -->
+<div id="addMeetingModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-handshake text-indigo-400"></i>
+                <span>Yeni Toplantı Kaydı Oluştur</span>
+            </h3>
+            <button onclick="closeModal('addMeetingModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_toplanti_ekle') }}" method="POST" class="mt-4 space-y-3.5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İlgili Proje</label>
+                    <select name="project_id" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                        <option value="">-- Genel / Projesiz --</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Başlığı *</label>
+                    <input type="text" name="title" required placeholder="Örn: Haftalık İmalat ve Montaj Koordinasyonu" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Tarihi *</label>
+                    <input type="date" name="meeting_date" value="{{ now.strftime('%Y-%m-%d') }}" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Saat</label>
+                    <input type="time" name="meeting_time" value="10:00" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Durumu</label>
+                    <select name="status" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                        <option value="Tamamlandı">✅ Tamamlandı</option>
+                        <option value="Devam Ediyor">⏳ Devam Ediyor</option>
+                        <option value="Planlandı">📅 Planlandı</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Yeri / Platform</label>
+                    <input type="text" name="location" placeholder="Örn: Fabrika Toplantı Salonu / Şantiye" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantıyı Yöneten / Düzenleyen</label>
+                    <input type="text" name="organizer" value="{{ session.user.full_name or '' }}" placeholder="Örn: Fabrika Müdürü" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Katılan Kişiler (Virgülle ayırın)</label>
+                <input type="text" name="attendees" placeholder="Örn: Ahmet Y., Mustafa Ç., Yozi, Kalite Mühendisi" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Konuşulan Konular / Gündem Özeti</label>
+                <textarea name="summary" rows="2.5" placeholder="Toplantıda ele alınan ana konular..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Alınan Kararlar</label>
+                <textarea name="decisions" rows="2.5" placeholder="Toplantıda mutabakata varılan kararlar..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addMeetingModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg shadow-indigo-600/30">Toplantıyı Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. MODAL: TOPLANTI DÜZENLE -->
+<div id="editMeetingModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-indigo-400"></i>
+                <span>Toplantı Kaydını Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editMeetingModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form id="editMeetingForm" method="POST" class="mt-4 space-y-3.5">
+            <input type="hidden" id="edit_m_id" name="meeting_id">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İlgili Proje</label>
+                    <select id="edit_m_project_id" name="project_id" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                        <option value="">-- Genel / Projesiz --</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Başlığı *</label>
+                    <input type="text" id="edit_m_title" name="title" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Tarih</label>
+                    <input type="date" id="edit_m_date" name="meeting_date" required class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Saat</label>
+                    <input type="time" id="edit_m_time" name="meeting_time" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Durum</label>
+                    <select id="edit_m_status" name="status" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                        <option value="Tamamlandı">✅ Tamamlandı</option>
+                        <option value="Devam Ediyor">⏳ Devam Ediyor</option>
+                        <option value="Planlandı">📅 Planlandı</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Yeri</label>
+                    <input type="text" id="edit_m_location" name="location" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Toplantı Yöneticisi</label>
+                    <input type="text" id="edit_m_organizer" name="organizer" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Katılan Kişiler</label>
+                <input type="text" id="edit_m_attendees" name="attendees" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Konuşulan Konular</label>
+                <textarea id="edit_m_summary" name="summary" rows="2.5" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Alınan Kararlar</label>
+                <textarea id="edit_m_decisions" name="decisions" rows="2.5" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editMeetingModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg shadow-indigo-600/30">Güncellemeyi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 3. MODAL: YENİ AKSİYON / GÖREV EKLE -->
+<div id="addActionModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-indigo-400"></i>
+                <span>Aksiyon & Görev Ekle</span>
+            </h3>
+            <button onclick="closeModal('addActionModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <p id="addActionModalMeetingTitle" class="text-xs text-indigo-300 font-bold mb-3"></p>
+
+        <form id="addActionForm" method="POST" class="space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Aksiyon / Yapılacak İş Tanımı *</label>
+                <textarea name="description" required rows="2" placeholder="Örn: 2. kat kolonlarının kesim planı hazırlanıp fabrikaya iletilecek." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Sorumlu Kişi *</label>
+                    <input type="text" name="responsible_person" required placeholder="Örn: Ahmet Usta" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Termin Tarihi</label>
+                    <input type="date" name="due_date" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Başlangıç Durumu</label>
+                <select name="status" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                    <option value="Devam Ediyor">⏳ Devam Ediyor</option>
+                    <option value="Beklemede">⏸️ Beklemede</option>
+                    <option value="Tamamlandı">✅ Tamamlandı</option>
+                </select>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addActionModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-lg shadow-indigo-600/30">Aksiyonu Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openEditMeetingModal(m) {
+        document.getElementById('edit_m_id').value = m.id;
+        document.getElementById('edit_m_project_id').value = m.project_id || '';
+        document.getElementById('edit_m_title').value = m.title || '';
+        document.getElementById('edit_m_date').value = m.meeting_date || '';
+        document.getElementById('edit_m_time').value = m.meeting_time || '';
+        document.getElementById('edit_m_status').value = m.status || 'Tamamlandı';
+        document.getElementById('edit_m_location').value = m.location || '';
+        document.getElementById('edit_m_organizer').value = m.organizer || '';
+        document.getElementById('edit_m_attendees').value = m.attendees || '';
+        document.getElementById('edit_m_summary').value = m.summary || '';
+        document.getElementById('edit_m_decisions').value = m.decisions || '';
+        document.getElementById('editMeetingForm').action = `/api/toplantilar/${m.id}/guncelle`;
+        openModal('editMeetingModal');
+    }
+
+    function openAddActionModal(meetingId, meetingTitle) {
+        document.getElementById('addActionModalMeetingTitle').innerText = `Toplantı: ${meetingTitle}`;
+        document.getElementById('addActionForm').action = `/api/toplantilar/${meetingId}/aksiyon-ekle`;
+        openModal('addActionModal');
+    }
+</script>
+{% endblock %}

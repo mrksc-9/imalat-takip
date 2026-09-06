@@ -621,12 +621,66 @@ def init_db():
         VALUES ('admin', ?, 'Sistem Yöneticisi', 'admin')
         ''', (hash_password("admin123"),))
 
-    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username='yozi'")
-    if cursor.fetchone()['count'] == 0:
-        cursor.execute('''
-        INSERT INTO users (username, password_hash, full_name, role)
-        VALUES ('yozi', ?, 'Yönetici (Yozi)', 'patron')
-        ''', (hash_password("2507"),))
+    # 20. CANLI SOHBET MESAJLARI TABLOSU
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS chat_messages (
+        id {pk_type},
+        channel TEXT NOT NULL DEFAULT 'genel',
+        user_id INTEGER,
+        username TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        message TEXT,
+        photo_url TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 21. TOPLANTILAR VE KARARLAR TABLOSU
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS meetings (
+        id {pk_type},
+        project_id INTEGER,
+        title TEXT NOT NULL,
+        meeting_date TEXT NOT NULL,
+        meeting_time TEXT,
+        location TEXT,
+        organizer TEXT,
+        attendees TEXT,
+        summary TEXT,
+        decisions TEXT,
+        status TEXT NOT NULL DEFAULT 'Tamamlandı',
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 22. TOPLANTI AKSİYON VE SORUMLULUK MADDELERİ
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS meeting_action_items (
+        id {pk_type},
+        meeting_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        responsible_person TEXT,
+        due_date TEXT,
+        status TEXT NOT NULL DEFAULT 'Devam Ediyor',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 23. SİSTEM VE ŞANTİYE DUYURULARI TABLOSU
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS announcements (
+        id {pk_type},
+        user_id INTEGER,
+        username TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'Önemli',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
 
     conn.commit()
     conn.close()
@@ -1104,4 +1158,227 @@ def get_cutting_progress_analysis(project_id=None):
 
     conn.close()
     return analysis_data
+
+
+# =========================================================================
+# KULLANICI YÖNETİMİ & DÜZENLEME (ADMIN / PATRON)
+# =========================================================================
+def admin_update_user(user_id, username, full_name, role, is_active, new_password=None):
+    """Yöneticinin kullanıcı bilgilerini, rolünü, aktiflik durumunu ve şifresini güncellemesini sağlar."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if new_password and str(new_password).strip():
+        pw_hash = hash_password(str(new_password).strip())
+        cursor.execute("""
+            UPDATE users
+            SET username = ?, full_name = ?, role = ?, is_active = ?, password_hash = ?
+            WHERE id = ?
+        """, (username.strip(), full_name.strip(), role.strip(), int(is_active), pw_hash, user_id))
+    else:
+        cursor.execute("""
+            UPDATE users
+            SET username = ?, full_name = ?, role = ?, is_active = ?
+            WHERE id = ?
+        """, (username.strip(), full_name.strip(), role.strip(), int(is_active), user_id))
+    conn.commit()
+    conn.close()
+
+
+# =========================================================================
+# DUYURU VE UYARI SİSTEMİ
+# =========================================================================
+def get_active_announcements():
+    """Sistemde yayında olan aktif duyuruları en yeniden eskiye döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM announcements WHERE is_active = 1 ORDER BY id DESC")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def add_announcement(user_id, username, full_name, title, content, priority='Önemli'):
+    """Yeni bir sistem/şantiye duyurusu ekler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO announcements (user_id, username, full_name, title, content, priority, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
+    """, (user_id, username, full_name, title.strip(), content.strip(), priority))
+    conn.commit()
+    conn.close()
+
+def deactivate_announcement(announcement_id):
+    """Duyuruyu yayından kaldırır."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE announcements SET is_active = 0 WHERE id = ?", (announcement_id,))
+    conn.commit()
+    conn.close()
+
+def delete_announcement(announcement_id):
+    """Duyuruyu tamamen siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+    conn.commit()
+    conn.close()
+
+
+# =========================================================================
+# CANLI SOHBET & İLETİŞİM SİSTEMİ
+# =========================================================================
+def get_chat_messages(channel='genel', limit=100):
+    """Belirtilen kanal veya modüle ait son sohbet mesajlarını döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM (
+            SELECT * FROM chat_messages
+            WHERE channel = ?
+            ORDER BY id DESC
+            LIMIT ?
+        ) ORDER BY id ASC
+    """, (channel, limit))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def save_chat_message(channel, user_id, username, full_name, message, photo_url=''):
+    """Yeni sohbet mesajı ve isteğe bağlı fotoğraf ekler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO chat_messages (channel, user_id, username, full_name, message, photo_url)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (channel or 'genel', user_id, username, full_name, message.strip() if message else '', photo_url or ''))
+    conn.commit()
+    conn.close()
+
+
+# =========================================================================
+# TOPLANTI VE KARAR TAKİP SİSTEMİ
+# =========================================================================
+def get_meetings(project_id=None):
+    """Kayıtlı tüm toplantıları listeler; opsiyonel olarak proje filtresi uygular."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if project_id:
+        cursor.execute("""
+            SELECT m.*, p.code as project_code, p.name as project_name
+            FROM meetings m
+            LEFT JOIN projects p ON m.project_id = p.id
+            WHERE m.project_id = ?
+            ORDER BY m.meeting_date DESC, m.id DESC
+        """, (project_id,))
+    else:
+        cursor.execute("""
+            SELECT m.*, p.code as project_code, p.name as project_name
+            FROM meetings m
+            LEFT JOIN projects p ON m.project_id = p.id
+            ORDER BY m.meeting_date DESC, m.id DESC
+        """)
+    rows = [dict(r) for r in cursor.fetchall()]
+    
+    # Her toplantı için aksiyon kalemlerini ekle
+    for m in rows:
+        cursor.execute("SELECT * FROM meeting_action_items WHERE meeting_id = ? ORDER BY id ASC", (m['id'],))
+        m['actions'] = [dict(a) for a in cursor.fetchall()]
+    
+    conn.close()
+    return rows
+
+def get_meeting_by_id(meeting_id):
+    """Belirli bir toplantının detaylarını ve aksiyon kalemlerini döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.*, p.code as project_code, p.name as project_name
+        FROM meetings m
+        LEFT JOIN projects p ON m.project_id = p.id
+        WHERE m.id = ?
+    """, (meeting_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    
+    meeting = dict(row)
+    cursor.execute("SELECT * FROM meeting_action_items WHERE meeting_id = ? ORDER BY id ASC", (meeting_id,))
+    meeting['actions'] = [dict(a) for a in cursor.fetchall()]
+    conn.close()
+    return meeting
+
+def add_meeting(project_id, title, meeting_date, meeting_time, location, organizer, attendees, summary, decisions, status, created_by):
+    """Yeni toplantı kaydı oluşturur."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO meetings (project_id, title, meeting_date, meeting_time, location, organizer, attendees, summary, decisions, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (project_id or None, title.strip(), meeting_date, meeting_time or '', location or '', organizer or '', attendees or '', summary or '', decisions or '', status or 'Tamamlandı', created_by or ''))
+    meeting_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return meeting_id
+
+def update_meeting(meeting_id, project_id, title, meeting_date, meeting_time, location, organizer, attendees, summary, decisions, status):
+    """Toplantı kaydını günceller."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE meetings
+        SET project_id = ?, title = ?, meeting_date = ?, meeting_time = ?, location = ?,
+            organizer = ?, attendees = ?, summary = ?, decisions = ?, status = ?
+        WHERE id = ?
+    """, (project_id or None, title.strip(), meeting_date, meeting_time or '', location or '', organizer or '', attendees or '', summary or '', decisions or '', status or 'Tamamlandı', meeting_id))
+    conn.commit()
+    conn.close()
+
+def delete_meeting(meeting_id):
+    """Toplantı ve bağlı aksiyonlarını siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM meeting_action_items WHERE meeting_id = ?", (meeting_id,))
+    cursor.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+    conn.commit()
+    conn.close()
+
+def get_meeting_action_items(meeting_id):
+    """Toplantıya ait aksiyon maddelerini listeler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM meeting_action_items WHERE meeting_id = ? ORDER BY id ASC", (meeting_id,))
+    items = [dict(a) for a in cursor.fetchall()]
+    conn.close()
+    return items
+
+def add_meeting_action_item(meeting_id, description, responsible_person, due_date, status='Devam Ediyor'):
+    """Toplantıya yeni bir aksiyon/görev maddesi ekler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO meeting_action_items (meeting_id, description, responsible_person, due_date, status)
+        VALUES (?, ?, ?, ?, ?)
+    """, (meeting_id, description.strip(), responsible_person or '', due_date or '', status or 'Devam Ediyor'))
+    action_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return action_id
+
+def update_action_item_status(item_id, status):
+    """Aksiyon maddesinin durumunu günceller (Tamamlandı, Devam Ediyor, Beklemede, İptal)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE meeting_action_items SET status = ? WHERE id = ?", (status, item_id))
+    conn.commit()
+    conn.close()
+
+def delete_meeting_action_item(item_id):
+    """Aksiyon maddesini siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM meeting_action_items WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+
 

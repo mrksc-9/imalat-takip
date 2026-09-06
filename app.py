@@ -22,6 +22,11 @@ from database import (
     get_user_by_id, update_user_profile,
     approve_material_order, reject_material_order,
     get_cutting_progress_analysis,
+    admin_update_user,
+    get_active_announcements, add_announcement, deactivate_announcement, delete_announcement,
+    get_chat_messages, save_chat_message,
+    get_meetings, get_meeting_by_id, add_meeting, update_meeting, delete_meeting,
+    get_meeting_action_items, add_meeting_action_item, update_action_item_status, delete_meeting_action_item,
     ROLES_LIST, MODULES_LIST
 )
 from excel_handler import (
@@ -154,12 +159,19 @@ def inject_global_vars():
             return False
         return can_user_edit(user.get('role'), module_name)
 
+    active_announcements = []
+    try:
+        active_announcements = get_active_announcements()
+    except Exception:
+        pass
+
     return {
         'local_ip': get_local_ip(),
         'current_user': user,
         'user_role': user_role,
         'system_settings': settings,
         'can_user_edit': user_can_edit,
+        'active_announcements': active_announcements,
         'now': datetime.now()
     }
 
@@ -2238,6 +2250,283 @@ def profil():
 
     return render_template('profil.html', user=user_data, roles=ROLES_LIST)
 
+
+# =========================================================================
+# 17. KULLANICI DÜZENLEME (ADMIN & PATRON)
+# =========================================================================
+@app.route('/api/kullanicilar/guncelle', methods=['POST'])
+def api_kullanicilar_guncelle():
+    """Yöneticinin kullanıcı bilgilerini, rolünü, aktiflik durumunu ve şifresini düzenlemesini sağlar."""
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici ve Patron kullanıcı düzenleyebilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    user_id = request.form.get('user_id')
+    full_name = request.form.get('full_name', '').strip()
+    username = request.form.get('username', '').strip()
+    role = request.form.get('role', '').strip()
+    is_active = request.form.get('is_active', '1')
+    new_password = request.form.get('new_password', '').strip()
+
+    if not user_id or not username or not full_name:
+        flash("Lütfen tüm zorunlu alanları doldurun.", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    try:
+        admin_update_user(user_id, username, full_name, role, is_active, new_password=new_password or None)
+        log_activity(
+            action="Kullanıcı Düzenlendi",
+            entity_type="users",
+            entity_id=user_id,
+            details=f"{username} ({full_name}) kullanıcısı yönetici tarafından güncellendi. Yeni rol: {role}",
+            username=cur_user.get('username'),
+            user_id=cur_user.get('id'),
+            ip_address=request.remote_addr
+        )
+        flash(f"'{full_name}' kullanıcısı başarıyla güncellendi.", "success")
+    except Exception as e:
+        flash(f"Kullanıcı güncellenirken hata oluştu: {str(e)}", "danger")
+
+    return redirect(url_for('kullanicilar'))
+
+
+# =========================================================================
+# 18. TOPLANTI VE KARAR TAKİP MODÜLÜ
+# =========================================================================
+@app.route('/toplantilar')
+def toplantilar():
+    """Toplantı ve Karar Takip modülü."""
+    selected_project_id = request.args.get('proje_id', '')
+    p_id = int(selected_project_id) if selected_project_id and selected_project_id.isdigit() else None
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    meetings_list = get_meetings(project_id=p_id)
+
+    return render_template('toplantilar.html',
+                           projects=projects,
+                           selected_project_id=selected_project_id,
+                           meetings=meetings_list)
+
+@app.route('/api/toplantilar/ekle', methods=['POST'])
+def api_toplanti_ekle():
+    u = session.get('user', {})
+    project_id = request.form.get('project_id')
+    p_id = int(project_id) if project_id and project_id.isdigit() else None
+    title = request.form.get('title', '').strip()
+    meeting_date = request.form.get('meeting_date')
+    meeting_time = request.form.get('meeting_time', '')
+    location = request.form.get('location', '')
+    organizer = request.form.get('organizer', '')
+    attendees = request.form.get('attendees', '')
+    summary = request.form.get('summary', '')
+    decisions = request.form.get('decisions', '')
+    status = request.form.get('status', 'Tamamlandı')
+
+    if not title or not meeting_date:
+        flash("Toplantı başlığı ve tarihi zorunludur.", "danger")
+        return redirect(url_for('toplantilar'))
+
+    meeting_id = add_meeting(
+        project_id=p_id,
+        title=title,
+        meeting_date=meeting_date,
+        meeting_time=meeting_time,
+        location=location,
+        organizer=organizer,
+        attendees=attendees,
+        summary=summary,
+        decisions=decisions,
+        status=status,
+        created_by=u.get('full_name', 'Yetkili')
+    )
+
+    log_activity(
+        action="Toplantı Kaydedildi",
+        entity_type="meetings",
+        entity_id=meeting_id,
+        details=f"Toplantı: '{title}' ({meeting_date})",
+        username=u.get('username'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+
+    flash("Toplantı kaydı başarıyla oluşturuldu.", "success")
+    return redirect(url_for('toplantilar', proje_id=project_id or ''))
+
+@app.route('/api/toplantilar/<int:meeting_id>/guncelle', methods=['POST'])
+def api_toplanti_guncelle(meeting_id):
+    project_id = request.form.get('project_id')
+    p_id = int(project_id) if project_id and project_id.isdigit() else None
+    title = request.form.get('title', '').strip()
+    meeting_date = request.form.get('meeting_date')
+    meeting_time = request.form.get('meeting_time', '')
+    location = request.form.get('location', '')
+    organizer = request.form.get('organizer', '')
+    attendees = request.form.get('attendees', '')
+    summary = request.form.get('summary', '')
+    decisions = request.form.get('decisions', '')
+    status = request.form.get('status', 'Tamamlandı')
+
+    update_meeting(
+        meeting_id=meeting_id,
+        project_id=p_id,
+        title=title,
+        meeting_date=meeting_date,
+        meeting_time=meeting_time,
+        location=location,
+        organizer=organizer,
+        attendees=attendees,
+        summary=summary,
+        decisions=decisions,
+        status=status
+    )
+
+    flash("Toplantı kaydı güncellendi.", "success")
+    return redirect(url_for('toplantilar', proje_id=project_id or ''))
+
+@app.route('/api/toplantilar/<int:meeting_id>/sil', methods=['POST'])
+def api_toplanti_sil(meeting_id):
+    delete_meeting(meeting_id)
+    flash("Toplantı kaydı ve aksiyonları silindi.", "info")
+    return redirect(url_for('toplantilar'))
+
+@app.route('/api/toplantilar/<int:meeting_id>/aksiyon-ekle', methods=['POST'])
+def api_toplanti_aksiyon_ekle(meeting_id):
+    description = request.form.get('description', '').strip()
+    responsible_person = request.form.get('responsible_person', '').strip()
+    due_date = request.form.get('due_date') or ''
+    status = request.form.get('status', 'Devam Ediyor')
+
+    if not description:
+        flash("Aksiyon tanımı boş olamaz.", "danger")
+        return redirect(url_for('toplantilar'))
+
+    add_meeting_action_item(
+        meeting_id=meeting_id,
+        description=description,
+        responsible_person=responsible_person,
+        due_date=due_date,
+        status=status
+    )
+
+    flash("Aksiyon ve görev maddesi başarıyla eklendi.", "success")
+    return redirect(request.referrer or url_for('toplantilar'))
+
+@app.route('/api/toplantilar/aksiyon/<int:item_id>/durum-guncelle', methods=['POST'])
+def api_toplanti_aksiyon_durum_guncelle(item_id):
+    status = request.form.get('status', 'Devam Ediyor')
+    update_action_item_status(item_id, status)
+    flash("Aksiyon durumu güncellendi.", "success")
+    return redirect(request.referrer or url_for('toplantilar'))
+
+@app.route('/api/toplantilar/aksiyon/<int:item_id>/sil', methods=['POST'])
+def api_toplanti_aksiyon_sil(item_id):
+    delete_meeting_action_item(item_id)
+    flash("Aksiyon maddesi silindi.", "info")
+    return redirect(request.referrer or url_for('toplantilar'))
+
+
+# =========================================================================
+# 19. CANLI SOHBET & FOTOĞRAFLI İLETİŞİM SİSTEMİ
+# =========================================================================
+@app.route('/api/chat/<channel>')
+def api_chat_get(channel):
+    """Kanal bazlı sohbet mesajlarını JSON döner."""
+    msgs = get_chat_messages(channel=channel, limit=100)
+    return jsonify(msgs)
+
+@app.route('/api/chat/send', methods=['POST'])
+def api_chat_send():
+    """Yeni sohbet mesajı ve görsel kaydeder."""
+    u = session.get('user', {})
+    if not u:
+        return jsonify({'status': 'error', 'message': 'Oturum açılmamış.'}), 401
+
+    channel = request.form.get('channel', 'genel')
+    message = request.form.get('message', '').strip()
+    photo_url = ""
+
+    if 'photo' in request.files:
+        photo = request.files['photo']
+        if photo and photo.filename != '':
+            ext = os.path.splitext(photo.filename)[1].lower()
+            if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                filename = f"chat_{channel}_{int(datetime.now().timestamp())}_{photo.filename}"
+                save_dir = os.path.join(BASE_DIR, 'static', 'uploads', 'chat')
+                os.makedirs(save_dir, exist_ok=True)
+                photo.save(os.path.join(save_dir, filename))
+                photo_url = f"/static/uploads/chat/{filename}"
+
+    if not message and not photo_url:
+        return jsonify({'status': 'error', 'message': 'Boş mesaj gönderilemez.'}), 400
+
+    save_chat_message(
+        channel=channel,
+        user_id=u.get('id'),
+        username=u.get('username'),
+        full_name=u.get('full_name'),
+        message=message,
+        photo_url=photo_url
+    )
+
+    return jsonify({'status': 'success', 'photo_url': photo_url})
+
+
+# =========================================================================
+# 20. DUYURU VE UYARI SİSTEMİ
+# =========================================================================
+@app.route('/api/duyurular/ekle', methods=['POST'])
+def api_duyuru_ekle():
+    """Her kullanıcının duyuru paylaşabilmesini sağlar."""
+    u = session.get('user', {})
+    title = request.form.get('title', '').strip()
+    content = request.form.get('content', '').strip()
+    priority = request.form.get('priority', 'Önemli').strip()
+
+    if not title or not content:
+        flash("Duyuru başlığı ve metni boş bırakılamaz.", "danger")
+        return redirect(request.referrer or url_for('index'))
+
+    add_announcement(
+        user_id=u.get('id', 1),
+        username=u.get('username', 'Kullanıcı'),
+        full_name=u.get('full_name', 'Personel'),
+        title=title,
+        content=content,
+        priority=priority
+    )
+
+    log_activity(
+        action="Duyuru Yayınlandı",
+        entity_type="announcements",
+        details=f"Yeni duyuru: '{title}' ({priority})",
+        username=u.get('username'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+
+    flash("Duyurunuz başarıyla yayınlandı ve tüm personelin ekranına yansıtıldı.", "success")
+    return redirect(request.referrer or url_for('index'))
+
+@app.route('/api/duyurular/<int:announcement_id>/kapat', methods=['POST'])
+def api_duyuru_kapat(announcement_id):
+    """Duyuruyu kapatır/gizler."""
+    deactivate_announcement(announcement_id)
+    flash("Duyuru kapatıldı.", "info")
+    return redirect(request.referrer or url_for('index'))
+
+@app.route('/api/duyurular/<int:announcement_id>/sil', methods=['POST'])
+def api_duyuru_sil(announcement_id):
+    """Duyuruyu tamamen siler."""
+    delete_announcement(announcement_id)
+    flash("Duyuru silindi.", "info")
+    return redirect(request.referrer or url_for('index'))
 
 
 # =========================================================================

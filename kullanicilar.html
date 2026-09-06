@@ -83,15 +83,18 @@
                         </td>
                         <td class="py-2.5 px-2 font-mono text-slate-400 text-[11px]">{{ u.created_at | format_date }}</td>
                         {% if current_user.role in ('admin', 'patron') %}
-                        <td class="py-2.5 px-3 text-right">
+                        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                            <button type="button" onclick="openEditUserModal({{ u | tojson | forceescape }})" class="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all mr-1">
+                                <i class="fa-solid fa-pen-to-square mr-1"></i>Düzenle
+                            </button>
                             {% if u.username != 'admin' and u.id != current_user.id %}
                             <form action="{{ url_for('api_kullanici_durum', user_id=u.id) }}" method="POST" class="inline">
                                 <button type="submit" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors">
-                                    {{ 'Devre Dışı Bırak' if u.is_active == 1 else 'Aktif Et' }}
+                                    {{ 'Pasif Yap' if u.is_active == 1 else 'Aktif Et' }}
                                 </button>
                             </form>
                             {% else %}
-                            <span class="text-[11px] text-slate-500">Sabit</span>
+                            <span class="text-[11px] text-slate-500 ml-1">Sabit</span>
                             {% endif %}
                         </td>
                         {% endif %}
@@ -215,4 +218,75 @@
         </form>
     </div>
 </div>
+
+<!-- KULLANICI DÜZENLEME MODAL -->
+<div id="editUserModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-pen text-blue-400"></i>
+                <span id="editUserModalTitle">Kullanıcıyı Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editUserModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_kullanicilar_guncelle') }}" method="POST" class="mt-4 space-y-3.5">
+            <input type="hidden" id="edit_u_id" name="user_id">
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Ad Soyad *</label>
+                <input type="text" id="edit_u_fullname" name="full_name" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kullanıcı Adı *</label>
+                    <input type="text" id="edit_u_username" name="username" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono lowercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Hesap Durumu</label>
+                    <select id="edit_u_is_active" name="is_active" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
+                        <option value="1">Aktif</option>
+                        <option value="0">Pasif / Devre Dışı</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Yetki Rolü *</label>
+                <select id="edit_u_role" name="role" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold uppercase">
+                    {% for r in roles %}
+                    <option value="{{ r }}">{{ r|upper }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Şifre Sıfırlama (İsteğe Bağlı)</label>
+                <input type="password" name="new_password" placeholder="Değiştirmek istemiyorsanız boş bırakın" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editUserModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-md shadow-blue-600/30">Değişiklikleri Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openEditUserModal(u) {
+        document.getElementById('edit_u_id').value = u.id;
+        document.getElementById('edit_u_fullname').value = u.full_name || '';
+        document.getElementById('edit_u_username').value = u.username || '';
+        document.getElementById('edit_u_role').value = u.role || 'izleyici';
+        document.getElementById('edit_u_is_active').value = (u.is_active === 0) ? '0' : '1';
+        document.getElementById('editUserModalTitle').innerText = `${u.full_name} (${u.username}) Düzenle`;
+        openModal('editUserModal');
+    }
+</script>
 {% endblock %}

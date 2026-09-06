@@ -117,14 +117,11 @@
                             <th class="py-2.5 px-2 w-10 text-center bg-slate-950/80 border-r border-slate-800">#</th>
                             <th class="py-2.5 px-3 w-28 text-yellow-400 border-r border-slate-800">Prefix (Ön Ek)</th>
                             <th class="py-2.5 px-3 min-w-[140px] text-white border-r border-slate-800">Poz No / Marka *</th>
-                            <th class="py-2.5 px-3 min-w-[120px] text-blue-300 border-r border-slate-800">Profil / Kesit</th>
-                            <th class="py-2.5 px-3 w-24 text-right text-slate-400 border-r border-slate-800">Top. Adet</th>
-                            <th class="py-2.5 px-3 w-24 text-right text-emerald-400 border-r border-slate-800">Kalan</th>
-                            <th class="py-2.5 px-3 w-36 text-right text-yellow-400 font-black border-r border-slate-800 bg-yellow-500/10">Kesilen Adet *</th>
-                            <th class="py-2.5 px-3 w-32 border-r border-slate-800">Makine</th>
-                            <th class="py-2.5 px-3 w-32 border-r border-slate-800">Operatör</th>
-                            <th class="py-2.5 px-3 min-w-[130px] border-r border-slate-800">Notlar</th>
-                            <th class="py-2.5 px-2 w-10 text-center">Sil</th>
+                            <th class="py-2.5 px-3 min-w-[140px] text-blue-300 border-r border-slate-800">Profil / Kesit</th>
+                            <th class="py-2.5 px-3 w-28 text-right text-slate-400 border-r border-slate-800">Top. Adet</th>
+                            <th class="py-2.5 px-3 w-28 text-right text-emerald-400 border-r border-slate-800">Kalan</th>
+                            <th class="py-2.5 px-3 w-40 text-right text-yellow-400 font-black border-r border-slate-800 bg-yellow-500/10">Kesilen Adet *</th>
+                            <th class="py-2.5 px-2 w-12 text-center">Sil</th>
                         </tr>
                     </thead>
                     <tbody id="batchCutRows" class="divide-y divide-slate-800/80 text-slate-200">
@@ -446,16 +443,7 @@
                 <td class="py-1 px-2 text-right font-mono text-slate-400 text-xs border-r border-slate-800" id="b_total_${rowCounter}">-</td>
                 <td class="py-1 px-2 text-right font-mono font-bold text-emerald-400 text-xs border-r border-slate-800" id="b_rem_${rowCounter}">-</td>
                 <td class="py-1 px-1 border-r border-slate-800 bg-yellow-500/5">
-                    <input type="text" id="b_qty_${rowCounter}" placeholder="4*6 vb." class="w-full bg-transparent border-0 px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:bg-slate-800 focus:ring-2 focus:ring-yellow-400 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 6)">
-                </td>
-                <td class="py-1 px-1 border-r border-slate-800">
-                    <input type="text" id="b_mach_${rowCounter}" value="${defaultMach}" placeholder="Makine" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 7)">
-                </td>
-                <td class="py-1 px-1 border-r border-slate-800">
-                    <input type="text" id="b_op_${rowCounter}" value="${defaultOp}" placeholder="Operatör" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 8)">
-                </td>
-                <td class="py-1 px-1 border-r border-slate-800">
-                    <input type="text" id="b_notes_${rowCounter}" placeholder="Not" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 9)">
+                    <input type="text" id="b_qty_${rowCounter}" placeholder="Adet veya 4*6" class="w-full bg-transparent border-0 px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:bg-slate-800 focus:ring-2 focus:ring-yellow-400 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 6)">
                 </td>
                 <td class="py-1 px-1 text-center">
                     <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-500 hover:text-rose-300 p-1 transition-colors">
@@ -507,7 +495,7 @@
 
     // Excel Benzeri Klavye Yön Tuşları ve Enter Kontrolleri
     function handleExcelGridKeys(event, rowIdx, colIdx) {
-        const colMap = [null, 'b_pref_', 'b_pos_', 'b_profile_', null, null, 'b_qty_', 'b_mach_', 'b_op_', 'b_notes_'];
+        const colMap = [null, 'b_pref_', 'b_pos_', 'b_profile_', null, null, 'b_qty_'];
         
         if (event.key === 'Enter') {
             event.preventDefault();
@@ -556,9 +544,6 @@
         }
 
         const lines = text.split(/\r?\n/);
-        const defaultMach = document.getElementById('batch_machine') ? document.getElementById('batch_machine').value : '';
-        const defaultOp = document.getElementById('batch_operator') ? document.getElementById('batch_operator').value : '';
-
         let addedCount = 0;
         lines.forEach(line => {
             if (!line.trim()) return;
@@ -568,7 +553,6 @@
             let pos_no = '';
             let qty = '1';
             let profile = '';
-            let note = '';
 
             if (parts.length === 1) {
                 pos_no = parts[0].trim();
@@ -584,7 +568,6 @@
                 pos_no = parts[1].trim();
                 profile = parts[2].trim();
                 qty = parts[3].trim();
-                if (parts[4]) note = parts[4].trim();
             }
 
             if (pos_no) {
@@ -594,7 +577,6 @@
                 document.getElementById(`b_pos_${curIdx}`).value = pos_no;
                 document.getElementById(`b_qty_${curIdx}`).value = qty;
                 if (profile) document.getElementById(`b_profile_${curIdx}`).value = profile;
-                if (note) document.getElementById(`b_notes_${curIdx}`).value = note;
                 onBatchRowPosTyped(curIdx);
                 addedCount++;
             }
@@ -628,15 +610,9 @@
             const cut_quantity = qtyInput ? qtyInput.value.trim() : '';
             const profileInput = tr.querySelector('input[id^="b_profile_"]');
             const profile = profileInput ? profileInput.value.trim() : '';
-            const machInput = tr.querySelector('input[id^="b_mach_"]');
-            const rowMachine = machInput ? machInput.value.trim() : machine;
-            const opInput = tr.querySelector('input[id^="b_op_"]');
-            const rowOperator = opInput ? opInput.value.trim() : operator;
-            const notesInput = tr.querySelector('input[id^="b_notes_"]');
-            const notes = notesInput ? notesInput.value.trim() : '';
 
             if (pos_no && cut_quantity) {
-                items.push({ prefix, pos_no, cut_quantity, profile, machine: rowMachine, operator: rowOperator, notes });
+                items.push({ prefix, pos_no, cut_quantity, profile });
             }
         });
 
