@@ -74,6 +74,15 @@
                     <span>Kontrol Paneli</span>
                 </a>
 
+                <!-- ORDUMAK AI MÜHENDİSİ -->
+                <a href="{{ url_for('ai_muhendis') }}" class="nav-link flex items-center gap-2.5 px-3 py-2 rounded-xl font-bold transition-all {% if request.endpoint == 'ai_muhendis' %}bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-indigo-600/40 border border-indigo-400/40{% else %}bg-indigo-950/40 text-indigo-300 hover:text-white hover:bg-indigo-900/60 border border-indigo-800/40{% endif %} my-1.5 group">
+                    <div class="w-5 h-5 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <span class="truncate flex-1">🤖 AI Mühendisi</span>
+                    <span class="px-1.5 py-0.2 text-[9px] font-black uppercase rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">AI</span>
+                </a>
+
                 <!-- 1. PROJE -->
                 <div class="pt-2 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <i class="fa-solid fa-folder text-blue-400"></i> Proje
@@ -230,6 +239,12 @@
                         <span id="notifStatusText" class="hidden sm:inline">Bildirimler</span>
                     </button>
 
+                    <!-- Test Push Bildirimi Butonu (Kapalı PWA & Mobil Testi) -->
+                    <button onclick="sendTestPushNotification()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 border border-cyan-500/30 rounded-lg transition-all shadow-sm" title="Telefon / Masaüstü Anlık Test Bildirimi Gönder">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span class="hidden md:inline">Test Bildirimi</span>
+                    </button>
+
                     <button onclick="openModal('newAnnouncementModal')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-lg transition-all shadow-sm">
                         <i class="fa-solid fa-bullhorn"></i>
                         <span class="hidden sm:inline">Duyuru Paylaş</span>
@@ -323,67 +338,6 @@
             <main class="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar pb-20">
                 {% block content %}{% endblock %}
             </main>
-
-            <!-- YÜZEN CANLI SOHBET BUTONU (SAĞ ALT) -->
-            <div class="fixed bottom-5 right-5 z-40">
-                <button onclick="toggleChatDrawer()" id="btnOpenChat" class="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl shadow-2xl shadow-blue-500/40 flex items-center gap-2 text-xs font-black transition-all transform hover:scale-105 active:scale-95 border border-blue-400/30">
-                    <i class="fa-solid fa-comments text-base"></i>
-                    <span>Canlı Sohbet</span>
-                </button>
-            </div>
-
-            <!-- CANLI SOHBET ÇEKMECESİ / PANELİ (DRAWER) -->
-            <div id="chatDrawer" class="fixed bottom-5 right-5 w-96 max-w-[calc(100vw-2.5rem)] h-[520px] max-h-[80vh] bg-slate-950/95 backdrop-blur-2xl border border-slate-700/80 rounded-3xl shadow-2xl z-50 hidden flex-col overflow-hidden animate-scale-up text-xs">
-                
-                <!-- Sohbet Üst Bar -->
-                <div class="p-3.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                        <h4 class="font-black text-white text-sm">Canlı Personel Sohbeti</h4>
-                    </div>
-                    <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white p-1">
-                        <i class="fa-solid fa-xmark text-sm"></i>
-                    </button>
-                </div>
-
-                <!-- Kanal / Modül Seçim Çubuğu -->
-                <div class="flex items-center gap-1.5 p-2 bg-slate-950/80 border-b border-slate-800/80 overflow-x-auto text-[11px] font-bold">
-                    <button onclick="switchChatChannel('genel', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0">#Genel</button>
-                    <button onclick="switchChatChannel('proje', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#Proje</button>
-                    <button onclick="switchChatChannel('on_imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#Önİmalat</button>
-                    <button onclick="switchChatChannel('imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#İmalat</button>
-                    <button onclick="switchChatChannel('kalite', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#Kalite</button>
-                    <button onclick="switchChatChannel('sevkiyat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#Sevkiyat</button>
-                    <button onclick="switchChatChannel('toplanti', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#Toplantı</button>
-                </div>
-
-                <!-- Mesajlar Listesi -->
-                <div id="chatMessagesContainer" class="flex-1 p-3 overflow-y-auto space-y-2.5 custom-scrollbar bg-slate-900/50">
-                    <div class="text-center text-slate-500 py-4">Mesajlar yükleniyor...</div>
-                </div>
-
-                <!-- Fotoğraf Önizleme (Seçilince Gözükür) -->
-                <div id="chatPhotoPreviewBox" class="hidden px-3 py-1.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
-                    <span id="chatPhotoName" class="text-[10px] text-blue-400 truncate"></span>
-                    <button onclick="clearChatPhoto()" class="text-rose-400 hover:text-rose-300 text-xs">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
-                </div>
-
-                <!-- Mesaj Yazma ve Gönderme Alanı -->
-                <form id="chatForm" onsubmit="sendChatMessage(event)" class="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
-                    <label for="chatPhotoInput" class="p-2 text-slate-400 hover:text-blue-400 cursor-pointer rounded-lg hover:bg-slate-800 transition-colors" title="Fotoğraf / Resim Ekle">
-                        <i class="fa-solid fa-camera"></i>
-                        <input type="file" id="chatPhotoInput" accept="image/*" class="hidden" onchange="onChatPhotoSelected(this)">
-                    </label>
-                    <input type="text" id="chatTextInput" placeholder="Mesajınızı yazın..." required class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 text-xs">
-                    <button type="submit" id="btnChatSend" class="p-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-all shadow-md shadow-blue-600/30">
-                        <i class="fa-solid fa-paper-plane"></i>
-                    </button>
-                </form>
-
-            </div>
-
         </div>
     </div>
 
@@ -402,6 +356,10 @@
             <nav class="flex-1 py-4 space-y-1 text-xs">
                 <a href="{{ url_for('index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-chart-pie w-4 text-center"></i> Kontrol Paneli
+                </a>
+
+                <a href="{{ url_for('ai_muhendis') }}" class="flex items-center gap-3 px-3 py-2 rounded-xl bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 font-bold hover:bg-indigo-900/60 my-1">
+                    <i class="fa-solid fa-robot w-4 text-center text-indigo-400"></i> 🤖 AI Mühendisi
                 </a>
 
                 <div class="pt-2 text-[10px] font-bold text-slate-500 uppercase">Proje</div>
@@ -598,7 +556,7 @@
 
     <!-- CANLI SOHBET VE YAPAY ZEKA ÇEKMECESİ -->
     <div id="chatDrawer" class="fixed bottom-20 right-5 z-50 w-96 max-w-[calc(100vw-2.5rem)] h-[560px] max-h-[calc(100vh-6.5rem)] bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl flex-col hidden backdrop-blur-xl overflow-hidden animate-scale-up">
-        <!-- Başlık ve Kapatma -->
+        <!-- Başlık ve Kapatma / Temizleme -->
         <div class="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-md">
@@ -611,9 +569,14 @@
                     </p>
                 </div>
             </div>
-            <button onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white p-1">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <div class="flex items-center gap-1">
+                <button type="button" onclick="clearCurrentChatChannel()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Bu Kanalın Mesajlarını Temizle">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+                <button type="button" onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
         </div>
 
         <!-- Kanal & AI Sekmeleri -->
@@ -698,12 +661,61 @@
         // =========================================================================
         let lastNotificationId = 0;
 
+        // Helper for VAPID base64 conversion
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // Mobil PWA ve Masaüstü Web Push Aboneliği (Uygulama Kapalıyken Bildirim Alabilmek İçin)
+        function subscribeUserToPush() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+            if (Notification.permission !== 'granted') return;
+
+            navigator.serviceWorker.ready.then(reg => {
+                fetch('/api/push/vapid-public-key')
+                .then(res => res.json())
+                .then(data => {
+                    const vapidPublicKey = data.publicKey;
+                    if (!vapidPublicKey) return;
+                    const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+                    return reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: convertedVapidKey
+                    });
+                })
+                .then(subscription => {
+                    if (!subscription) return;
+                    return fetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(subscription)
+                    });
+                })
+                .then(res => {
+                    if (res && res.ok) {
+                        console.log('ORDUMAK Web Push Aboneliği Aktif.');
+                    }
+                })
+                .catch(err => console.log('Push subscribe note:', err));
+            });
+        }
+
         // Service Worker Kaydı
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js', { scope: '/' })
                     .then(reg => {
                         console.log('ORDUMAK MES Service Worker Kayıtlı:', reg.scope);
+                        if (Notification.permission === 'granted') {
+                            subscribeUserToPush();
+                        }
                     })
                     .catch(err => {
                         console.log('SW Kayıt Notu:', err);
@@ -738,7 +750,12 @@
         }
 
         // Sayfa yüklendiğinde bildirim buton durumunu ayarla
-        document.addEventListener('DOMContentLoaded', updateNotificationButtonUI);
+        document.addEventListener('DOMContentLoaded', () => {
+            updateNotificationButtonUI();
+            if (Notification.permission === 'granted') {
+                subscribeUserToPush();
+            }
+        });
 
         function requestNotificationAccess() {
             if (!("Notification" in window)) {
@@ -748,10 +765,11 @@
             Notification.requestPermission().then(permission => {
                 updateNotificationButtonUI();
                 if (permission === 'granted') {
+                    subscribeUserToPush();
                     playNotificationSound();
                     showToastNotification({
                         title: 'Bildirimler Aktif Edildi!',
-                        message: 'ORDUMAK MES anlık imalat, sipariş ve onay bildirimlerini alacaksınız.',
+                        message: 'ORDUMAK MES anlık imalat, sipariş ve onay bildirimlerini alacaksınız. Telefonunuz kilitliyken bile bildirim alabilirsiniz.',
                         color: 'emerald',
                         icon: 'fa-check'
                     });
@@ -761,6 +779,26 @@
                         url: '/'
                     });
                 }
+            });
+        }
+
+        function sendTestPushNotification() {
+            if (Notification.permission !== 'granted') {
+                requestNotificationAccess();
+                return;
+            }
+            fetch('/api/push/test', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                showToastNotification({
+                    title: 'Test Bildirimi Gönderildi',
+                    message: 'Web Push & Toast sinyali tüm cihazlarınıza iletildi.',
+                    color: 'cyan',
+                    icon: 'fa-paper-plane'
+                });
+            })
+            .catch(err => {
+                console.error('Test push error:', err);
             });
         }
 
@@ -957,10 +995,20 @@
                     }
 
                     html += `
-                        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}">
+                        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative">
                             <div class="flex items-center gap-1.5 mb-0.5 text-[10px] text-slate-400 font-mono">
+                                ${isMe ? `
+                                    <button onclick="deleteSingleChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                ` : ''}
                                 <span>${m.full_name || m.username}</span>
                                 <span class="text-slate-600">${m.created_at ? m.created_at.substring(11, 16) : ''}</span>
+                                ${!isMe ? `
+                                    <button onclick="deleteSingleChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                ` : ''}
                             </div>
                             <div class="max-w-[88%] p-2.5 rounded-2xl ${bubbleClass} shadow-md">
                                 ${m.message ? `<p class="whitespace-pre-line break-words text-xs leading-relaxed">${escapeHtml(m.message)}</p>` : ''}
@@ -975,6 +1023,61 @@
                 }
             })
             .catch(err => console.error(err));
+        }
+
+        function clearCurrentChatChannel() {
+            let chanLabel = '#' + currentChatChannel;
+            if (currentChatChannel === 'ai_ortak') chanLabel = 'Ortak AI';
+            else if (currentChatChannel.startsWith('ai_ozel')) chanLabel = 'Özel AI';
+
+            if (!confirm(`${chanLabel} kanalındaki tüm sohbet mesajlarını temizlemek istediğinize emin misiniz?`)) {
+                return;
+            }
+
+            fetch('/api/chat/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channel: currentChatChannel })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadChatMessages();
+                    showToastNotification({
+                        title: 'Sohbet Temizlendi',
+                        message: `${chanLabel} kanalındaki mesaj geçmişi silindi.`,
+                        color: 'amber',
+                        icon: 'fa-trash-can'
+                    });
+                } else {
+                    alert('Temizlenemedi: ' + (data.message || ''));
+                }
+            })
+            .catch(err => {
+                console.error('Clear chat error:', err);
+                alert('İşlem sırasında bir hata oluştu.');
+            });
+        }
+
+        function deleteSingleChatMessage(msgId) {
+            if (!confirm('Bu mesajı silmek istediğinize emin misiniz?')) {
+                return;
+            }
+
+            fetch(`/api/chat/message/${msgId}/delete`, {
+                method: 'POST'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadChatMessages();
+                } else {
+                    alert('Mesaj silinemedi: ' + (data.message || ''));
+                }
+            })
+            .catch(err => {
+                console.error('Delete chat message error:', err);
+            });
         }
 
         function onChatPhotoSelected(input) {

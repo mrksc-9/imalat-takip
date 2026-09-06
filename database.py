@@ -34,7 +34,8 @@ MODULES_LIST = [
     ('sevk', 'Sevkiyat & İrsaliye'),
     ('muhasebe_irsaliye', 'Muhasebe & İrsaliye Takip'),
     ('kullanicilar', 'Kullanıcılar & Roller'),
-    ('ayarlar', 'Firma Başlığı & Sistem Ayarları')
+    ('ayarlar', 'Firma Başlığı & Sistem Ayarları'),
+    ('ai_muhendis', 'ORDUMAK AI Mühendisi')
 ]
 
 def hash_password(password):
@@ -651,13 +652,18 @@ def init_db():
         ]
         cursor.executemany("INSERT OR IGNORE INTO operators (operator_name, role) VALUES (?, ?)", default_ops)
 
-    # 19. VARSAYILAN KULLANICILARI OLUŞTUR
-    cursor.execute("SELECT COUNT(*) as count FROM users WHERE username='admin'")
-    if cursor.fetchone()['count'] == 0:
+    # 19. VARSAYILAN KULLANICILARI OLUŞTUR / GÜNCELLE
+    cursor.execute("SELECT * FROM users WHERE username='admin'")
+    admin_user = cursor.fetchone()
+    if not admin_user:
         cursor.execute('''
         INSERT INTO users (username, password_hash, full_name, role)
         VALUES ('admin', ?, 'Sistem Yöneticisi', 'admin')
-        ''', (hash_password("admin123"),))
+        ''', (hash_password("Ordumak.2026!"),))
+    else:
+        # Eski 'admin123' şifresini Google veri ihlali uyarısı vermemesi için güvenli şifreye güncelle
+        if admin_user['password_hash'] == hash_password("admin123"):
+            cursor.execute("UPDATE users SET password_hash = ? WHERE username = 'admin'", (hash_password("Ordumak.2026!"),))
 
     # 20. CANLI SOHBET MESAJLARI TABLOSU
     cursor.execute(f'''
@@ -731,6 +737,18 @@ def init_db():
         color TEXT DEFAULT 'blue',
         link_url TEXT DEFAULT '',
         user_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 25. MOBİL & WEB PUSH BİLDİRİM ABONELİKLERİ TABLOSU (PWA WEB PUSH)
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id {pk_type},
+        user_id INTEGER,
+        endpoint TEXT UNIQUE NOT NULL,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
@@ -1481,6 +1499,25 @@ def save_chat_message(channel, user_id, username, full_name, message, photo_url=
     conn.commit()
     conn.close()
 
+def clear_chat_messages(channel=None):
+    """Belirli bir kanaldaki veya tüm sohbetlerdeki mesajları temizler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if channel and channel != 'tumunu_temizle':
+        cursor.execute("DELETE FROM chat_messages WHERE channel = ?", (channel,))
+    else:
+        cursor.execute("DELETE FROM chat_messages")
+    conn.commit()
+    conn.close()
+
+def delete_chat_message(message_id):
+    """Tekil bir sohbet mesajını siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM chat_messages WHERE id = ?", (message_id,))
+    conn.commit()
+    conn.close()
+
 
 # =========================================================================
 # TOPLANTI VE KARAR TAKİP SİSTEMİ
@@ -1699,6 +1736,50 @@ def get_accounting_summary_stats():
         'pending_tonnage': pending_tonnage,
         'completion_pct': round((processed_count / total_count * 100), 1) if total_count > 0 else 0
     }
+
+
+# =========================================================================
+# 26. WEB PUSH BİLDİRİM ABONELİKLERİ
+# =========================================================================
+def save_push_subscription(user_id, endpoint, p256dh, auth):
+    """Kullanıcının mobil / masaüstü PWA Web Push aboneliğini kaydeder."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if is_postgres():
+        cursor.execute("""
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(endpoint) DO UPDATE SET
+                user_id = excluded.user_id,
+                p256dh = excluded.p256dh,
+                auth = excluded.auth,
+                created_at = CURRENT_TIMESTAMP
+        """, (user_id, endpoint, p256dh, auth))
+    else:
+        cursor.execute("""
+            INSERT OR REPLACE INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, endpoint, p256dh, auth))
+    conn.commit()
+    conn.close()
+
+def get_push_subscriptions():
+    """Tüm aktif Web Push aboneliklerini döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM push_subscriptions")
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def delete_push_subscription(endpoint):
+    """Geçersiz veya süresi dolmuş push aboneliğini siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+    conn.commit()
+    conn.close()
+
 
 
 

@@ -1,0 +1,384 @@
+{% extends "layout.html" %}
+
+{% block page_title %}
+<div class="flex items-center gap-2">
+    <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+        <i class="fa-solid fa-robot text-sm"></i>
+    </div>
+    <div>
+        <span class="text-white font-black tracking-wide">ORDUMAK AI Mühendisi</span>
+        <span class="text-[11px] text-indigo-400 font-semibold ml-2 hidden sm:inline">&bull; EN 1090, ISO 12944 & Çelik İmalat Uzmanı</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6 animate-fade-in max-w-7xl mx-auto">
+
+    <!-- ÜST BANNER / HERO KARTI -->
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-950 via-indigo-950/80 to-slate-900 border border-indigo-500/30 p-6 sm:p-8 shadow-2xl">
+        <div class="absolute -right-16 -top-16 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-16 -bottom-16 w-64 h-64 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div class="space-y-2 max-w-2xl">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>Yapay Zeka Destekli Çelik İmalat Motoru</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                    ORDUMAK Yapay Zeka Başmühendisi
+                </h1>
+                <p class="text-sm text-slate-300 leading-relaxed">
+                    EN 1090-2 EXC2/EXC3 kalite standartları, WPS/PQR kaynak parametreleri, 8.8 & 10.9 cıvata ön gerilme torkları, ISO 12944 DFT boya mikron hesaplamaları ve canlı fabrika imalat metriklerinizi anlık analiz eden akıllı asistanınız.
+                </p>
+            </div>
+
+            <!-- Canlı Fabrika Brifingi Butonu -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                <button onclick="askAiEngineerPrompt('Canlı fabrika durumunu, aktif projeleri ve aşama bazlı tonaj ilerlemelerini detaylı analiz et')" class="px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-black rounded-2xl shadow-xl shadow-indigo-600/30 text-xs transition-all flex items-center justify-center gap-2 transform hover:scale-105 active:scale-95 border border-white/10">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                    <span>⚡ Canlı Fabrika Brifingi Al</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Hızlı Metrik Özeti -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl">
+                <p class="text-[10px] text-slate-400 font-bold uppercase">Toplam Hedef</p>
+                <p class="text-lg font-black text-white mt-0.5">{{ metrics.total_target_tonnage | format_num }} <span class="text-xs text-slate-400 font-normal">ton</span></p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl">
+                <p class="text-[10px] text-cyan-400 font-bold uppercase">Kesilen Sac/Profil</p>
+                <p class="text-lg font-black text-cyan-300 mt-0.5">{{ metrics.total_cut_weight | format_num }} <span class="text-xs text-slate-400 font-normal">ton</span></p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl">
+                <p class="text-[10px] text-orange-400 font-bold uppercase">Kaynak & İmalat</p>
+                <p class="text-lg font-black text-orange-300 mt-0.5">{{ metrics.total_welded_weight | format_num }} <span class="text-xs text-slate-400 font-normal">ton</span></p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl">
+                <p class="text-[10px] text-emerald-400 font-bold uppercase">Sevk Edilen</p>
+                <p class="text-lg font-black text-emerald-300 mt-0.5">{{ metrics.total_shipped_weight | format_num }} <span class="text-xs text-slate-400 font-normal">ton</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2 KOLONLU ANA İÇERİK: SOLDA HESAPLAMA ARAÇLARI & REHBER, SAĞDA İNTERAKTİF AI KONSOLU -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- SOL KOLON: MÜHENDİSLİK HESAPLAMA & BİLGİ KARTLARI (7 Kolon) -->
+        <div class="lg:col-span-7 space-y-6">
+
+            <!-- 1. HIZLI SORU VE DANIŞMANLIK KARTLARI -->
+            <div class="bg-slate-950/80 border border-slate-800/80 rounded-3xl p-5 shadow-xl">
+                <h3 class="text-sm font-black text-white flex items-center gap-2 mb-3">
+                    <i class="fa-solid fa-lightbulb text-amber-400"></i>
+                    <span>Sık Sorulan Mühendislik Konuları (Tıkla & Sor)</span>
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button onclick="askAiEngineerPrompt('EN 1090-2 EXC2 ve EXC3 arasındaki farklar, NDT kontrol oranları (VT, MT, UT) ve kaynakçı sertifikasyon zorunlulukları nelerdir?')" class="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-indigo-500/50 rounded-2xl text-left transition-all group">
+                        <div class="flex items-center gap-2 text-indigo-400 font-bold text-xs group-hover:text-indigo-300">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>EN 1090-2 EXC2/EXC3</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">NDT muayene oranları, WPS ve tolerans sınırları.</p>
+                    </button>
+
+                    <button onclick="askAiEngineerPrompt('EN 14399-4 HV 10.9 ve EN 15048 8.8 cıvatalar için M16, M20, M24, M27, M30 tork değerleri ve sıkma prosedürleri tablosunu ver.')" class="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-purple-500/50 rounded-2xl text-left transition-all group">
+                        <div class="flex items-center gap-2 text-purple-400 font-bold text-xs group-hover:text-purple-300">
+                            <i class="fa-solid fa-bolt"></i>
+                            <span>10.9 / 8.8 Cıvata Torku</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">Ön yüklemeli HV tork değerleri ve açı yöntemi.</p>
+                    </button>
+
+                    <button onclick="askAiEngineerPrompt('ISO 12944 standardına göre C3 ve C4 ortamında Sa 2.5 raspalama, Epoksi astar ve Poliüretan son kat mikron (DFT) ve boya sarfiyat formülü nedir?')" class="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/50 rounded-2xl text-left transition-all group">
+                        <div class="flex items-center gap-2 text-emerald-400 font-bold text-xs group-hover:text-emerald-300">
+                            <i class="fa-solid fa-paint-roller"></i>
+                            <span>ISO 12944 Boya & DFT</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">Sa 2.5, C3/C4 sistemleri ve teorik tüketim hesabı.</p>
+                    </button>
+
+                    <button onclick="askAiEngineerPrompt('Plazma ve lazer kesimde sac ve profil nesting fire oranını düşürmek için en iyi mühendislik yöntemleri nelerdir? Ortak kesim (common cut) nasıl uygulanır?')" class="p-3 bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 rounded-2xl text-left transition-all group">
+                        <div class="flex items-center gap-2 text-cyan-400 font-bold text-xs group-hover:text-cyan-300">
+                            <i class="fa-solid fa-cubes"></i>
+                            <span>Nesting Fire Optimizasyonu</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-1 line-clamp-2">Sac & profil yerleşiminde ortak kesim teknikleri.</p>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. İNTERAKTİF HIZLI CIVATA TORK HESAPLAYICI -->
+            <div class="bg-slate-950/80 border border-slate-800/80 rounded-3xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-black text-white flex items-center gap-2">
+                        <i class="fa-solid fa-calculator text-indigo-400"></i>
+                        <span>Cıvata Ön Yükleme & Tork Hesaplayıcı</span>
+                    </h3>
+                    <span class="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">EN 14399 & EN 1090</span>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 mb-1">Cıvata Çapı</label>
+                        <select id="calcBoltDiameter" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono" onchange="calculateBoltTorque()">
+                            <option value="12">M12</option>
+                            <option value="16">M16</option>
+                            <option value="20" selected>M20</option>
+                            <option value="22">M22</option>
+                            <option value="24">M24</option>
+                            <option value="27">M27</option>
+                            <option value="30">M30</option>
+                            <option value="36">M36</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 mb-1">Cıvata Kalitesi</label>
+                        <select id="calcBoltGrade" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono" onchange="calculateBoltTorque()">
+                            <option value="10.9" selected>10.9 HV / HR (Ön Yüklemeli)</option>
+                            <option value="8.8">8.8 Standart / SB</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-400 mb-1">Sıkma Katsayısı (k)</label>
+                        <select id="calcBoltKFactor" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono" onchange="calculateBoltTorque()">
+                            <option value="0.13" selected>k = 0.13 (Yağlanmış K-Sınıfı K1)</option>
+                            <option value="0.15">k = 0.15 (Hafif Yağlı K2)</option>
+                            <option value="0.18">k = 0.18 (Kuru / Standart)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4 p-4 rounded-2xl bg-gradient-to-r from-indigo-950/60 to-purple-950/60 border border-indigo-500/30 flex items-center justify-between">
+                    <div>
+                        <p class="text-[10px] uppercase font-bold text-indigo-300">Gerekli Sıkma Torku (Mr,i)</p>
+                        <p id="calcResultTorque" class="text-2xl font-black text-white mt-0.5">450 <span class="text-xs text-indigo-300 font-normal">Nm</span></p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] uppercase font-bold text-purple-300">Ön Gerilme Kuvveti (Fp,C)</p>
+                        <p id="calcResultPreload" class="text-lg font-black text-purple-200 mt-0.5">172 <span class="text-xs text-purple-300 font-normal">kN</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. SAC & PROFİL AĞIRLIK FORMÜLLERİ KILAVUZU -->
+            <div class="bg-slate-950/80 border border-slate-800/80 rounded-3xl p-5 shadow-xl space-y-3">
+                <h3 class="text-sm font-black text-white flex items-center gap-2">
+                    <i class="fa-solid fa-shapes text-cyan-400"></i>
+                    <span>Çelik Ağırlık ve Yüzey Alanı Formülleri</span>
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl font-mono text-[11px] text-slate-300">
+                        <span class="text-cyan-400 font-bold block mb-1">Sac / Plaka Ağırlığı:</span>
+                        <code>Ağırlık (kg) = En (m) × Boy (m) × Kalınlık (mm) × 7.85</code>
+                    </div>
+                    <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl font-mono text-[11px] text-slate-300">
+                        <span class="text-cyan-400 font-bold block mb-1">Boya Alanı (m²):</span>
+                        <code>Plaka Yüzeyi = 2 × [En (m) × Boy (m)]</code>
+                    </div>
+                    <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl font-mono text-[11px] text-slate-300">
+                        <span class="text-purple-400 font-bold block mb-1">Kutu Profil Ağırlığı:</span>
+                        <code>Ağırlık = [(A + B) × 2 × t - 4t²] × 0.00785 (kg/m)</code>
+                    </div>
+                    <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-2xl font-mono text-[11px] text-slate-300">
+                        <span class="text-purple-400 font-bold block mb-1">Boru Profil Ağırlığı:</span>
+                        <code>Ağırlık = (D - t) × t × 0.02466 (kg/m)</code>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SAĞ KOLON: İNTERAKTİF CANLI AI MÜHENDİSLİK KONSOLU (5 Kolon) -->
+        <div class="lg:col-span-5 bg-slate-950/90 border border-slate-800/90 rounded-3xl p-5 shadow-2xl flex flex-col h-[750px] max-h-[85vh] sticky top-4">
+            
+            <!-- Konsol Başlığı -->
+            <div class="pb-3 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <div>
+                        <h3 class="font-black text-white text-sm">AI Mühendis Danışman Konsolu</h3>
+                        <p class="text-[10px] text-indigo-400 font-mono">Çelik Yapı & Fabrika Danışmanı</p>
+                    </div>
+                </div>
+                <button onclick="clearAiChat()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-900 transition-colors text-xs" title="Sohbeti Temizle">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+
+            <!-- Mesaj Akışı -->
+            <div id="aiConsoleMessages" class="flex-1 overflow-y-auto py-4 space-y-3.5 custom-scrollbar text-xs">
+                <!-- Karşılama Mesajı -->
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shrink-0 text-xs shadow-md">
+                        <i class="fa-solid fa-robot"></i>
+                    </div>
+                    <div class="p-3.5 rounded-2xl rounded-tl-none bg-slate-900 border border-indigo-500/30 text-slate-200 leading-relaxed shadow-lg max-w-[90%]">
+                        <p class="font-bold text-white mb-1">Merhaba! Ben ORDUMAK Yapay Zeka Başmühendisi.</p>
+                        <p>Çelik imalat süreçleri, EN 1090 standartları, WPS kaynak prosedürleri, cıvata torkları, boya mikron hesabı veya fabrikanızdaki projelerin canlı durumları hakkında bana dilediğiniz soruyu sorabilirsiniz.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Yükleniyor Göstergesi -->
+            <div id="aiConsoleLoading" class="hidden py-2 px-3 bg-indigo-950/40 border border-indigo-500/20 rounded-xl text-indigo-300 text-[11px] items-center gap-2 shrink-0">
+                <i class="fa-solid fa-circle-notch fa-spin text-indigo-400"></i>
+                <span>AI Mühendis hesaplıyor ve standartları kontrol ediyor...</span>
+            </div>
+
+            <!-- Soru Gönderme Formu -->
+            <form id="aiConsoleForm" onsubmit="sendAiConsoleQuestion(event)" class="pt-3 border-t border-slate-800 flex items-center gap-2 shrink-0">
+                <input type="text" id="aiConsoleInput" placeholder="Teknik bir soru yazın (örn: M24 10.9 cıvata torku kaç Nm?)..." required class="flex-1 bg-slate-900 border border-slate-700/80 rounded-2xl px-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans">
+                <button type="submit" id="btnAiConsoleSend" class="px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-2xl shadow-lg shadow-indigo-600/30 text-xs transition-all flex items-center justify-center gap-1.5 shrink-0">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span class="hidden sm:inline">Sor</span>
+                </button>
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    // =========================================================================
+    // Cıvata Tork Hesaplama Motoru (EN 14399 & EN 1090-2)
+    // =========================================================================
+    function calculateBoltTorque() {
+        const d = parseFloat(document.getElementById('calcBoltDiameter').value);
+        const grade = document.getElementById('calcBoltGrade').value;
+        const k = parseFloat(document.getElementById('calcBoltKFactor').value);
+
+        // EN 14399-4 As (mm²) gerilme alanları
+        const asMap = {
+            12: 84.3,
+            16: 157,
+            20: 245,
+            22: 303,
+            24: 353,
+            27: 459,
+            30: 561,
+            36: 817
+        };
+
+        const As = asMap[d] || (Math.PI * Math.pow(d - 0.9382 * 1.5, 2) / 4);
+        const fub = (grade === '10.9') ? 1000 : 800; // N/mm²
+
+        // Fp,C = 0.7 * fub * As (kN cinsinden)
+        const Fp_C_N = 0.7 * fub * As;
+        const Fp_C_kN = Fp_C_N / 1000.0;
+
+        // Mr,i = k * d * Fp,C (Nm cinsinden -> d mm, Fp,C N -> k * (d/1000) * Fp_C_N)
+        const torque_Nm = k * (d / 1000.0) * Fp_C_N;
+
+        document.getElementById('calcResultTorque').innerHTML = `${Math.round(torque_Nm)} <span class="text-xs text-indigo-300 font-normal">Nm</span>`;
+        document.getElementById('calcResultPreload').innerHTML = `${Math.round(Fp_C_kN)} <span class="text-xs text-purple-300 font-normal">kN</span>`;
+    }
+
+    document.addEventListener('DOMContentLoaded', calculateBoltTorque);
+
+    // =========================================================================
+    // AI Konsol Soru-Cevap Motoru
+    // =========================================================================
+    function askAiEngineerPrompt(promptText) {
+        const input = document.getElementById('aiConsoleInput');
+        if (input) {
+            input.value = promptText;
+            document.getElementById('aiConsoleForm').dispatchEvent(new Event('submit'));
+        }
+    }
+
+    function clearAiChat() {
+        const container = document.getElementById('aiConsoleMessages');
+        container.innerHTML = `
+            <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shrink-0 text-xs shadow-md">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div class="p-3.5 rounded-2xl rounded-tl-none bg-slate-900 border border-indigo-500/30 text-slate-200 leading-relaxed shadow-lg max-w-[90%]">
+                    <p class="font-bold text-white mb-1">Sohbet sıfırlandı.</p>
+                    <p>Yeni bir teknik soru veya fabrika analizi talebinizi bekliyorum.</p>
+                </div>
+            </div>
+        `;
+    }
+
+    function appendUserMessage(msg) {
+        const container = document.getElementById('aiConsoleMessages');
+        const div = document.createElement('div');
+        div.className = 'flex items-end justify-end gap-2';
+        div.innerHTML = `
+            <div class="p-3.5 rounded-2xl rounded-tr-none bg-indigo-600 text-white leading-relaxed shadow-lg max-w-[85%]">
+                <p class="whitespace-pre-line break-words">${escapeHtml(msg)}</p>
+            </div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function appendAiMessage(msg) {
+        const container = document.getElementById('aiConsoleMessages');
+        const div = document.createElement('div');
+        div.className = 'flex items-start gap-3';
+        div.innerHTML = `
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-white shrink-0 text-xs shadow-md">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+            <div class="p-3.5 rounded-2xl rounded-tl-none bg-slate-900 border border-indigo-500/30 text-slate-200 leading-relaxed shadow-lg max-w-[90%]">
+                <div class="whitespace-pre-line break-words leading-relaxed">${msg}</div>
+            </div>
+        `;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function sendAiConsoleQuestion(e) {
+        e.preventDefault();
+        const input = document.getElementById('aiConsoleInput');
+        const prompt = input.value.trim();
+        if (!prompt) return;
+
+        appendUserMessage(prompt);
+        input.value = '';
+
+        const loading = document.getElementById('aiConsoleLoading');
+        const btn = document.getElementById('btnAiConsoleSend');
+        loading.classList.remove('hidden');
+        loading.classList.add('flex');
+        btn.disabled = true;
+
+        fetch('/api/ai/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: prompt })
+        })
+        .then(res => res.json())
+        .then(data => {
+            loading.classList.add('hidden');
+            loading.classList.remove('flex');
+            btn.disabled = false;
+            if (data.status === 'success') {
+                appendAiMessage(data.answer);
+            } else {
+                appendAiMessage('⚠️ Hata: ' + (data.message || 'Cevap alınamadı.'));
+            }
+        })
+        .catch(err => {
+            loading.classList.add('hidden');
+            loading.classList.remove('flex');
+            btn.disabled = false;
+            appendAiMessage('⚠️ Bağlantı hatası: Sunucuya erişilemedi.');
+        });
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+</script>
+{% endblock %}

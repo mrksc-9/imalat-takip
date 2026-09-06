@@ -2,6 +2,8 @@ import os
 import re
 import math
 import socket
+import json
+import threading
 import traceback
 from datetime import datetime, timedelta
 import calendar
@@ -24,10 +26,11 @@ from database import (
     get_cutting_progress_analysis,
     admin_update_user,
     get_active_announcements, add_announcement, deactivate_announcement, delete_announcement,
-    get_chat_messages, save_chat_message,
+    get_chat_messages, save_chat_message, clear_chat_messages, delete_chat_message,
     get_meetings, get_meeting_by_id, add_meeting, update_meeting, delete_meeting,
     get_meeting_action_items, add_meeting_action_item, update_action_item_status, delete_meeting_action_item,
     add_notification, get_recent_notifications,
+    save_push_subscription, get_push_subscriptions, delete_push_subscription,
     get_shipments_with_accounting, update_shipment_accounting, get_accounting_summary_stats,
     ROLES_LIST, MODULES_LIST
 )
@@ -59,6 +62,63 @@ app.jinja_loader = jinja2.ChoiceLoader([
 ])
 
 app.secret_key = os.environ.get('SECRET_KEY', 'celik_imalat_takip_gizli_anahtar_2026_super_secure')
+
+# =========================================================================
+# WEB PUSH (VAPID) BİLDİRİM MOTORU
+# =========================================================================
+try:
+    from pywebpush import webpush, WebPushException
+except ImportError:
+    webpush = None
+    WebPushException = Exception
+
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BPBRMOLSjWIA_FowmaSo7BfrXTrLyiT9rkkznIDQ11yH_XB7gqiGwqMYPt7-fVde7wA1nvDL7L8Lz211HeNt8NM")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "6iJCT6-yECbniensUcfe2x_mxGcXfMVxvHWkK3skmBA")
+VAPID_CLAIMS = {"sub": "mailto:admin@ordumak.com.tr"}
+
+def send_web_push_notification(title, message, url="/", icon="/static/img/ordumak_logo.svg"):
+    """Kayıtlı tüm mobil ve masaüstü tarayıcılara arka planda Web Push bildirimi gönderir."""
+    def _send_task():
+        if not webpush:
+            return
+        try:
+            subscriptions = get_push_subscriptions()
+            if not subscriptions:
+                return
+            payload_data = json.dumps({
+                "title": title,
+                "body": message,
+                "icon": icon,
+                "badge": icon,
+                "url": url
+            })
+            for sub in subscriptions:
+                subscription_info = {
+                    "endpoint": sub["endpoint"],
+                    "keys": {
+                        "p256dh": sub["p256dh"],
+                        "auth": sub["auth"]
+                    }
+                }
+                try:
+                    webpush(
+                        subscription_info=subscription_info,
+                        data=payload_data,
+                        vapid_private_key=VAPID_PRIVATE_KEY,
+                        vapid_claims=VAPID_CLAIMS
+                    )
+                except WebPushException as ex:
+                    if hasattr(ex, 'response') and ex.response is not None and ex.response.status_code in (404, 410):
+                        delete_push_subscription(sub["endpoint"])
+                    else:
+                        print(f"WebPush sending note: {ex}")
+                except Exception as e:
+                    print(f"WebPush item error: {e}")
+        except Exception as e:
+            print(f"WebPush background thread error: {e}")
+
+    threading.Thread(target=_send_task, daemon=True).start()
+
 
 @app.errorhandler(500)
 def internal_error(error):
@@ -190,8 +250,8 @@ def ensure_db_and_auth():
         except Exception as e:
             print(f"Veritabani hazirlama uyarisi: {e}")
 
-    # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW ve Manifest hariç)
-    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json'))):
+    # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW, Manifest ve Push API hariç)
+    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json', '/api/push/vapid-public-key', '/api/push/subscribe'))):
         return
     if 'user' not in session:
         return redirect(url_for('login'))
@@ -2987,8 +3047,15 @@ def api_chat_send():
         photo_url=photo_url
     )
 
+    # Arka planda Web Push bildirimi gönder
+    send_web_push_notification(
+        title=f"💬 {u.get('full_name', 'Personel')} (#{channel})",
+        message=message[:100] if message else "📷 Fotoğraf paylaştı",
+        url="/"
+    )
+
     # Yapay Zeka Kanalı Yanıtı
-    if channel == 'ai_ortak' or channel.startswith('ai_ozel'):
+    if channel in ('ai_ortak', 'ai_muhendis') or channel.startswith('ai_ozel') or '@ai' in message.lower():
         ai_reply = generate_steel_ai_response(message, u.get('full_name', 'Personel'))
         save_chat_message(
             channel=channel,
@@ -3000,6 +3067,30 @@ def api_chat_send():
         )
 
     return jsonify({'status': 'success', 'photo_url': photo_url})
+
+@app.route('/api/chat/clear', methods=['POST'])
+def api_chat_clear():
+    """Belirli bir sohbet kanalındaki veya tüm kanallardaki mesajları temizler."""
+    u = session.get('user', {})
+    data = request.get_json(silent=True) or {}
+    channel = data.get('channel') or request.form.get('channel') or 'genel'
+    
+    clear_chat_messages(channel=channel)
+    log_activity(
+        action="Sohbet Temizlendi",
+        entity_type="chat_messages",
+        details=f"#{channel} kanalındaki sohbet mesajları temizlendi.",
+        username=u.get('username'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+    return jsonify({'status': 'success', 'message': f"#{channel} kanalındaki mesajlar temizlendi."})
+
+@app.route('/api/chat/message/<int:message_id>/delete', methods=['POST'])
+def api_chat_message_delete(message_id):
+    """Tekil bir sohbet mesajını siler."""
+    delete_chat_message(message_id)
+    return jsonify({'status': 'success', 'message': 'Mesaj silindi.'})
 
 @app.route('/api/notifications/recent')
 def api_notifications_recent():
@@ -3178,6 +3269,83 @@ def api_duyuru_sil(announcement_id):
     delete_announcement(announcement_id)
     flash("Duyuru silindi.", "info")
     return redirect(request.referrer or url_for('index'))
+
+
+# =========================================================================
+# 21. WEB PUSH BİLDİRİM SERVİSİ (PWA & MOBİL ARKA PLAN)
+# =========================================================================
+@app.route('/api/push/vapid-public-key', methods=['GET'])
+def api_push_vapid_key():
+    """Web Push VAPID genel anahtarını döner."""
+    return jsonify({"publicKey": VAPID_PUBLIC_KEY})
+
+@app.route('/api/push/subscribe', methods=['POST'])
+def api_push_subscribe():
+    """Kullanıcı tarayıcısının veya mobil PWA uygulamasının push aboneliğini kaydeder."""
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get('endpoint')
+    keys = data.get('keys', {})
+    p256dh = keys.get('p256dh')
+    auth = keys.get('auth')
+    
+    if not endpoint or not p256dh or not auth:
+        return jsonify({"status": "error", "message": "Geçersiz push abonelik verisi"}), 400
+        
+    u = session.get('user', {})
+    save_push_subscription(
+        user_id=u.get('id'),
+        endpoint=endpoint,
+        p256dh=p256dh,
+        auth=auth
+    )
+    return jsonify({"status": "success", "message": "Abonelik başarıyla kaydedildi"})
+
+@app.route('/api/push/test', methods=['POST'])
+def api_push_test():
+    """Tüm kayıtlı mobil ve masaüstü cihazlara test push bildirimi gönderir."""
+    send_web_push_notification(
+        title="🔔 ORDUMAK MES Test Bildirimi",
+        message="Mobil ve masaüstü bildirim sistemi başarıyla bağlandı! Uygulama kapalıyken bile anlık bildirim alabilirsiniz.",
+        url="/"
+    )
+    add_notification(
+        category="sistem",
+        title="Test Bildirimi Gönderildi",
+        message="Web Push & Toast bildirim sistemi test edildi.",
+        icon="fa-bell",
+        color="emerald",
+        link_url="/"
+    )
+    return jsonify({"status": "success", "message": "Test bildirimi gönderildi"})
+
+# =========================================================================
+# 22. ORDUMAK AI MÜHENDİSİ DANIŞMANLIK SAYFASI VE MOTORU
+# =========================================================================
+@app.route('/ai-muhendis')
+def ai_muhendis():
+    """ORDUMAK AI Mühendis danışmanlık ve analiz sayfası."""
+    conn = get_db()
+    cursor = conn.cursor()
+    metrics = get_global_metrics()
+    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY id DESC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return render_template('ai_muhendis.html', metrics=metrics, projects=projects)
+
+def generate_ai_engineer_response(prompt):
+    return generate_steel_ai_response(prompt, session.get('user', {}).get('full_name', 'Mühendis'))
+
+@app.route('/api/ai/ask', methods=['POST'])
+def api_ai_ask():
+    """AI Mühendis API uç noktası."""
+    data = request.get_json(silent=True) or {}
+    prompt = data.get('prompt', '').strip()
+    if not prompt:
+        return jsonify({"status": "error", "message": "Soru metni boş olamaz."}), 400
+    u = session.get('user', {})
+    answer = generate_steel_ai_response(prompt, u.get('full_name', 'Mühendis'))
+    return jsonify({"status": "success", "answer": answer})
+
 
 
 # =========================================================================
