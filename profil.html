@@ -1,0 +1,118 @@
+{% extends "layout.html" %}
+
+{% block title %}Profil & Hesap Ayarları - Çelik İmalat MES{% endblock %}
+{% block page_title %}Profil & Güvenlik Ayarları{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- ÜST BAŞLIK KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-black text-2xl shadow-lg shadow-blue-500/20">
+                {{ user.full_name[:2].upper() if user.full_name else 'US' }}
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span>{{ user.full_name }}</span>
+                    <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                        {{ user.role | upper }}
+                    </span>
+                </h3>
+                <p class="text-xs text-slate-400 mt-1">
+                    Kullanıcı Adı: <b class="text-slate-200">@{{ user.username }}</b> | Kayıt Tarihi: <b>{{ user.created_at | format_date if user.created_at else '-' }}</b>
+                </p>
+            </div>
+        </div>
+        <div class="text-right sm:text-right w-full sm:w-auto">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Hesap Aktif
+            </span>
+        </div>
+    </div>
+
+    <!-- FORM ALANI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
+        <form action="{{ url_for('profil') }}" method="POST" class="space-y-6">
+            
+            <!-- 1. KİŞİSEL BİLGİLER -->
+            <div>
+                <h4 class="text-xs font-bold text-blue-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-id-card"></i>
+                    <span>Kişisel Bilgiler</span>
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1.5">Ad Soyad *</label>
+                        <input type="text" name="full_name" value="{{ user.full_name }}" required
+                               class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1.5">Kullanıcı Adı *</label>
+                        <input type="text" name="username" value="{{ user.username }}" required
+                               class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono">
+                    </div>
+                </div>
+
+                {% if session.user.role in ['admin', 'patron'] %}
+                <div class="mt-4">
+                    <label class="block text-xs font-medium text-slate-300 mb-1.5">Rol / Yetki Seviyesi</label>
+                    <select name="role" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500">
+                        {% for r in roles %}
+                        <option value="{{ r.id }}" {% if user.role == r.id %}selected{% endif %}>{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-[10px] text-slate-500 mt-1">Yalnızca yönetici kendi veya atanmış rolünü buradan ayarlayabilir.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <hr class="border-slate-800">
+
+            <!-- 2. ŞİFRE DEĞİŞTİRME -->
+            <div>
+                <h4 class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-key"></i>
+                    <span>Şifre Değiştirme (İsteğe Bağlı)</span>
+                </h4>
+                <p class="text-[11px] text-slate-400 mb-4">Şifrenizi değiştirmek istemiyorsanız bu alanları boş bırakabilirsiniz.</p>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1.5">Mevcut Şifreniz</label>
+                        <input type="password" name="current_password" placeholder="Şifre değiştirmek için mevcut şifrenizi girin"
+                               class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1.5">Yeni Şifre</label>
+                            <input type="password" name="new_password" placeholder="En az 4 karakter"
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1.5">Yeni Şifre (Tekrar)</label>
+                            <input type="password" name="confirm_password" placeholder="Yeni şifreyi tekrar yazın"
+                                   class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KAYDET BUTONU -->
+            <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <a href="{{ url_for('index') }}" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-colors">
+                    İptal
+                </a>
+                <button type="submit" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Bilgileri Güncelle</span>
+                </button>
+            </div>
+
+        </form>
+    </div>
+
+</div>
+{% endblock %}

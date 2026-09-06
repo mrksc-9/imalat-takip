@@ -385,10 +385,20 @@ def init_db():
         quantity INTEGER DEFAULT 1,
         weight REAL DEFAULT 0,
         supplier TEXT,
+        approval_status TEXT DEFAULT 'Onaylandı',
+        approved_by TEXT DEFAULT 'Sistem',
+        approved_date TEXT DEFAULT '',
         notes TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    if not use_pg:
+        cursor.execute("PRAGMA table_info(material_orders_ordered)")
+        moo_cols = [c[1] for c in cursor.fetchall()]
+        if 'approval_status' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approval_status TEXT DEFAULT 'Onaylandı'")
+        if 'approved_by' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approved_by TEXT DEFAULT 'Sistem'")
+        if 'approved_date' not in moo_cols: cursor.execute("ALTER TABLE material_orders_ordered ADD COLUMN approved_date TEXT DEFAULT ''")
 
     # 9. SİPARİŞ GELEN MALZEMELER (RECEIVED)
     cursor.execute(f'''
@@ -933,4 +943,165 @@ def update_system_settings(app_title, app_subtitle, company_name=None, company_l
         ''', (app_title, app_subtitle, company_name, company_logo_url, company_website_url, row['id']))
     conn.commit()
     conn.close()
+
+def get_user_by_id(user_id):
+    """Kullanıcı bilgilerini ID ile getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, full_name, role, is_active, created_at FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_user_profile(user_id, username, full_name, new_password=None, role=None):
+    """Kullanıcının kendi profil bilgilerini veya şifresini günceller."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if new_password and str(new_password).strip():
+        pw_hash = hash_password(str(new_password).strip())
+        if role and str(role).strip():
+            cursor.execute("UPDATE users SET username = ?, full_name = ?, password_hash = ?, role = ? WHERE id = ?",
+                           (username.strip(), full_name.strip(), pw_hash, role.strip(), user_id))
+        else:
+            cursor.execute("UPDATE users SET username = ?, full_name = ?, password_hash = ? WHERE id = ?",
+                           (username.strip(), full_name.strip(), pw_hash, user_id))
+    else:
+        if role and str(role).strip():
+            cursor.execute("UPDATE users SET username = ?, full_name = ?, role = ? WHERE id = ?",
+                           (username.strip(), full_name.strip(), role.strip(), user_id))
+        else:
+            cursor.execute("UPDATE users SET username = ?, full_name = ? WHERE id = ?",
+                           (username.strip(), full_name.strip(), user_id))
+    conn.commit()
+    conn.close()
+
+def approve_material_order(order_id, user_name="Satınalma"):
+    """Malzeme sipariş talebini onaylar."""
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("UPDATE material_orders_ordered SET approval_status = 'Onaylandı', approved_by = ?, approved_date = ? WHERE id = ?",
+                   (user_name, now_str, order_id))
+    conn.commit()
+    conn.close()
+
+def reject_material_order(order_id, user_name="Satınalma"):
+    """Malzeme sipariş talebini reddeder."""
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute("UPDATE material_orders_ordered SET approval_status = 'Reddedildi', approved_by = ?, approved_date = ? WHERE id = ?",
+                   (user_name, now_str, order_id))
+    conn.commit()
+    conn.close()
+
+def get_cutting_progress_analysis(project_id=None):
+    """Projelerin Plaka ve Profil bazında kesim tamamlama oranlarını hesaplar."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    if project_id:
+        cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        projects = cursor.fetchall()
+    else:
+        cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY created_at DESC")
+        projects = cursor.fetchall()
+
+    analysis_data = []
+
+    for p in projects:
+        pid = p['id']
+        cursor.execute("SELECT * FROM parts WHERE project_id = ?", (pid,))
+        parts = cursor.fetchall()
+
+        total_parts_count = len(parts)
+        total_tonnage = 0.0
+        total_cut_tonnage = 0.0
+
+        plate_total_qty = 0
+        plate_cut_qty = 0
+        plate_total_kg = 0.0
+        plate_cut_kg = 0.0
+
+        profile_total_qty = 0
+        profile_cut_qty = 0
+        profile_total_kg = 0.0
+        profile_cut_kg = 0.0
+
+        parts_breakdown = []
+
+        for pt in parts:
+            p_type = str(pt['profile_type'] or '').strip().upper()
+            qty = pt['quantity'] or 0
+            cut_qty = pt['cut_quantity'] or 0
+            u_weight = pt['unit_weight'] or 0.0
+            tot_weight = pt['total_weight'] or (qty * u_weight)
+            cut_weight = cut_qty * u_weight
+
+            total_tonnage += tot_weight / 1000.0
+            total_cut_tonnage += cut_weight / 1000.0
+
+            # Plaka vs Profil Ayrımı
+            is_plate = any(p_type.startswith(x) for x in ['PL', 'SAC', 'FLANŞ', 'GUSE', 'BERKİTME']) or 'PL' in p_type
+
+            if is_plate:
+                category = "Plaka / Sac"
+                plate_total_qty += qty
+                plate_cut_qty += cut_qty
+                plate_total_kg += tot_weight
+                plate_cut_kg += cut_weight
+            else:
+                category = "Profil / Çelik"
+                profile_total_qty += qty
+                profile_cut_qty += cut_qty
+                profile_total_kg += tot_weight
+                profile_cut_kg += cut_weight
+
+            parts_breakdown.append({
+                'id': pt['id'],
+                'pos_no': pt['pos_no'],
+                'name': pt['name'],
+                'profile_type': pt['profile_type'],
+                'category': category,
+                'quantity': qty,
+                'cut_quantity': cut_qty,
+                'remaining_quantity': max(0, qty - cut_qty),
+                'unit_weight': u_weight,
+                'total_weight': round(tot_weight, 1),
+                'cut_weight': round(cut_weight, 1),
+                'cut_pct': round((cut_qty / qty) * 100, 1) if qty > 0 else 0.0,
+                'material_grade': pt['material_grade']
+            })
+
+        plate_pct = round((plate_cut_kg / plate_total_kg) * 100, 1) if plate_total_kg > 0 else 0.0
+        profile_pct = round((profile_cut_kg / profile_total_kg) * 100, 1) if profile_total_kg > 0 else 0.0
+        overall_pct = round((total_cut_tonnage / (total_tonnage or 0.0001)) * 100, 1) if total_tonnage > 0 else 0.0
+
+        analysis_data.append({
+            'project': dict(p),
+            'total_parts_count': total_parts_count,
+            'total_tonnage': round(total_tonnage, 2),
+            'total_cut_tonnage': round(total_cut_tonnage, 2),
+            'overall_cut_pct': min(100.0, overall_pct),
+            'plate': {
+                'total_qty': plate_total_qty,
+                'cut_qty': plate_cut_qty,
+                'remaining_qty': max(0, plate_total_qty - plate_cut_qty),
+                'total_ton': round(plate_total_kg / 1000.0, 2),
+                'cut_ton': round(plate_cut_kg / 1000.0, 2),
+                'cut_pct': min(100.0, plate_pct)
+            },
+            'profile': {
+                'total_qty': profile_total_qty,
+                'cut_qty': profile_cut_qty,
+                'remaining_qty': max(0, profile_total_qty - profile_cut_qty),
+                'total_ton': round(profile_total_kg / 1000.0, 2),
+                'cut_ton': round(profile_cut_kg / 1000.0, 2),
+                'cut_pct': min(100.0, profile_pct)
+            },
+            'parts_breakdown': parts_breakdown
+        })
+
+    conn.close()
+    return analysis_data
 

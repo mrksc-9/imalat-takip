@@ -82,22 +82,52 @@
                 </div>
             </div>
 
-            <!-- Çoklu Satır Kesim Tablosu -->
-            <div class="border border-slate-800 rounded-xl overflow-hidden">
-                <table class="w-full text-left text-xs border-collapse">
+            <!-- EXCEL TABLOSU BENZERİ İNTERAKTİF KESİM GRİDİ -->
+            <div class="bg-slate-900/60 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button" onclick="addBatchRow(1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-plus text-yellow-400"></i>
+                        <span>+1 Satır</span>
+                    </button>
+                    <button type="button" onclick="addBatchRow(5)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-layer-group text-yellow-400"></i>
+                        <span>+5 Satır</span>
+                    </button>
+                    <button type="button" onclick="openExcelPasteModal()" class="px-3.5 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 text-emerald-300 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-paste text-emerald-400"></i>
+                        <span>Excel'den Kopyala-Yapıştır</span>
+                    </button>
+                    <button type="button" onclick="clearBatchTable()" class="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-trash text-rose-400"></i>
+                        <span>Temizle</span>
+                    </button>
+                </div>
+                <div class="text-[11px] text-slate-400 flex items-center gap-3">
+                    <span>⌨️ <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-yellow-400">Enter</kbd> Alt Satıra Geç</span>
+                    <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-yellow-400">Tab</kbd> Yan Hücre</span>
+                    <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-yellow-400">Ctrl+V</kbd> Excel'den Yapıştır</span>
+                </div>
+            </div>
+
+            <!-- Çoklu Satır Excel Grid Tablosu -->
+            <div class="border border-slate-700/80 rounded-xl overflow-x-auto shadow-inner bg-slate-950">
+                <table id="excelCutTable" class="w-full text-left text-xs border-collapse font-mono">
                     <thead>
-                        <tr class="bg-slate-900 text-slate-400 font-semibold uppercase text-[10px] border-b border-slate-800">
-                            <th class="py-2.5 px-3 w-12 text-center">#</th>
-                            <th class="py-2.5 px-3 min-w-[180px]">Poz No / Marka *</th>
-                            <th class="py-2.5 px-3">Profil / Kesit</th>
-                            <th class="py-2.5 px-3 text-right">Toplam Adet</th>
-                            <th class="py-2.5 px-3 text-right text-yellow-400">Kalan Adet</th>
-                            <th class="py-2.5 px-3 w-40 text-right">Kesilen Adet * (Örn: 4*6)</th>
-                            <th class="py-2.5 px-3">Açıklama / Not</th>
-                            <th class="py-2.5 px-2 w-12 text-center">Sil</th>
+                        <tr class="bg-slate-900 text-slate-300 font-bold uppercase text-[10px] border-b border-slate-700 tracking-wider">
+                            <th class="py-2.5 px-2 w-10 text-center bg-slate-950/80 border-r border-slate-800">#</th>
+                            <th class="py-2.5 px-3 w-28 text-yellow-400 border-r border-slate-800">Prefix (Ön Ek)</th>
+                            <th class="py-2.5 px-3 min-w-[140px] text-white border-r border-slate-800">Poz No / Marka *</th>
+                            <th class="py-2.5 px-3 min-w-[120px] text-blue-300 border-r border-slate-800">Profil / Kesit</th>
+                            <th class="py-2.5 px-3 w-24 text-right text-slate-400 border-r border-slate-800">Top. Adet</th>
+                            <th class="py-2.5 px-3 w-24 text-right text-emerald-400 border-r border-slate-800">Kalan</th>
+                            <th class="py-2.5 px-3 w-36 text-right text-yellow-400 font-black border-r border-slate-800 bg-yellow-500/10">Kesilen Adet *</th>
+                            <th class="py-2.5 px-3 w-32 border-r border-slate-800">Makine</th>
+                            <th class="py-2.5 px-3 w-32 border-r border-slate-800">Operatör</th>
+                            <th class="py-2.5 px-3 min-w-[130px] border-r border-slate-800">Notlar</th>
+                            <th class="py-2.5 px-2 w-10 text-center">Sil</th>
                         </tr>
                     </thead>
-                    <tbody id="batchCutRows" class="divide-y divide-slate-800/60 text-slate-200 bg-slate-950/40">
+                    <tbody id="batchCutRows" class="divide-y divide-slate-800/80 text-slate-200">
                         <!-- Dinamik Satırlar JS ile eklenir -->
                     </tbody>
                 </table>
@@ -105,14 +135,13 @@
 
             <!-- Tablo Altı Butonlar -->
             <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <button type="button" onclick="addBatchRow()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
-                    <i class="fa-solid fa-plus text-yellow-400"></i>
-                    <span>Satır Ekle (+1)</span>
-                </button>
+                <div class="text-xs text-slate-400">
+                    Toplam <span id="totalRowCountBadge" class="font-bold text-yellow-400">0</span> satır kesim hazır.
+                </div>
 
                 {% if can_user_edit('kesim') %}
-                <button type="button" onclick="submitBatchCutting()" id="btnSubmitBatch" class="px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-yellow-500/20 flex items-center gap-2">
-                    <i class="fa-solid fa-check-double"></i>
+                <button type="button" onclick="submitBatchCutting()" id="btnSubmitBatch" class="px-7 py-3 bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-xl shadow-yellow-500/20 flex items-center gap-2 transform active:scale-95">
+                    <i class="fa-solid fa-floppy-disk text-sm"></i>
                     <span>Tüm Kesimleri Ana Listeye Kaydet</span>
                 </button>
                 {% endif %}
@@ -199,7 +228,7 @@
 
                     <div>
                         <label class="block text-slate-400 mb-1 font-semibold">Vardiya</label>
-                        <select name="shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                        <select name="shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
                             <option value="Gündüz">☀️ Gündüz</option>
                             <option value="Gece">🌙 Gece</option>
                         </select>
@@ -222,6 +251,33 @@
                 {% endif %}
             </form>
         </div>
+
+    </div>
+
+    <!-- EXCEL'DEN TOPLU YAPIŞTIRMA MODALI -->
+    <div id="excelPasteModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                    <span>Excel'den Kopyala-Yapıştır ile Kesim Doldur</span>
+                </h3>
+                <button onclick="closeModal('excelPasteModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="mt-3 space-y-3 text-xs">
+                <p class="text-slate-300">
+                    Excel'deki sütunlarınızı (örn: <b>Poz No</b> ve <b>Kesilen Adet</b> veya <b>Prefix</b>, <b>Poz No</b>, <b>Kesilen Adet</b>) kopyalayıp aşağıdaki alana yapıştırın:
+                </p>
+                <textarea id="excelPasteArea" rows="8" placeholder="Excel'den kopyaladığınız satırları buraya Ctrl+V ile yapıştırın..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-yellow-300 font-mono text-xs focus:outline-none focus:border-yellow-500"></textarea>
+                <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+                    <button type="button" onclick="closeModal('excelPasteModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl">İptal</button>
+                    <button type="button" onclick="parseAndApplyExcelPaste()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-md shadow-emerald-600/30">Tabloya Aktar</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     </div>
 
@@ -335,86 +391,217 @@
 
     let projectPartsCache = [];
     let rowCounter = 0;
+    let currentProjectPrefix = '';
 
     function onBatchProjectChanged(sel) {
         const prjId = sel.value;
+        const opt = sel.options[sel.selectedIndex];
+        currentProjectPrefix = opt ? (opt.getAttribute('data-prefix') || '') : '';
+        
         const tbody = document.getElementById('batchCutRows');
         tbody.innerHTML = '';
         rowCounter = 0;
         projectPartsCache = [];
 
-        if (!prjId) return;
+        if (!prjId) {
+            updateRowCountBadge();
+            return;
+        }
 
         fetch(`/api/kesim-takip/proje-pozlar?proje_id=${prjId}`)
         .then(res => res.json())
         .then(parts => {
             projectPartsCache = parts || [];
-            // Varsayılan olarak 3 boş satır ekle
-            for (let i = 0; i < 3; i++) {
-                addBatchRow();
-            }
+            // Varsayılan olarak 5 boş excel satırı ekle
+            addBatchRow(5);
         })
         .catch(err => console.error(err));
     }
 
-    function addBatchRow() {
-        rowCounter++;
+    function addBatchRow(count = 1) {
         const tbody = document.getElementById('batchCutRows');
-        const tr = document.createElement('tr');
-        tr.id = `batchRow_${rowCounter}`;
-        tr.className = 'hover:bg-slate-900/60 transition-colors';
+        for (let i = 0; i < count; i++) {
+            rowCounter++;
+            const tr = document.createElement('tr');
+            tr.id = `batchRow_${rowCounter}`;
+            tr.className = 'hover:bg-slate-900/80 transition-colors border-b border-slate-800/60';
 
-        let optionsHtml = '<option value="">-- Poz Seçin veya Yazın --</option>';
-        projectPartsCache.forEach(p => {
-            optionsHtml += `<option value="${p.pos_no}" data-profile="${p.profile_type || ''}" data-total="${p.quantity}" data-rem="${p.remaining_quantity}">${p.pos_no} (${p.name || ''}) - Kalan: ${p.remaining_quantity}</option>`;
-        });
+            const defaultMach = document.getElementById('batch_machine') ? document.getElementById('batch_machine').value : '';
+            const defaultOp = document.getElementById('batch_operator') ? document.getElementById('batch_operator').value : '';
 
-        tr.innerHTML = `
-            <td class="py-2 px-3 font-mono text-slate-500 text-center">${rowCounter}</td>
-            <td class="py-2 px-3">
-                <select onchange="onBatchRowPosSelected(this, ${rowCounter})" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono font-bold focus:outline-none focus:border-yellow-500">
-                    ${optionsHtml}
-                </select>
-            </td>
-            <td class="py-2 px-3">
-                <input type="text" id="b_profile_${rowCounter}" placeholder="-" class="w-full bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1.5 text-blue-300 font-mono font-bold text-xs" readonly>
-            </td>
-            <td class="py-2 px-3 text-right font-mono text-slate-300" id="b_total_${rowCounter}">-</td>
-            <td class="py-2 px-3 text-right font-mono font-bold text-yellow-400" id="b_rem_${rowCounter}">-</td>
-            <td class="py-2 px-3 text-right">
-                <input type="text" id="b_qty_${rowCounter}" placeholder="Adet / formül" value="" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-yellow-400 font-mono font-bold text-right focus:outline-none focus:border-yellow-500">
-            </td>
-            <td class="py-2 px-3">
-                <input type="text" id="b_notes_${rowCounter}" placeholder="Not (isteğe bağlı)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-yellow-500 text-xs">
-            </td>
-            <td class="py-2 px-2 text-center">
-                <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-400 hover:text-rose-300 p-1">
-                    <i class="fa-solid fa-trash-can"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
+            tr.innerHTML = `
+                <td class="py-1.5 px-2 font-mono text-slate-500 text-center bg-slate-950/60 border-r border-slate-800 text-[11px]">${rowCounter}</td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_pref_${rowCounter}" value="${currentProjectPrefix}" placeholder="Prefix" class="w-full bg-transparent border-0 px-2 py-1 text-yellow-400 font-mono font-bold text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 1)">
+                </td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_pos_${rowCounter}" list="posList_${rowCounter}" placeholder="Poz No" oninput="onBatchRowPosTyped(${rowCounter})" class="w-full bg-transparent border-0 px-2 py-1 text-white font-mono font-black text-xs uppercase focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 2)">
+                    <datalist id="posList_${rowCounter}">
+                        ${projectPartsCache.map(p => `<option value="${p.pos_no}">${p.pos_no} (${p.profile_type || ''}) - Kalan: ${p.remaining_quantity}</option>`).join('')}
+                    </datalist>
+                </td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_profile_${rowCounter}" placeholder="Profil / Sac" class="w-full bg-transparent border-0 px-2 py-1 text-blue-300 font-mono font-bold text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 3)">
+                </td>
+                <td class="py-1 px-2 text-right font-mono text-slate-400 text-xs border-r border-slate-800" id="b_total_${rowCounter}">-</td>
+                <td class="py-1 px-2 text-right font-mono font-bold text-emerald-400 text-xs border-r border-slate-800" id="b_rem_${rowCounter}">-</td>
+                <td class="py-1 px-1 border-r border-slate-800 bg-yellow-500/5">
+                    <input type="text" id="b_qty_${rowCounter}" placeholder="4*6 vb." class="w-full bg-transparent border-0 px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:bg-slate-800 focus:ring-2 focus:ring-yellow-400 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 6)">
+                </td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_mach_${rowCounter}" value="${defaultMach}" placeholder="Makine" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 7)">
+                </td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_op_${rowCounter}" value="${defaultOp}" placeholder="Operatör" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 8)">
+                </td>
+                <td class="py-1 px-1 border-r border-slate-800">
+                    <input type="text" id="b_notes_${rowCounter}" placeholder="Not" class="w-full bg-transparent border-0 px-2 py-1 text-slate-300 text-xs focus:bg-slate-800 focus:ring-1 focus:ring-yellow-500 rounded" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 9)">
+                </td>
+                <td class="py-1 px-1 text-center">
+                    <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-500 hover:text-rose-300 p-1 transition-colors">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+        updateRowCountBadge();
     }
 
     function removeBatchRow(idx) {
         const row = document.getElementById(`batchRow_${idx}`);
         if (row) row.remove();
+        updateRowCountBadge();
     }
 
-    function onBatchRowPosSelected(selectEl, idx) {
-        const opt = selectEl.options[selectEl.selectedIndex];
-        const profile = opt.getAttribute('data-profile') || '';
-        const total = opt.getAttribute('data-total') || '-';
-        const rem = opt.getAttribute('data-rem') || '-';
-
-        document.getElementById(`b_profile_${idx}`).value = profile;
-        document.getElementById(`b_total_${idx}`).innerText = total;
-        document.getElementById(`b_rem_${idx}`).innerText = rem;
-        
-        const qtyInput = document.getElementById(`b_qty_${idx}`);
-        if (!qtyInput.value && rem !== '-') {
-            qtyInput.value = rem > 0 ? rem : 1;
+    function clearBatchTable() {
+        if (confirm('Tablodaki tüm satırlar temizlensin mi?')) {
+            document.getElementById('batchCutRows').innerHTML = '';
+            rowCounter = 0;
+            addBatchRow(3);
         }
+    }
+
+    function updateRowCountBadge() {
+        const rows = document.querySelectorAll('#batchCutRows tr');
+        document.getElementById('totalRowCountBadge').innerText = rows.length;
+    }
+
+    function onBatchRowPosTyped(idx) {
+        const prefVal = document.getElementById(`b_pref_${idx}`).value.trim();
+        let posVal = document.getElementById(`b_pos_${idx}`).value.trim();
+        if (!posVal) return;
+
+        // Poz ön ekli veya ön eksiz eşleşme ara
+        let match = projectPartsCache.find(p => p.pos_no === posVal || p.pos_no === (prefVal + posVal) || (prefVal && p.pos_no.replace(prefVal, '') === posVal));
+        if (match) {
+            document.getElementById(`b_profile_${idx}`).value = match.profile_type || '';
+            document.getElementById(`b_total_${idx}`).innerText = match.quantity || '-';
+            document.getElementById(`b_rem_${idx}`).innerText = match.remaining_quantity || '-';
+            const qtyInput = document.getElementById(`b_qty_${idx}`);
+            if (!qtyInput.value) {
+                qtyInput.value = match.remaining_quantity > 0 ? match.remaining_quantity : 1;
+            }
+        }
+    }
+
+    // Excel Benzeri Klavye Yön Tuşları ve Enter Kontrolleri
+    function handleExcelGridKeys(event, rowIdx, colIdx) {
+        const colMap = [null, 'b_pref_', 'b_pos_', 'b_profile_', null, null, 'b_qty_', 'b_mach_', 'b_op_', 'b_notes_'];
+        
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            // Bir alt satıra geç veya son satırdaysa yeni satır aç
+            const nextRow = document.getElementById(`batchRow_${rowIdx + 1}`);
+            if (nextRow) {
+                const nextInput = nextRow.querySelector(`input[id^="${colMap[colIdx] || 'b_pos_'}"]`);
+                if (nextInput) nextInput.focus();
+            } else {
+                addBatchRow(1);
+                setTimeout(() => {
+                    const newRow = document.getElementById(`batchRow_${rowCounter}`);
+                    if (newRow) {
+                        const newInp = newRow.querySelector(`input[id^="${colMap[colIdx] || 'b_pos_'}"]`);
+                        if (newInp) newInp.focus();
+                    }
+                }, 50);
+            }
+        } else if (event.key === 'ArrowDown') {
+            const nextRow = document.getElementById(`batchRow_${rowIdx + 1}`);
+            if (nextRow) {
+                const inp = nextRow.querySelector(`input[id^="${colMap[colIdx] || 'b_pos_'}"]`);
+                if (inp) inp.focus();
+            }
+        } else if (event.key === 'ArrowUp' && rowIdx > 1) {
+            const prevRow = document.getElementById(`batchRow_${rowIdx - 1}`);
+            if (prevRow) {
+                const inp = prevRow.querySelector(`input[id^="${colMap[colIdx] || 'b_pos_'}"]`);
+                if (inp) inp.focus();
+            }
+        }
+    }
+
+    // Excel'den Kopyala-Yapıştır Modalı ve Ayrıştırıcı
+    function openExcelPasteModal() {
+        openModal('excelPasteModal');
+        document.getElementById('excelPasteArea').value = '';
+        setTimeout(() => document.getElementById('excelPasteArea').focus(), 100);
+    }
+
+    function parseAndApplyExcelPaste() {
+        const text = document.getElementById('excelPasteArea').value.trim();
+        if (!text) {
+            alert('Lütfen yapıştırılacak veri girin.');
+            return;
+        }
+
+        const lines = text.split(/\r?\n/);
+        const defaultMach = document.getElementById('batch_machine') ? document.getElementById('batch_machine').value : '';
+        const defaultOp = document.getElementById('batch_operator') ? document.getElementById('batch_operator').value : '';
+
+        let addedCount = 0;
+        lines.forEach(line => {
+            if (!line.trim()) return;
+            const parts = line.split('\t');
+            
+            let prefix = currentProjectPrefix;
+            let pos_no = '';
+            let qty = '1';
+            let profile = '';
+            let note = '';
+
+            if (parts.length === 1) {
+                pos_no = parts[0].trim();
+            } else if (parts.length === 2) {
+                pos_no = parts[0].trim();
+                qty = parts[1].trim();
+            } else if (parts.length === 3) {
+                prefix = parts[0].trim();
+                pos_no = parts[1].trim();
+                qty = parts[2].trim();
+            } else if (parts.length >= 4) {
+                prefix = parts[0].trim();
+                pos_no = parts[1].trim();
+                profile = parts[2].trim();
+                qty = parts[3].trim();
+                if (parts[4]) note = parts[4].trim();
+            }
+
+            if (pos_no) {
+                addBatchRow(1);
+                const curIdx = rowCounter;
+                document.getElementById(`b_pref_${curIdx}`).value = prefix;
+                document.getElementById(`b_pos_${curIdx}`).value = pos_no;
+                document.getElementById(`b_qty_${curIdx}`).value = qty;
+                if (profile) document.getElementById(`b_profile_${curIdx}`).value = profile;
+                if (note) document.getElementById(`b_notes_${curIdx}`).value = note;
+                onBatchRowPosTyped(curIdx);
+                addedCount++;
+            }
+        });
+
+        closeModal('excelPasteModal');
+        alert(`Excel'den ${addedCount} satır başarıyla tabloya aktarıldı!`);
     }
 
     function submitBatchCutting() {
@@ -433,17 +620,23 @@
         const items = [];
         const rows = document.querySelectorAll('#batchCutRows tr');
         rows.forEach(tr => {
-            const selectEl = tr.querySelector('select');
-            const pos_no = selectEl ? selectEl.value : '';
+            const prefInput = tr.querySelector('input[id^="b_pref_"]');
+            const prefix = prefInput ? prefInput.value.trim() : '';
+            const posInput = tr.querySelector('input[id^="b_pos_"]');
+            const pos_no = posInput ? posInput.value.trim() : '';
             const qtyInput = tr.querySelector('input[id^="b_qty_"]');
             const cut_quantity = qtyInput ? qtyInput.value.trim() : '';
             const profileInput = tr.querySelector('input[id^="b_profile_"]');
             const profile = profileInput ? profileInput.value.trim() : '';
+            const machInput = tr.querySelector('input[id^="b_mach_"]');
+            const rowMachine = machInput ? machInput.value.trim() : machine;
+            const opInput = tr.querySelector('input[id^="b_op_"]');
+            const rowOperator = opInput ? opInput.value.trim() : operator;
             const notesInput = tr.querySelector('input[id^="b_notes_"]');
             const notes = notesInput ? notesInput.value.trim() : '';
 
             if (pos_no && cut_quantity) {
-                items.push({ pos_no, cut_quantity, profile, notes });
+                items.push({ prefix, pos_no, cut_quantity, profile, machine: rowMachine, operator: rowOperator, notes });
             }
         });
 
@@ -477,14 +670,14 @@
             } else {
                 alert('Hata: ' + (data.message || 'Kesim kaydedilemedi.'));
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-check-double"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-sm"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
             }
         })
         .catch(err => {
             console.error(err);
             alert('Bir bağlantı hatası oluştu.');
             btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-check-double"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+            btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-sm"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
         });
     }
 

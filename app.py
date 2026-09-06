@@ -19,6 +19,9 @@ from database import (
     get_machines, add_machine, delete_machine,
     get_all_role_permissions, update_role_permission,
     can_user_edit, get_next_dispatch_no,
+    get_user_by_id, update_user_profile,
+    approve_material_order, reject_material_order,
+    get_cutting_progress_analysis,
     ROLES_LIST, MODULES_LIST
 )
 from excel_handler import (
@@ -643,6 +646,7 @@ def siparis_takip():
     projects = [dict(r) for r in cursor.fetchall()]
 
     selected_project_id = request.args.get('proje_id', '')
+    active_tab = request.args.get('tab', 'onaylanan') # 'talepler' or 'onaylanan'
     
     # Sipariş Verilen ve Gelenleri al
     query_ver = "SELECT * FROM material_orders_ordered WHERE 1=1"
@@ -658,14 +662,19 @@ def siparis_takip():
     query_gel += " ORDER BY id DESC"
     
     cursor.execute(query_ver, params)
-    ordered_items = [dict(r) for r in cursor.fetchall()]
+    all_ordered_items = [dict(r) for r in cursor.fetchall()]
     
     cursor.execute(query_gel, params)
     received_items = [dict(r) for r in cursor.fetchall()]
 
-    # Kalan Malzeme Özeti Hesapla
+    # Ayrıştır: Satınalma Onay Bekleyen Talepler vs Onaylanmış Kesin Siparişler
+    pending_requests = [o for o in all_ordered_items if o.get('approval_status') == 'Onay Bekliyor']
+    approved_orders = [o for o in all_ordered_items if o.get('approval_status') != 'Onay Bekliyor' and o.get('approval_status') != 'Reddedildi']
+    rejected_requests = [o for o in all_ordered_items if o.get('approval_status') == 'Reddedildi']
+
+    # Kalan Malzeme Özeti YALNIZCA Onaylanmış Siparişler üzerinden Hesaplanır
     ordered_map = {}
-    for o in ordered_items:
+    for o in approved_orders:
         key = (o['material'].upper().strip(), o['thickness'], o['width'], o['length'])
         if key not in ordered_map:
             ordered_map[key] = {'material': o['material'], 'thickness': o['thickness'], 'width': o['width'], 'length': o['length'], 'ordered_qty': 0, 'ordered_weight': 0.0, 'received_qty': 0, 'received_weight': 0.0}
@@ -705,89 +714,28 @@ def siparis_takip():
             'remaining_weight': round(kalan_w, 2)
         })
 
+    tot_pending_w = sum(p['weight'] for p in pending_requests)
+
     conn.close()
     return render_template('siparis_takip.html',
                            projects=projects,
                            selected_project_id=selected_project_id,
-                           ordered_items=ordered_items,
+                           active_tab=active_tab,
+                           pending_requests=pending_requests,
+                           approved_orders=approved_orders,
+                           rejected_requests=rejected_requests,
+                           ordered_items=approved_orders,
                            received_items=received_items,
                            remaining_items=remaining_items,
+                           tot_pending_ton=round(tot_pending_w / 1000.0, 2),
                            tot_ordered_ton=round(tot_ordered_w / 1000.0, 2),
                            tot_received_ton=round(tot_received_w / 1000.0, 2),
                            tot_remaining_ton=round(tot_remaining_w / 1000.0, 2))
 
-@app.route('/api/siparis-takip/hesapla-agirlik', methods=['POST'])
-def api_hesapla_profil_agirlik():
-    """Girilen profil cinsi, et kalınlığı, en, boy ve adede göre otomatik ağırlık hesaplar."""
-    data = request.get_json() or {}
-    m_raw = str(data.get('material', '')).strip().upper()
-    kal = clean_float(data.get('thickness', 0))
-    en = clean_float(data.get('width', 0))
-    boy = clean_float(data.get('length', 0))
-    adet = clean_int(data.get('quantity', 1))
-    if adet <= 0: adet = 1
-
-    agirlik = 0.0
-    birim_agirlik = 0.0
-
-    is_sac = "SAC" in m_raw or "PL" in m_raw or "PLAKA" in m_raw
-    is_structural = any(p in m_raw for p in ["UNP", "HEA", "HEB", "IPE", "NPU", "NPI", "INP"])
-
-    rect_match = re.search(r'RHS(\d+)[Xx](\d+)', m_raw)
-    sq_match = re.search(r'(?:SHS|RHS)(\d+)', m_raw)
-    pipe_match = re.search(r'[ØD](\d+[\.,]?\d*)', m_raw)
-    angle_match = re.search(r'\bL(\d+)(?:[Xx](\d+))?(?:[Xx](\d+))?', m_raw)
-    struct_match = re.search(r'(?:UNP|HEA|HEB|IPE|NPU|INP|NPI)\s*(\d+)', m_raw)
-
-    if rect_match:
-        a = float(rect_match.group(1)); b = float(rect_match.group(2))
-        t = kal if kal > 0 else 4.0
-        r_dis = 2.0 * t; r_ic = max(0.0, r_dis - t)
-        net_alan = max(0.0, (2.0 * t * (a + b - 2.0 * t)) - ((4.0 - math.pi) * (r_dis**2 - r_ic**2)))
-        birim_agirlik = net_alan * 0.00785
-    elif sq_match and not rect_match:
-        a = float(sq_match.group(1))
-        t = kal if kal > 0 else 4.0
-        r_dis = 2.0 * t; r_ic = max(0.0, r_dis - t)
-        net_alan = max(0.0, (2.0 * t * (2.0 * a - 2.0 * t)) - ((4.0 - math.pi) * (r_dis**2 - r_ic**2)))
-        birim_agirlik = net_alan * 0.00785
-    elif pipe_match or "BORU" in m_raw:
-        d_val = float(pipe_match.group(1).replace(',', '.')) if pipe_match else 33.7
-        t = kal if kal > 0 else 3.2
-        birim_agirlik = math.pi * (d_val - t) * t * 0.00785
-    elif angle_match or "KÖŞEBENT" in m_raw or m_raw.startswith('L'):
-        a_val = float(angle_match.group(1)) if angle_match else 50.0
-        t = kal if kal > 0 else (float(angle_match.group(2)) if angle_match and angle_match.group(2) else 5.0)
-        birim_agirlik = (2.0 * a_val - t) * t * 0.00785
-    elif struct_match or is_structural:
-        size_val = int(struct_match.group(1)) if struct_match else 100
-        if "UNP" in m_raw or "NPU" in m_raw:
-            unp_w = {80: 8.64, 100: 10.6, 120: 13.4, 140: 16.0, 160: 18.8, 180: 22.0, 200: 25.3, 220: 29.4, 240: 33.2, 260: 37.9, 300: 46.2}
-            birim_agirlik = unp_w.get(size_val, size_val * 0.13)
-        elif "HEA" in m_raw:
-            hea_w = {100: 16.7, 120: 19.9, 140: 24.7, 160: 30.4, 180: 35.5, 200: 42.3, 220: 50.5, 240: 60.3, 260: 68.2, 300: 88.3, 360: 112, 400: 125}
-            birim_agirlik = hea_w.get(size_val, size_val * 0.22)
-        elif "HEB" in m_raw:
-            heb_w = {100: 20.4, 120: 26.7, 140: 33.7, 160: 42.6, 180: 51.2, 200: 61.3, 220: 71.5, 240: 83.2, 260: 93.0, 300: 117, 360: 142, 400: 155}
-            birim_agirlik = heb_w.get(size_val, size_val * 0.28)
-        elif "IPE" in m_raw or "INP" in m_raw or "NPI" in m_raw:
-            ipe_w = {80: 6.0, 100: 8.1, 120: 10.4, 140: 12.9, 160: 15.8, 180: 18.8, 200: 22.4, 220: 26.2, 240: 30.7, 270: 36.1, 300: 42.2, 360: 57.1, 400: 66.3}
-            birim_agirlik = ipe_w.get(size_val, size_val * 0.15)
-    elif is_sac:
-        if kal > 0 and en > 0 and boy > 0:
-            agirlik = (kal * en * boy * 7.85 / 1000000.0) * adet
-
-    if agirlik == 0.0 and birim_agirlik > 0 and boy > 0:
-        agirlik = birim_agirlik * (boy / 1000.0) * adet
-
-    return jsonify({
-        'status': 'success',
-        'unit_weight_per_m': round(birim_agirlik, 3),
-        'total_weight': round(agirlik, 2)
-    })
-
+@app.route('/api/siparis-takip/talep-ekle', methods=['POST'])
 @app.route('/api/siparis-takip/verilen-ekle', methods=['POST'])
 def api_siparis_verilen_ekle():
+    """Yeni malzeme sipariş talebi oluşturur (Satınalma onayı için havuza gönderilir)."""
     project_id = request.form.get('project_id') or None
     material = request.form.get('material', '').strip().upper()
     thickness = clean_float(request.form.get('thickness', 0))
@@ -797,6 +745,14 @@ def api_siparis_verilen_ekle():
     weight = clean_float(request.form.get('weight', 0))
     supplier = request.form.get('supplier', '').strip()
     notes = request.form.get('notes', '').strip()
+    
+    # Kullanıcı rolüne göre doğrudan onaylı mı yoksa onay bekliyor mu?
+    u = session.get('user', {})
+    user_role = u.get('role', '')
+    is_auto_approved = user_role in ('admin', 'patron', 'satınalma')
+    approval_status = 'Onaylandı' if is_auto_approved else 'Onay Bekliyor'
+    approved_by = u.get('full_name', 'Yetkili') if is_auto_approved else ''
+    approved_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if is_auto_approved else ''
 
     conn = get_db()
     cursor = conn.cursor()
@@ -807,14 +763,36 @@ def api_siparis_verilen_ekle():
         if r: p_code = r['code']
 
     cursor.execute('''
-    INSERT INTO material_orders_ordered (project_id, project_code, material, thickness, width, length, quantity, weight, supplier, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (project_id, p_code, material, thickness, width, length, quantity, weight, supplier, notes))
+    INSERT INTO material_orders_ordered (project_id, project_code, material, thickness, width, length, quantity, weight, supplier, approval_status, approved_by, approved_date, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (project_id, p_code, material, thickness, width, length, quantity, weight, supplier, approval_status, approved_by, approved_date, notes))
     conn.commit()
     conn.close()
 
-    flash("Sipariş verilen malzeme listeye eklendi.", "success")
-    return redirect(url_for('siparis_takip', proje_id=project_id or ''))
+    if is_auto_approved:
+        flash(f"'{material}' siparişi onaylı olarak kaydedildi.", "success")
+    else:
+        flash(f"'{material}' malzeme sipariş talebi oluşturuldu, Satınalma onayına gönderildi.", "info")
+
+    return redirect(url_for('siparis_takip', proje_id=project_id or '', tab='talepler' if not is_auto_approved else 'onaylanan'))
+
+@app.route('/api/siparis-takip/<int:order_id>/onayla', methods=['POST'])
+def api_siparis_talep_onayla(order_id):
+    """Satınalma / Yönetici malzeme sipariş talebini onaylar."""
+    u = session.get('user', {})
+    approver_name = u.get('full_name', 'Satınalma Yetkilisi')
+    approve_material_order(order_id, approver_name)
+    flash("Malzeme sipariş talebi ONAYLANDI ve onaylanan siparişler havuzuna aktarıldı.", "success")
+    return redirect(request.referrer or url_for('siparis_takip', tab='onaylanan'))
+
+@app.route('/api/siparis-takip/<int:order_id>/reddet', methods=['POST'])
+def api_siparis_talep_reddet(order_id):
+    """Satınalma / Yönetici malzeme sipariş talebini reddeder."""
+    u = session.get('user', {})
+    approver_name = u.get('full_name', 'Satınalma Yetkilisi')
+    reject_material_order(order_id, approver_name)
+    flash("Malzeme sipariş talebi REDDEDİLDİ.", "warning")
+    return redirect(request.referrer or url_for('siparis_takip', tab='talepler'))
 
 @app.route('/api/siparis-takip/verilen-guncelle', methods=['POST'])
 def api_siparis_verilen_guncelle():
@@ -1193,9 +1171,17 @@ def api_kesim_toplu_kaydet():
     saved_count = 0
 
     for it in items:
-        pos_no = str(it.get('pos_no', '')).strip()
+        prefix = str(it.get('prefix', '')).strip()
+        raw_pos = str(it.get('pos_no', '')).strip()
+        if prefix and not raw_pos.startswith(prefix):
+            pos_no = prefix + raw_pos
+        else:
+            pos_no = raw_pos
+
         cut_quantity = eval_math(it.get('cut_quantity', 0))
         profile = str(it.get('profile', '')).strip()
+        row_machine = str(it.get('machine', '')).strip() or machine
+        row_operator = str(it.get('operator', '')).strip() or operator
         notes = str(it.get('notes', '')).strip()
 
         if not pos_no or cut_quantity <= 0:
@@ -2062,15 +2048,195 @@ def api_ayarlar_guncelle():
     flash("Firma bilgileri ve sistem ayarları güncellendi.", "success")
     return redirect(url_for('raporlar'))
 
-@app.route('/api/excel-sablon')
-def api_excel_sablon():
-    excel_stream = generate_template_excel()
-    return send_file(
-        excel_stream,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        as_attachment=True,
-        download_name='Tekla_Imalat_Sablonu.xlsx'
-    )
+# =========================================================================
+# 13. KESİM ANALİZİ (PLAKA & PROFİL KESİM İLERLEME TAKİBİ)
+# =========================================================================
+@app.route('/kesim-analiz')
+def kesim_analiz():
+    """Hangi işten plakadan yüzde kaç, profilden yüzde kaç kesildiğini gösteren analiz sayfası."""
+    selected_project_id = request.args.get('proje_id', '')
+    p_id = int(selected_project_id) if selected_project_id and selected_project_id.isdigit() else None
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    analysis_list = get_cutting_progress_analysis(project_id=p_id)
+
+    return render_template('kesim_analiz.html',
+                           projects=projects,
+                           selected_project_id=selected_project_id,
+                           analysis_list=analysis_list)
+
+
+# =========================================================================
+# 14. İMALAT PLANI TAKVİM ETKİNLİKLERİ API (CALENDAR JSON)
+# =========================================================================
+@app.route('/api/imalat-plan/takvim-etkinlikleri')
+def api_imalat_plan_takvim_etkinlikleri():
+    """Takvim bileşeni için projelerin aşama tarihlerini FullCalendar uyumlu JSON olarak döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv'")
+    projects = cursor.fetchall()
+    conn.close()
+
+    events = []
+    for p in projects:
+        p_code = p['code']
+        p_name = p['name']
+        color = p['color'] or '#3b82f6'
+
+        # 1. Başlangıç / Kesim Başlama
+        if p['cutting_start_date']:
+            events.append({
+                'id': f"cut_{p['id']}",
+                'title': f"⚡ [{p_code}] Kesim Başlama",
+                'start': p['cutting_start_date'],
+                'color': '#eab308',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Kesim Başlama', 'project_name': p_name}
+            })
+
+        # 2. Çatım Başlama
+        if p['fitup_start_date']:
+            events.append({
+                'id': f"fitup_s_{p['id']}",
+                'title': f"🔨 [{p_code}] Çatım Başlama",
+                'start': p['fitup_start_date'],
+                'color': '#f97316',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Çatım Başlama', 'project_name': p_name}
+            })
+
+        # 3. Çatım Bitiş
+        if p['fitup_end_date']:
+            events.append({
+                'id': f"fitup_e_{p['id']}",
+                'title': f"📐 [{p_code}] Çatım Bitiş",
+                'start': p['fitup_end_date'],
+                'color': '#fb923c',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Çatım Bitiş', 'project_name': p_name}
+            })
+
+        # 4. Kaynak & Temizlik Bitiş
+        w_date = p['welding_cleaning_end_date'] or p['welding_end_date']
+        if w_date:
+            events.append({
+                'id': f"weld_{p['id']}",
+                'title': f"🔥 [{p_code}] Kaynak & Temizlik Bitiş",
+                'start': w_date,
+                'color': '#ec4899',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Kaynak & Temizlik Bitiş', 'project_name': p_name}
+            })
+
+        # 5. Boya Bitiş
+        if p['paint_end_date']:
+            events.append({
+                'id': f"paint_{p['id']}",
+                'title': f"🎨 [{p_code}] Boya Bitiş",
+                'start': p['paint_end_date'],
+                'color': '#8b5cf6',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Boya Bitiş', 'project_name': p_name}
+            })
+
+        # 6. Teslimat / Sevkiyat Tarihi
+        if p['delivery_date']:
+            events.append({
+                'id': f"deliv_{p['id']}",
+                'title': f"🚚 [{p_code}] Teslimat / Montaj",
+                'start': p['delivery_date'],
+                'color': '#10b981',
+                'extendedProps': {'project_id': p['id'], 'stage': 'Teslimat Tarihi', 'project_name': p_name}
+            })
+
+    return jsonify(events)
+
+
+# =========================================================================
+# 15. CANLI DENETİM & AUDIT LOG GÖRÜNTÜLEME
+# =========================================================================
+@app.route('/canli-denetim')
+def canli_denetim():
+    """Tüm kullanıcıların yaptığı işlemlerin anlık denetim günlüğü."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM activity_logs ORDER BY id DESC LIMIT 200")
+    logs = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return render_template('canli_denetim.html', logs=logs)
+
+
+# =========================================================================
+# 16. KULLANICI / YÖNETİCİ PROFİL VE ŞİFRE DÜZENLEME
+# =========================================================================
+@app.route('/profil', methods=['GET', 'POST'])
+def profil():
+    """Giriş yapmış kullanıcının kendi profil bilgilerini ve şifresini güncelleme sayfası."""
+    cur_u = session.get('user', {})
+    user_id = cur_u.get('id')
+    if not user_id:
+        return redirect(url_for('login'))
+
+    user_data = get_user_by_id(user_id)
+    if not user_data:
+        flash("Kullanıcı bilgisi bulunamadı.", "danger")
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        full_name = request.form.get('full_name', '').strip()
+        username = request.form.get('username', '').strip()
+        current_password = request.form.get('current_password', '').strip()
+        new_password = request.form.get('new_password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        role = request.form.get('role', '').strip() if cur_u.get('role') in ('admin', 'patron') else None
+
+        if not username or not full_name:
+            flash("Kullanıcı adı ve Ad Soyad alanları boş bırakılamaz.", "danger")
+            return redirect(url_for('profil'))
+
+        # Şifre değiştirilmek isteniyorsa kontrol et
+        if new_password:
+            if new_password != confirm_password:
+                flash("Yeni şifreler birbiriyle eşleşmiyor!", "danger")
+                return redirect(url_for('profil'))
+            
+            # Mevcut şifre kontrolü
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+            row = cursor.fetchone()
+            conn.close()
+            
+            if row and row['password_hash'] != hash_password(current_password):
+                flash("Mevcut şifrenizi hatalı girdiniz!", "danger")
+                return redirect(url_for('profil'))
+            
+            update_user_profile(user_id, username, full_name, new_password=new_password, role=role)
+            flash("Profiliniz ve şifreniz başarıyla güncellendi.", "success")
+        else:
+            update_user_profile(user_id, username, full_name, new_password=None, role=role)
+            flash("Profil bilgileriniz başarıyla güncellendi.", "success")
+
+        # Session'ı güncelle
+        session['user']['full_name'] = full_name
+        session['user']['username'] = username
+        if role:
+            session['user']['role'] = role
+
+        log_activity(
+            action="Profil Güncellendi",
+            entity_type="users",
+            entity_id=user_id,
+            details=f"{username} kullanıcısı kendi profil bilgilerini güncelledi.",
+            username=username,
+            user_id=user_id,
+            ip_address=request.remote_addr
+        )
+
+        return redirect(url_for('profil'))
+
+    return render_template('profil.html', user=user_data, roles=ROLES_LIST)
 
 
 
