@@ -499,7 +499,11 @@ def get_global_metrics():
         COALESCE(SUM((unit_weight * cut_quantity)), 0) / 1000.0 as total_cut_tonnage
     FROM parts
     ''')
-    parts_stats = dict(cursor.fetchone())
+    parts_row = cursor.fetchone()
+    parts_stats = dict(parts_row) if parts_row else {
+        'total_parts_count': 0, 'total_parts_qty': 0, 'total_parts_cut_qty': 0,
+        'total_parts_tonnage': 0.0, 'total_cut_tonnage': 0.0
+    }
 
     # 3. Assembly (Montaj Elemanları) İlerleme Tonajları
     cursor.execute('''
@@ -526,7 +530,13 @@ def get_global_metrics():
         COALESCE(SUM((unit_weight * shipped_qty)), 0) / 1000.0 as shipped_tonnage
     FROM assemblies
     ''')
-    ass_stats = dict(cursor.fetchone())
+    ass_row = cursor.fetchone()
+    ass_stats = dict(ass_row) if ass_row else {
+        'total_assemblies_count': 0, 'total_assemblies_qty': 0, 'total_assembly_tonnage': 0.0,
+        'fitup_tonnage': 0.0, 'welding_tonnage': 0.0, 'cleaning_tonnage': 0.0, 'fab_completed_tonnage': 0.0,
+        'qa_pending_tonnage': 0.0, 'qa_approved_tonnage': 0.0, 'paint_in_progress_tonnage': 0.0,
+        'paint_completed_tonnage': 0.0, 'shipped_tonnage': 0.0
+    }
 
     # 4. Malzeme Sipariş Tonajları
     cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_ordered_tonnage FROM material_orders_ordered")
@@ -602,7 +612,11 @@ def get_project_summary(project_id):
     FROM parts
     WHERE project_id = ?
     ''', (project_id,))
-    p_stats = dict(cursor.fetchone())
+    p_row = cursor.fetchone()
+    p_stats = dict(p_row) if p_row else {
+        'total_parts_count': 0, 'total_parts_qty': 0, 'total_parts_cut_qty': 0,
+        'total_parts_tonnage': 0.0, 'total_cut_tonnage': 0.0
+    }
 
     # Assembly İstatistiği
     cursor.execute('''
@@ -627,7 +641,13 @@ def get_project_summary(project_id):
     FROM assemblies
     WHERE project_id = ?
     ''', (project_id,))
-    a_stats = dict(cursor.fetchone())
+    a_row = cursor.fetchone()
+    a_stats = dict(a_row) if a_row else {
+        'total_assemblies_count': 0, 'total_assemblies_qty': 0, 'total_assembly_tonnage': 0.0,
+        'fitup_tonnage': 0.0, 'welding_tonnage': 0.0, 'cleaning_tonnage': 0.0, 'fab_completed_tonnage': 0.0,
+        'qa_pending_tonnage': 0.0, 'qa_approved_tonnage': 0.0, 'qa_rejected_tonnage': 0.0,
+        'paint_in_progress_tonnage': 0.0, 'paint_completed_tonnage': 0.0, 'shipped_tonnage': 0.0
+    }
 
     # Malzeme Sipariş İstatistiği
     cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 FROM material_orders_ordered WHERE project_id = ?", (project_id,))

@@ -2,6 +2,7 @@ import os
 import re
 import math
 import socket
+import traceback
 from datetime import datetime, timedelta
 import calendar
 from functools import wraps
@@ -21,8 +22,29 @@ from excel_handler import (
 )
 from seed_data import seed_demo_data
 
-app = Flask(__name__)
-app.secret_key = 'celik_imalat_takip_gizli_anahtar_2026_super_secure'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, 'templates'),
+    static_folder=os.path.join(BASE_DIR, 'static')
+)
+app.secret_key = os.environ.get('SECRET_KEY', 'celik_imalat_takip_gizli_anahtar_2026_super_secure')
+
+@app.errorhandler(500)
+def internal_error(error):
+    err_trace = traceback.format_exc()
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><title>500 Sunucu Hatası Detayı</title></head>
+    <body style="font-family: monospace; background: #0f172a; color: #f87171; padding: 25px; line-height: 1.5;">
+        <h2 style="color: #ef4444;">⚠️ 500 Dahili Sunucu Hatası Detayı:</h2>
+        <pre style="background: #1e293b; padding: 15px; border-radius: 8px; color: #e2e8f0; overflow-x: auto; white-space: pre-wrap;">{err_trace}</pre>
+    </body>
+    </html>
+    """, 500
+
 
 # Otomatik IP Tespiti
 def get_local_ip():
