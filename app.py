@@ -110,8 +110,11 @@ def login_required(f):
 
 # Veritabanını başlat
 with app.app_context():
-    init_db()
-    seed_demo_data()
+    try:
+        init_db()
+        seed_demo_data()
+    except Exception as e:
+        print(f"Veritabanı başlatma uyarısı: {e}")
 
 
 # =========================================================================
