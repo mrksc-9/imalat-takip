@@ -47,7 +47,9 @@
                         <th class="py-2.5 px-2 text-center text-yellow-400 font-bold">3. Temizlikte</th>
                         <th class="py-2.5 px-2 text-center text-emerald-400 font-bold">İmalatı Biten</th>
                         <th class="py-2.5 px-2 text-center text-teal-400 font-bold">Kalite Durumu</th>
+                        {% if can_user_edit('imalat_takip') %}
                         <th class="py-2.5 px-3 text-right">İşlemler</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/60 text-slate-200">
@@ -80,6 +82,7 @@
                         </td>
 
                         <!-- Butonlar -->
+                        {% if can_user_edit('imalat_takip') %}
                         <td class="py-2.5 px-3 text-right">
                             <div class="flex items-center justify-end gap-1.5">
                                 <button onclick="openStageUpdateModal('{{ a.id }}', '{{ a.assembly_pos }}', {{ a.quantity }}, {{ a.fab_fitup_qty }}, {{ a.fab_welding_qty }}, {{ a.fab_cleaning_qty }}, {{ a.fab_done_qty }})"
@@ -94,6 +97,7 @@
                                 </button>
                             </div>
                         </td>
+                        {% endif %}
                     </tr>
                     {% else %}
                     <tr><td colspan="11" class="py-8 text-center text-slate-500">İmalat listesi boş.</td></tr>
@@ -178,8 +182,17 @@
             </div>
 
             <div>
-                <label class="block text-slate-400 mb-1 font-semibold">İmalatçı Notu / Açıklama</label>
-                <textarea name="comments" rows="3" placeholder="Örn: Aks 1 kolonları kaynağı ve taşlaması tamamlandı, boyutsal muayene için hazır." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none"></textarea>
+                <label class="block text-slate-400 mb-1 font-semibold">İmalat Tezgahı / İstasyonu *</label>
+                <input type="text" name="workstation" list="workstationsList" required placeholder="Örn: Tezgah 1 (Kaynak Masası A), İstasyon 2" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-teal-500 font-medium">
+                <datalist id="workstationsList">
+                    <option value="Tezgah 1 (Çatım)">
+                    <option value="Tezgah 2 (Kaynak Masası A)">
+                    <option value="Tezgah 3 (Kaynak Masası B)">
+                    <option value="Tezgah 4 (Taşlama & Temizlik)">
+                    <option value="İstasyon 1">
+                    <option value="İstasyon 2">
+                    <option value="İstasyon 3">
+                </datalist>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
@@ -212,3 +225,4 @@
     }
 </script>
 {% endblock %}
+

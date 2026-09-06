@@ -14,11 +14,17 @@ from flask import (
 
 from database import (
     get_db, init_db, log_activity, hash_password,
-    get_global_metrics, get_project_summary
+    get_global_metrics, get_project_summary,
+    get_system_settings, update_system_settings,
+    get_machines, add_machine, delete_machine,
+    get_all_role_permissions, update_role_permission,
+    can_user_edit, get_next_dispatch_no,
+    ROLES_LIST, MODULES_LIST
 )
 from excel_handler import (
     parse_tekla_excel, parse_excel_parts, generate_template_excel,
-    export_material_rfq_excel, export_project_report_excel, export_shipment_excel
+    export_material_rfq_excel, export_project_report_excel, export_shipment_excel,
+    parse_assemblies_file, parse_assembly_parts_file, parse_parts_file, parse_clipboard_table
 )
 from seed_data import seed_demo_data
 
@@ -115,7 +121,7 @@ def jinja_fmt_num(val, decimals=2):
 @app.template_filter('format_date')
 def jinja_fmt_date(val_str):
     if not val_str: return "-"
-    for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d.%m.%Y'):
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d.%m.%Y %H:%M:%S', '%d.%m.%Y'):
         try:
             dt = datetime.strptime(str(val_str).split('.')[0], fmt)
             return dt.strftime('%d.%m.%Y')
@@ -123,30 +129,41 @@ def jinja_fmt_date(val_str):
             pass
     return str(val_str)
 
+@app.template_filter('format_datetime')
+def jinja_fmt_datetime(val_str):
+    if not val_str: return "-"
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%d.%m.%Y %H:%M:%S', '%d.%m.%Y'):
+        try:
+            dt = datetime.strptime(str(val_str).split('.')[0], fmt)
+            return dt.strftime('%d.%m.%Y %H:%M:%S')
+        except:
+            pass
+    return str(val_str)
+
 @app.context_processor
 def inject_global_vars():
     user = session.get('user')
+    user_role = user.get('role', 'izleyici') if user else 'izleyici'
+    settings = get_system_settings()
+
+    def user_can_edit(module_name):
+        if not user:
+            return False
+        return can_user_edit(user.get('role'), module_name)
+
     return {
         'local_ip': get_local_ip(),
         'current_user': user,
+        'user_role': user_role,
+        'system_settings': settings,
+        'can_user_edit': user_can_edit,
         'now': datetime.now()
     }
-
-# Oturum Kontrol Dekoratörü
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            # Oturum yoksa otomatik izleyici veya login yönlendirmesi
-            # Kullanıcı deneyimini kesmemek için varsayılan misafir kullanıcı atanabilir veya login'e yönlendirilir
-            pass
-        return f(*args, **kwargs)
-    return decorated_function
 
 _db_initialized = False
 
 @app.before_request
-def ensure_db_ready():
+def ensure_db_and_auth():
     global _db_initialized
     if not _db_initialized:
         try:
@@ -155,6 +172,13 @@ def ensure_db_ready():
             _db_initialized = True
         except Exception as e:
             print(f"Veritabani hazirlama uyarisi: {e}")
+
+    # Item 19: Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir
+    if request.endpoint in ('login', 'static') or (request.path and request.path.startswith('/static/')):
+        return
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
 
 # Baslangicta da calistir
 with app.app_context():
@@ -354,6 +378,158 @@ def api_proje_ekle():
         flash(f"Proje eklenirken hata: {str(e)}", "danger")
         return redirect(url_for('projeler'))
 
+@app.route('/api/projeler/<int:project_id>/assembly-yukle', methods=['POST'])
+def api_assembly_yukle(project_id):
+    """Montaj Listesi (Assemblies) için Excel veya Kopyala-Yapıştır Tablo içe aktarma."""
+    pasted_text = request.form.get('pasted_text', '').strip()
+    excel_file = request.files.get('excel_file')
+    
+    assemblies = []
+    try:
+        if pasted_text:
+            assemblies = parse_clipboard_table(pasted_text, 'assemblies')
+        elif excel_file and excel_file.filename != '':
+            assemblies = parse_assemblies_file(excel_file.stream)
+        else:
+            flash("Lütfen bir Excel dosyası seçin veya tabloyu yapıştırın.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        if not assemblies:
+            flash("Okunabilir montaj verisi bulunamadı.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        conn = get_db()
+        cursor = conn.cursor()
+        for a in assemblies:
+            cursor.execute('''
+            INSERT INTO assemblies (project_id, assembly_pos, description, profile_type, quantity, unit_weight, total_weight, material_grade)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(project_id, assembly_pos) DO UPDATE SET
+                description = excluded.description,
+                profile_type = excluded.profile_type,
+                quantity = excluded.quantity,
+                unit_weight = excluded.unit_weight,
+                total_weight = excluded.total_weight,
+                material_grade = excluded.material_grade
+            ''', (project_id, a['assembly_pos'], a.get('description', 'İmalat Elemanı'), a.get('profile_type', '-'), a.get('quantity', 1), a.get('unit_weight', 0.0), a.get('total_weight', 0.0), a.get('material_grade', 'S275JR')))
+        conn.commit()
+        conn.close()
+
+        u = session.get('user', {})
+        log_activity(
+            action="Montaj Listesi Yüklendi",
+            entity_type="assemblies",
+            entity_id=project_id,
+            details=f"{len(assemblies)} adet montaj markası sisteme aktarıldı.",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+
+        flash(f"Başarılı! {len(assemblies)} montaj markası başarıyla yüklendi/güncellendi.", "success")
+    except Exception as e:
+        flash(f"Montaj listesi aktarılırken hata: {str(e)}", "danger")
+
+    return redirect(url_for('proje_detay', project_id=project_id))
+
+@app.route('/api/projeler/<int:project_id>/assembly-parts-yukle', methods=['POST'])
+def api_assembly_parts_yukle(project_id):
+    """Montaj Parça Listesi (Assembly Parts) için Excel veya Kopyala-Yapıştır Tablo içe aktarma."""
+    pasted_text = request.form.get('pasted_text', '').strip()
+    excel_file = request.files.get('excel_file')
+    
+    assembly_parts = []
+    try:
+        if pasted_text:
+            assembly_parts = parse_clipboard_table(pasted_text, 'assembly_parts')
+        elif excel_file and excel_file.filename != '':
+            assembly_parts = parse_assembly_parts_file(excel_file.stream)
+        else:
+            flash("Lütfen bir Excel dosyası seçin veya tabloyu yapıştırın.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        if not assembly_parts:
+            flash("Okunabilir montaj parça verisi bulunamadı.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        conn = get_db()
+        cursor = conn.cursor()
+        for ap in assembly_parts:
+            cursor.execute("SELECT id FROM assemblies WHERE project_id = ? AND assembly_pos = ?", (project_id, ap['assembly_pos']))
+            ass_row = cursor.fetchone()
+            ass_id = ass_row['id'] if ass_row else None
+
+            cursor.execute('''
+            INSERT INTO assembly_parts (project_id, assembly_id, assembly_pos, part_pos, description, profile_type, quantity_per_assembly, total_quantity, length, unit_weight, total_weight, material_grade)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (project_id, ass_id, ap['assembly_pos'], ap['part_pos'], ap.get('description', ''), ap.get('profile_type', '-'), ap.get('quantity_per_assembly', 1), ap.get('total_quantity', 1), ap.get('length', 0.0), ap.get('unit_weight', 0.0), ap.get('total_weight', 0.0), ap.get('material_grade', 'S275JR')))
+        conn.commit()
+        conn.close()
+
+        u = session.get('user', {})
+        log_activity(
+            action="Montaj Parça Listesi Yüklendi",
+            entity_type="assembly_parts",
+            entity_id=project_id,
+            details=f"{len(assembly_parts)} adet montaj parçası aktarıldı.",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+
+        flash(f"Başarılı! {len(assembly_parts)} montaj parça kaydı sisteme aktarıldı.", "success")
+    except Exception as e:
+        flash(f"Montaj parçaları aktarılırken hata: {str(e)}", "danger")
+
+    return redirect(url_for('proje_detay', project_id=project_id))
+
+@app.route('/api/projeler/<int:project_id>/parts-yukle', methods=['POST'])
+def api_parts_yukle(project_id):
+    """Tek Parça / Poz Listesi (Parts) için Excel veya Kopyala-Yapıştır Tablo içe aktarma."""
+    pasted_text = request.form.get('pasted_text', '').strip()
+    excel_file = request.files.get('excel_file')
+    
+    parts = []
+    try:
+        if pasted_text:
+            parts = parse_clipboard_table(pasted_text, 'parts')
+        elif excel_file and excel_file.filename != '':
+            parts = parse_parts_file(excel_file.stream)
+        else:
+            flash("Lütfen bir Excel dosyası seçin veya tabloyu yapıştırın.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        if not parts:
+            flash("Okunabilir parça verisi bulunamadı.", "warning")
+            return redirect(url_for('proje_detay', project_id=project_id))
+
+        conn = get_db()
+        cursor = conn.cursor()
+        for p in parts:
+            cursor.execute('''
+            INSERT INTO parts (project_id, pos_no, name, profile_type, quantity, length, unit_weight, total_weight, material_grade)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (project_id, p['pos_no'], p.get('name', 'Poz Parçası'), p.get('profile_type', '-'), p.get('quantity', 1), p.get('length', 0.0), p.get('unit_weight', 0.0), p.get('total_weight', 0.0), p.get('material_grade', 'S275JR')))
+        conn.commit()
+        conn.close()
+
+        u = session.get('user', {})
+        log_activity(
+            action="Tek Parça Listesi Yüklendi",
+            entity_type="parts",
+            entity_id=project_id,
+            details=f"{len(parts)} adet parça pozu sisteme aktarıldı.",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+
+        flash(f"Başarılı! {len(parts)} adet parça pozu sisteme başarıyla aktarıldı.", "success")
+    except Exception as e:
+        flash(f"Parça listesi aktarılırken hata: {str(e)}", "danger")
+
+    return redirect(url_for('proje_detay', project_id=project_id))
+
 @app.route('/api/projeler/<int:project_id>/tekla-yukle', methods=['POST'])
 def api_tekla_yukle(project_id):
     """Tekla Structures Excel dosyasını (Montaj, Montaj Parça ve Tek Parça) ayrıştırıp kaydeder."""
@@ -391,7 +567,6 @@ def api_tekla_yukle(project_id):
 
         # 2. Assembly Parts Kaydet
         for ap in assembly_parts:
-            # Assembly ID bul
             cursor.execute("SELECT id FROM assemblies WHERE project_id = ? AND assembly_pos = ?", (project_id, ap['assembly_pos']))
             ass_row = cursor.fetchone()
             ass_id = ass_row['id'] if ass_row else None
@@ -427,6 +602,7 @@ def api_tekla_yukle(project_id):
         flash(f"Excel okunurken hata oluştu: {str(e)}", "danger")
 
     return redirect(url_for('proje_detay', project_id=project_id))
+
 
 @app.route('/api/projeler/<int:project_id>/sil', methods=['POST'])
 def api_proje_sil(project_id):
@@ -640,6 +816,44 @@ def api_siparis_verilen_ekle():
     flash("Sipariş verilen malzeme listeye eklendi.", "success")
     return redirect(url_for('siparis_takip', proje_id=project_id or ''))
 
+@app.route('/api/siparis-takip/verilen-guncelle', methods=['POST'])
+def api_siparis_verilen_guncelle():
+    """Sipariş verilen malzemenin bilgilerini günceller."""
+    item_id = request.form.get('id')
+    material = request.form.get('material', '').strip().upper()
+    thickness = clean_float(request.form.get('thickness', 0))
+    width = clean_float(request.form.get('width', 0))
+    length = clean_float(request.form.get('length', 0))
+    quantity = clean_int(request.form.get('quantity', 1))
+    weight = clean_float(request.form.get('weight', 0))
+    supplier = request.form.get('supplier', '').strip()
+    notes = request.form.get('notes', '').strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE material_orders_ordered
+    SET material = ?, thickness = ?, width = ?, length = ?, quantity = ?, weight = ?, supplier = ?, notes = ?
+    WHERE id = ?
+    ''', (material, thickness, width, length, quantity, weight, supplier, notes, item_id))
+    conn.commit()
+    conn.close()
+
+    flash("Sipariş verilen malzeme güncellendi.", "success")
+    return redirect(request.referrer or url_for('siparis_takip'))
+
+@app.route('/api/siparis-takip/verilen-sil', methods=['POST'])
+def api_siparis_verilen_sil():
+    """Sipariş verilen malzemeyi siler."""
+    item_id = request.form.get('id')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM material_orders_ordered WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Sipariş kaydı silindi.", "info")
+    return redirect(request.referrer or url_for('siparis_takip'))
+
 @app.route('/api/siparis-takip/gelen-ekle', methods=['POST'])
 def api_siparis_gelen_ekle():
     project_id = request.form.get('project_id') or None
@@ -671,6 +885,45 @@ def api_siparis_gelen_ekle():
     flash("Gelen malzeme başarıyla kaydedildi.", "success")
     return redirect(url_for('siparis_takip', proje_id=project_id or ''))
 
+@app.route('/api/siparis-takip/gelen-guncelle', methods=['POST'])
+def api_siparis_gelen_guncelle():
+    """Gelen malzemenin bilgilerini günceller."""
+    item_id = request.form.get('id')
+    material = request.form.get('material', '').strip().upper()
+    thickness = clean_float(request.form.get('thickness', 0))
+    width = clean_float(request.form.get('width', 0))
+    length = clean_float(request.form.get('length', 0))
+    quantity = clean_int(request.form.get('quantity', 1))
+    weight = clean_float(request.form.get('weight', 0))
+    received_date = request.form.get('received_date')
+    waybill_no = request.form.get('waybill_no', '').strip()
+    notes = request.form.get('notes', '').strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE material_orders_received
+    SET material = ?, thickness = ?, width = ?, length = ?, quantity = ?, weight = ?, received_date = ?, waybill_no = ?, notes = ?
+    WHERE id = ?
+    ''', (material, thickness, width, length, quantity, weight, received_date, waybill_no, notes, item_id))
+    conn.commit()
+    conn.close()
+
+    flash("Gelen malzeme kaydı güncellendi.", "success")
+    return redirect(request.referrer or url_for('siparis_takip'))
+
+@app.route('/api/siparis-takip/gelen-sil', methods=['POST'])
+def api_siparis_gelen_sil():
+    """Gelen malzeme kaydını siler."""
+    item_id = request.form.get('id')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM material_orders_received WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+    flash("Gelen malzeme kaydı silindi.", "info")
+    return redirect(request.referrer or url_for('siparis_takip'))
+
 @app.route('/api/siparis-takip/teklif-excel')
 def api_siparis_teklif_excel():
     project_id = request.args.get('proje_id', '')
@@ -699,7 +952,7 @@ def api_siparis_teklif_excel():
 
 
 # =========================================================================
-# 4. ÖN İMALAT PLAN (MAKİNE TAKVİMİ)
+# 4. ÖN İMALAT PLAN (MAKİNE TAKVİMİ & MAKİNE YÖNETİMİ)
 # =========================================================================
 @app.route('/on-imalat-plan')
 def on_imalat_plan():
@@ -716,6 +969,8 @@ def on_imalat_plan():
 
     cursor.execute("SELECT name FROM machines WHERE is_active = 1 ORDER BY id ASC")
     machines = [r['name'] for r in cursor.fetchall()]
+
+    all_machines = get_machines()
 
     cursor.execute("SELECT id, code, name, color FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
     projects = [dict(r) for r in cursor.fetchall()]
@@ -763,6 +1018,7 @@ def on_imalat_plan():
                            month=month,
                            days=days,
                            machines=machines,
+                           all_machines=all_machines,
                            projects=projects,
                            plans_matrix=plans_matrix,
                            stoppages=stoppages)
@@ -801,9 +1057,26 @@ def api_plan_kaydet():
 
     return jsonify({'status': 'success'})
 
+@app.route('/api/makineler/ekle', methods=['POST'])
+def api_makine_ekle():
+    """Yeni makine / istasyon ekler."""
+    name = request.form.get('name', '').strip()
+    m_type = request.form.get('type', 'Kesim').strip()
+    if name:
+        add_machine(name, m_type)
+        flash(f"'{name}' makinesi/istasyonu eklendi.", "success")
+    return redirect(url_for('on_imalat_plan'))
+
+@app.route('/api/makineler/<int:machine_id>/sil', methods=['POST'])
+def api_makine_sil(machine_id):
+    """Makine / istasyonu siler."""
+    delete_machine(machine_id)
+    flash("Makine silindi.", "info")
+    return redirect(url_for('on_imalat_plan'))
+
 
 # =========================================================================
-# 5. KESİM TAKİP (HIZLI KESİLENLER GİRİŞİ & PARÇA LİSTESİ GÜNCELLEME)
+# 5. KESİM GİRİŞİ (HIZLI KESİLENLER & ÇOKLU POZ GİRİŞİ)
 # =========================================================================
 @app.route('/kesim-takip')
 def kesim_takip():
@@ -871,6 +1144,7 @@ def api_kesim_poz_bilgisi():
         return jsonify({
             'status': 'found',
             'profile': r_dict['profile_type'],
+            'name': r_dict['name'],
             'total_qty': r_dict['quantity'],
             'cut_qty': r_dict['cut_quantity'],
             'remaining_qty': kalan,
@@ -878,9 +1152,91 @@ def api_kesim_poz_bilgisi():
         })
     return jsonify({'status': 'not_found'})
 
+@app.route('/api/kesim-takip/proje-pozlar')
+def api_kesim_proje_pozlar():
+    """Seçilen projenin tüm pozlarını liste halinde döndürür."""
+    project_id = request.args.get('proje_id')
+    if not project_id:
+        return jsonify([])
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT pos_no, name, profile_type, quantity, cut_quantity, length, unit_weight FROM parts WHERE project_id = ? ORDER BY pos_no ASC", (project_id,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    for r in rows:
+        r['remaining_quantity'] = max(0, r['quantity'] - r['cut_quantity'])
+    return jsonify(rows)
+
+@app.route('/api/kesim-takip/toplu-kaydet', methods=['POST'])
+def api_kesim_toplu_kaydet():
+    """Çoklu poz kesim girişini tek seferde kaydeder ve parça listesini günceller."""
+    data = request.get_json() or {}
+    project_id = data.get('project_id')
+    cut_date = data.get('cut_date') or datetime.now().strftime("%Y-%m-%d")
+    machine = data.get('machine', '').strip()
+    operator = data.get('operator', '').strip()
+    helper = data.get('helper', '').strip()
+    shift = data.get('shift', 'Gündüz')
+    items = data.get('items', [])
+
+    if not project_id or not items:
+        return jsonify({'status': 'error', 'message': 'Proje ve en az bir kesim satırı gereklidir.'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT code FROM projects WHERE id = ?", (project_id,))
+    p_row = cursor.fetchone()
+    p_code = p_row['code'] if p_row else ""
+
+    u = session.get('user', {})
+    saved_count = 0
+
+    for it in items:
+        pos_no = str(it.get('pos_no', '')).strip()
+        cut_quantity = eval_math(it.get('cut_quantity', 0))
+        profile = str(it.get('profile', '')).strip()
+        notes = str(it.get('notes', '')).strip()
+
+        if not pos_no or cut_quantity <= 0:
+            continue
+
+        # Parça listesini güncelle
+        cursor.execute("SELECT id, quantity, cut_quantity, profile_type FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+        part_row = cursor.fetchone()
+        if part_row:
+            new_cut_total = part_row['cut_quantity'] + cut_quantity
+            cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
+                           (new_cut_total, max(0, part_row['quantity'] - new_cut_total), part_row['id']))
+            if not profile:
+                profile = part_row['profile_type']
+
+        # Log kaydet
+        cursor.execute('''
+        INSERT INTO cutting_entries (project_id, project_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, user_id, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (project_id, p_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, u.get('id'), notes))
+        saved_count += 1
+
+    conn.commit()
+    conn.close()
+
+    if saved_count > 0:
+        log_activity(
+            action="Toplu Kesim Girişi",
+            entity_type="cutting_entries",
+            entity_id=project_id,
+            details=f"{p_code} projesi için {saved_count} satır kesim kaydı işlendi ({machine} - {operator}).",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+
+    return jsonify({'status': 'success', 'saved_count': saved_count})
+
 @app.route('/api/kesim-takip/kaydet', methods=['POST'])
 def api_kesim_kaydet():
-    """Hızlı kesilenler girişini kaydeder ve Proje Parça Listesindeki kesilen_adet değerini anında artırır."""
+    """Hızlı tekli kesilenler girişini kaydeder."""
     project_id = request.form.get('project_id')
     pos_no = request.form.get('pos_no', '').strip()
     profile = request.form.get('profile', '').strip()
@@ -938,7 +1294,7 @@ def api_kesim_kaydet():
     if is_overcut:
         flash(f"Dikkat: '{pos_no}' pozu için girilen toplam kesim ({new_cut_total}), proje hedef miktarını ({part_row['quantity']}) aştı!", "warning")
     else:
-        flash(f"'{pos_no}' pozu için {cut_quantity} adet kesim başarıyla işlendi ve parça listesi güncellendi.", "success")
+        flash(f"'{pos_no}' pozu için {cut_quantity} adet kesim başarıyla işlendi.", "success")
 
     return redirect(url_for('kesim_takip'))
 
@@ -964,8 +1320,9 @@ def api_imalat_plan_guncelle():
     project_id = request.form.get('project_id')
     start_date = request.form.get('start_date')
     cutting_start_date = request.form.get('cutting_start_date')
+    fitup_start_date = request.form.get('fitup_start_date')
     fitup_end_date = request.form.get('fitup_end_date')
-    welding_end_date = request.form.get('welding_end_date')
+    welding_cleaning_end_date = request.form.get('welding_cleaning_end_date') or request.form.get('welding_end_date')
     paint_end_date = request.form.get('paint_end_date')
     delivery_date = request.form.get('delivery_date')
 
@@ -975,16 +1332,17 @@ def api_imalat_plan_guncelle():
     UPDATE projects SET
         start_date = ?,
         cutting_start_date = ?,
+        fitup_start_date = ?,
         fitup_end_date = ?,
-        welding_end_date = ?,
+        welding_cleaning_end_date = ?,
         paint_end_date = ?,
         delivery_date = ?
     WHERE id = ?
-    ''', (start_date, cutting_start_date, fitup_end_date, welding_end_date, paint_end_date, delivery_date, project_id))
+    ''', (start_date, cutting_start_date, fitup_start_date, fitup_end_date, welding_cleaning_end_date, paint_end_date, delivery_date, project_id))
     conn.commit()
     conn.close()
 
-    flash("Proje imalat planı ve hedef bitiş tarihleri güncellendi.", "success")
+    flash("Proje imalat planı ve hedef aşama tarihleri güncellendi.", "success")
     return redirect(url_for('imalat_plan'))
 
 
@@ -1051,9 +1409,10 @@ def api_imalat_asama_guncelle():
 
 @app.route('/api/imalat-takip/kaliteye-gonder', methods=['POST'])
 def api_imalat_kaliteye_gonder():
-    """İmalatı biten montajları Kalite Kontrol havuzuna gönderir."""
+    """İmalatı biten montajları Kalite Kontrol havuzuna gönderir (İstasyon/Tezgah seçimiyle)."""
     assembly_id = request.form.get('assembly_id')
     send_qty = clean_int(request.form.get('quantity', 1))
+    workstation = request.form.get('workstation', '').strip()
     comments = request.form.get('comments', '').strip()
 
     conn = get_db()
@@ -1065,16 +1424,14 @@ def api_imalat_kaliteye_gonder():
         flash("Geçersiz işlem!", "warning")
         return redirect(request.referrer or url_for('imalat_takip'))
 
-    # assemblies tablosunda qa_pending_qty artır
     new_pending = ass['qa_pending_qty'] + send_qty
     cursor.execute("UPDATE assemblies SET qa_pending_qty = ? WHERE id = ?", (new_pending, assembly_id))
 
-    # qa_inspections kaydı oluştur
     u = session.get('user', {})
     cursor.execute('''
-    INSERT INTO qa_inspections (project_id, assembly_id, assembly_pos, quantity, comments)
-    VALUES (?, ?, ?, ?, ?)
-    ''', (ass['project_id'], assembly_id, ass['assembly_pos'], send_qty, comments))
+    INSERT INTO qa_inspections (project_id, assembly_id, assembly_pos, quantity, comments, workstation)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (ass['project_id'], assembly_id, ass['assembly_pos'], send_qty, comments, workstation))
 
     conn.commit()
     conn.close()
@@ -1083,7 +1440,7 @@ def api_imalat_kaliteye_gonder():
         action="Kalite Kontrole Gönderildi",
         entity_type="assemblies",
         entity_id=assembly_id,
-        details=f"Marka '{ass['assembly_pos']}' için {send_qty} adet kalite muayenesine sevk edildi.",
+        details=f"Marka '{ass['assembly_pos']}' için {send_qty} adet ({workstation or 'Tezgah'}) kalite muayenesine sevk edildi.",
         username=u.get('username', 'Kullanıcı'),
         user_id=u.get('id'),
         ip_address=request.remote_addr
@@ -1094,7 +1451,7 @@ def api_imalat_kaliteye_gonder():
 
 
 # =========================================================================
-# 8. KALİTE KONTROL (QA / QC DENETİM & ONAY/RED)
+# 8. KALİTE KONTROL (QA / QC DENETİM & FOTOĞRAFLI ONAY/RED)
 # =========================================================================
 @app.route('/kalite-kontrol')
 def kalite_kontrol():
@@ -1135,8 +1492,18 @@ def api_kalite_karar():
     decision = request.form.get('decision') # 'Onaylandı', 'Reddedildi'
     defect_type = request.form.get('defect_type', '').strip()
     comments = request.form.get('comments', '').strip()
-    certificate_no = request.form.get('certificate_no', '').strip()
-    inspection_date = request.form.get('inspection_date') or datetime.now().strftime("%Y-%m-%d")
+    inspection_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    photo_url = ""
+    if 'photo' in request.files:
+        photo = request.files['photo']
+        if photo and photo.filename != '':
+            ext = os.path.splitext(photo.filename)[1].lower()
+            filename = f"qa_{inspection_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+            os.makedirs(os.path.join(BASE_DIR, 'static', 'uploads', 'qa'), exist_ok=True)
+            save_path = os.path.join(BASE_DIR, 'static', 'uploads', 'qa', filename)
+            photo.save(save_path)
+            photo_url = f"/static/uploads/qa/{filename}"
 
     u = session.get('user', {})
     inspector_name = u.get('full_name', 'Kalite Kontrolcü')
@@ -1155,12 +1522,12 @@ def api_kalite_karar():
         status = ?,
         defect_type = ?,
         comments = ?,
-        certificate_no = ?,
+        photo_url = CASE WHEN ? != '' THEN ? ELSE photo_url END,
         inspection_date = ?,
         inspector_id = ?,
         inspector_name = ?
     WHERE id = ?
-    ''', (decision, defect_type, comments, certificate_no, inspection_date, u.get('id'), inspector_name, inspection_id))
+    ''', (decision, defect_type, comments, photo_url, photo_url, inspection_date, u.get('id'), inspector_name, inspection_id))
 
     # Assemblies tablosundaki adetleri güncelle
     if qa['assembly_id']:
@@ -1171,7 +1538,6 @@ def api_kalite_karar():
             new_pending = max(0, ass['qa_pending_qty'] - qty)
             if decision == 'Onaylandı':
                 new_approved = ass['qa_approved_qty'] + qty
-                # Boya için hazır hale getir
                 new_paint_sandblast = ass['paint_sandblast_qty'] + qty
                 cursor.execute('''
                 UPDATE assemblies SET
@@ -1196,7 +1562,7 @@ def api_kalite_karar():
         action=f"Kalite Kararı: {decision}",
         entity_type="qa_inspections",
         entity_id=inspection_id,
-        details=f"Marka '{qa['assembly_pos']}' ({qa['quantity']} Adet) -> {decision}. Not: {comments}",
+        details=f"Marka '{qa['assembly_pos']}' ({qa['quantity']} Adet) -> {decision}. {defect_type} - {comments}",
         username=u.get('username', 'Kullanıcı'),
         user_id=u.get('id'),
         ip_address=request.remote_addr
@@ -1204,6 +1570,7 @@ def api_kalite_karar():
 
     flash(f"Kalite denetim kararı ({decision}) başarıyla kaydedildi.", "success")
     return redirect(url_for('kalite_kontrol'))
+
 
 
 # =========================================================================
@@ -1431,6 +1798,9 @@ def api_sevk_olustur():
     total_tonnage = round(total_weight / 1000.0, 2)
     u = session.get('user', {})
 
+    if not dispatch_no:
+        dispatch_no = get_next_dispatch_no(project_id)
+
     # Sevkiyatı kaydet
     cursor.execute('''
     INSERT INTO shipments (project_id, dispatch_no, vehicle_plate, driver_name, driver_phone, carrier_company, dispatch_date, destination, total_quantity, total_tonnage, notes, created_by)
@@ -1463,6 +1833,13 @@ def api_sevk_olustur():
 
     flash(f"'{dispatch_no}' numaralı sevkiyat ({total_tonnage} Ton) başarıyla oluşturuldu!", "success")
     return redirect(url_for('sevk_detay', shipment_id=shipment_id))
+
+@app.route('/api/sevk/siradaki-no')
+def api_sevk_siradaki_no():
+    """Seçilen proje için sıradaki bağımsız sevkiyat numarasını döndürür (SEVK-1, SEVK-2...)."""
+    project_id = request.args.get('proje_id')
+    next_no = get_next_dispatch_no(project_id)
+    return jsonify({'status': 'success', 'dispatch_no': next_no})
 
 @app.route('/api/sevk/<int:shipment_id>/excel')
 def api_sevk_excel(shipment_id):
@@ -1508,7 +1885,7 @@ def api_sevk_sil(shipment_id):
 
 
 # =========================================================================
-# 11. KULLANICI YÖNETİMİ & DENETİM GÜNLÜĞÜ (AUDIT LOG)
+# 11. KULLANICI YÖNETİMİ & YETKİ MATRİSİ & DENETİM GÜNLÜĞÜ
 # =========================================================================
 @app.route('/kullanicilar')
 def kullanicilar():
@@ -1517,14 +1894,25 @@ def kullanicilar():
     cursor.execute("SELECT id, username, full_name, role, is_active, created_at FROM users ORDER BY id ASC")
     users = [dict(r) for r in cursor.fetchall()]
     conn.close()
-    return render_template('kullanicilar.html', users=users)
+    
+    role_perms = get_all_role_permissions()
+    return render_template('kullanicilar.html',
+                           users=users,
+                           roles=ROLES_LIST,
+                           modules=MODULES_LIST,
+                           permissions=role_perms)
 
 @app.route('/api/kullanicilar/ekle', methods=['POST'])
 def api_kullanici_ekle():
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yalnızca Sistem Yöneticisi veya Patron yeni kullanıcı ekleyebilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+
     username = request.form.get('username', '').strip().lower()
     password = request.form.get('password', '').strip()
     full_name = request.form.get('full_name', '').strip()
-    role = request.form.get('role', 'İzleyici')
+    role = request.form.get('role', 'izleyici').strip().lower()
 
     if not username or not password or not full_name:
         flash("Kullanıcı adı, şifre ve ad soyad zorunludur!", "warning")
@@ -1546,8 +1934,31 @@ def api_kullanici_ekle():
 
     return redirect(url_for('kullanicilar'))
 
+@app.route('/api/kullanicilar/yetkiler-guncelle', methods=['POST'])
+def api_kullanicilar_yetkiler_guncelle():
+    """Rol Düzenleme Yetki Matrisini kaydeder."""
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici ve Patron yetkileri değiştirebilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    # Formdan tüm 'perm_{role}_{module}' alanlarını al
+    for r in ROLES_LIST:
+        for mod, _ in MODULES_LIST:
+            field_name = f"perm_{r}_{mod}"
+            can_e = 1 if request.form.get(field_name) == '1' else 0
+            update_role_permission(r, mod, can_e)
+
+    flash("Rol düzenleme yetki matrisi başarıyla güncellendi.", "success")
+    return redirect(url_for('kullanicilar'))
+
 @app.route('/api/kullanicilar/<int:user_id>/durum', methods=['POST'])
 def api_kullanici_durum(user_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('kullanicilar'))
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (user_id,))
@@ -1568,11 +1979,11 @@ def aktivite_loglari():
 
 
 # =========================================================================
-# 12. AĞ, TELEFON, TABLET & UZAK ERİŞİM REHBERİ
+# 12. AĞ REHBERİ (YÖNLENDİRME)
 # =========================================================================
 @app.route('/ag-rehberi')
 def ag_rehberi():
-    return render_template('ag_rehberi.html', local_ip=get_local_ip())
+    return redirect(url_for('index'))
 
 
 # =========================================================================
@@ -1597,8 +2008,40 @@ def raporlar():
 
     return render_template('raporlar.html', metrics=metrics, projects=projects, settings=settings)
 
+@app.route('/api/ayarlar/baslik-guncelle', methods=['POST'])
+def api_ayarlar_baslik_guncelle():
+    """Firma başlığı, alt başlık, logo ve web sitesi URL'sini günceller."""
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yalnızca Sistem Yöneticisi veya Patron sistem ayarlarını değiştirebilir.", "danger")
+        return redirect(url_for('raporlar'))
+
+    app_title = request.form.get('app_title', '').strip()
+    app_subtitle = request.form.get('app_subtitle', '').strip()
+    company_name = request.form.get('company_name', '').strip()
+    company_website_url = request.form.get('company_website_url', '').strip()
+
+    company_logo_url = None
+    if 'company_logo' in request.files:
+        logo_file = request.files['company_logo']
+        if logo_file and logo_file.filename != '':
+            ext = os.path.splitext(logo_file.filename)[1].lower()
+            filename = f"logo_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+            os.makedirs(os.path.join(BASE_DIR, 'static', 'uploads'), exist_ok=True)
+            logo_file.save(os.path.join(BASE_DIR, 'static', 'uploads', filename))
+            company_logo_url = f"/static/uploads/{filename}"
+
+    update_system_settings(app_title, app_subtitle, company_name, company_logo_url, company_website_url)
+    flash("Firma başlık ve logo ayarları başarıyla güncellendi.", "success")
+    return redirect(url_for('raporlar'))
+
 @app.route('/api/ayarlar/guncelle', methods=['POST'])
 def api_ayarlar_guncelle():
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('raporlar'))
+
     company_name = request.form.get('company_name')
     company_sub_title = request.form.get('company_sub_title')
     company_address = request.form.get('company_address')
@@ -1628,6 +2071,7 @@ def api_excel_sablon():
         as_attachment=True,
         download_name='Tekla_Imalat_Sablonu.xlsx'
     )
+
 
 
 # =========================================================================

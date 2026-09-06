@@ -35,21 +35,14 @@
 
             <!-- Eylem Butonları -->
             <div class="flex flex-wrap items-center gap-2">
-                <button onclick="openModal('uploadTeklaModal')" class="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
-                    <i class="fa-solid fa-file-import"></i>
-                    <span>Tekla Excel'den Yükle</span>
-                </button>
-
-                <a href="{{ url_for('api_excel_sablon') }}" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5">
-                    <i class="fa-solid fa-download text-slate-400"></i>
-                    <span>Şablon</span>
-                </a>
-
+                {% if can_user_edit('projeler') %}
                 <form action="{{ url_for('api_proje_sil', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projeyi ve tüm parça/montaj kayıtlarını silmek istediğinizden emin misiniz?');" class="inline">
-                    <button type="submit" class="p-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs transition-colors" title="Projeyi Sil">
+                    <button type="submit" class="px-3 py-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Projeyi Sil">
                         <i class="fa-solid fa-trash"></i>
+                        <span>Projeyi Sil</span>
                     </button>
                 </form>
+                {% endif %}
             </div>
         </div>
 
@@ -98,10 +91,20 @@
 
         <!-- TAB 1: MONTAJ / ASSEMBLY LİSTESİ -->
         <div id="assembliesTab" class="tab-content p-4">
-            <div class="flex items-center justify-between mb-3 text-xs">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Ana imalat markaları (Kolon, Kiriş, Makas) ve canlı aşama adetleri:</p>
-                <div class="flex items-center gap-2">
-                    <input type="text" id="filterAssInput" onkeyup="filterTable('assembliesTable', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input type="text" id="filterAssInput" onkeyup="filterTable('assembliesTable', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadAssemblyExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pasteAssemblyModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    {% endif %}
                 </div>
             </div>
 
@@ -154,7 +157,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="12" class="py-8 text-center text-slate-500">Bu projeye henüz montaj/assembly listesi eklenmedi. 'Tekla Excel'den Yükle' butonunu kullanabilirsiniz.</td>
+                            <td colspan="12" class="py-8 text-center text-slate-500">Bu projeye henüz montaj listesi eklenmedi. Yukarıdaki 'Excel'den Yükle' veya 'Kopyala-Yapıştır ile Yükle' butonunu kullanabilirsiniz.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -164,9 +167,21 @@
 
         <!-- TAB 2: MONTAJ ELEMAN / PARÇA LİSTESİ (Assembly Parts) -->
         <div id="assemblyPartsTab" class="tab-content p-4 hidden">
-            <div class="flex items-center justify-between mb-3 text-xs">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Hangi montaj markasının hangi tekil plaka/profillerden oluştuğu listesi:</p>
-                <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="Marka veya poz ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="Marka veya poz ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadAssemblyPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pasteAssemblyPartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -211,9 +226,21 @@
 
         <!-- TAB 3: TEK PARÇA / POZ LİSTESİ & KESİM TAKİBİ -->
         <div id="partsTab" class="tab-content p-4 hidden">
-            <div class="flex items-center justify-between mb-3 text-xs">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Atölye kesim ve hammadde hazırlık poz listesi:</p>
-                <input type="text" onkeyup="filterTable('partsTable', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input type="text" onkeyup="filterTable('partsTable', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pastePartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
 
             <div class="overflow-x-auto">
@@ -270,42 +297,159 @@
 
 </div>
 
-<!-- TEKLA EXCEL YÜKLE MODAL -->
-<div id="uploadTeklaModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+<!-- TAB 1 MODALLER: MONTAJ / ASSEMBLY YÜKLEME -->
+<div id="uploadAssemblyExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
         <div class="flex items-center justify-between pb-4 border-b border-slate-800">
             <h3 class="font-bold text-base text-white flex items-center gap-2">
-                <i class="fa-solid fa-file-import text-emerald-400"></i>
-                <span>Tekla Structures Excel Yükle</span>
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Montaj Listesi (Excel Yükle)</span>
             </h3>
-            <button onclick="closeModal('uploadTeklaModal')" class="text-slate-400 hover:text-white p-1">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <button onclick="closeModal('uploadAssemblyExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
         </div>
-
-        <form action="{{ url_for('api_tekla_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+        <form action="{{ url_for('api_assembly_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
             <div>
-                <label class="block text-slate-400 mb-1.5 font-medium">Tekla Raporu / Excel Dosyası Seç (.xlsx, .xls)</label>
-                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60 transition-colors" onclick="document.getElementById('teklaFileInput').click()">
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('assExcelFileInput').click()">
                     <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
-                    <p class="text-xs font-semibold text-slate-200" id="teklaFileName">Dosya seçmek için tıklayın</p>
-                    <p class="text-[10px] text-slate-500 mt-1">Montaj Listesi, Parça Listesi veya Çok Sayfalı Tekla Çıktısı</p>
-                    <input type="file" id="teklaFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('teklaFileName').innerText = this.files[0].name">
+                    <p class="text-xs font-semibold text-slate-200" id="assExcelFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="assExcelFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('assExcelFileName').innerText = this.files[0].name">
                 </div>
             </div>
-
             <div class="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl text-[11px] text-blue-300">
-                <i class="fa-solid fa-circle-info mr-1"></i>
-                <span>Sistem Tekla sütun başlıklarını (Marka, Poz, Profil, Adet, Ağırlık) otomatik algılayacak ve eşleştirecektir.</span>
+                Sütunlar: Marka No, Eleman Tanımı, Profil, Adet, Birim Kg, Toplam Kg
             </div>
-
-            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-                <button type="button" onclick="closeModal('uploadTeklaModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
-                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow-md shadow-emerald-600/30">İçe Aktar</button>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadAssemblyExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
             </div>
         </form>
     </div>
 </div>
+
+<div id="pasteAssemblyModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Montaj Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pasteAssemblyModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="C-101	Kolon	HEB 300	12	1250	15000	S275JR&#10;B-201	Kiriş	IPE 360	16	680	10880	S355JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Marka / Poz No</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pasteAssemblyModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TAB 2 MODALLER: MONTAJ PARÇA LİSTESİ YÜKLEME -->
+<div id="uploadAssemblyPartsExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Montaj Parça Listesi (Excel Yükle)</span>
+            </h3>
+            <button onclick="closeModal('uploadAssemblyPartsExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_parts_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('assPartsFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="assPartsFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="assPartsFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('assPartsFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadAssemblyPartsExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pasteAssemblyPartsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Montaj Parça Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pasteAssemblyPartsModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_parts_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="C-101	p1	Gövde	HEB 300	1	12	8500	1000	12000	S275JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Montaj Poz</b> | <b>Parça Poz</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet/Montaj</b> | <b>Toplam Adet</b> | <b>Boy</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pasteAssemblyPartsModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TAB 3 MODALLER: TEK PARÇA LİSTESİ YÜKLEME -->
+<div id="uploadPartsExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Tek Parça / Poz Listesi (Excel Yükle)</span>
+            </h3>
+            <button onclick="closeModal('uploadPartsExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_parts_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('partsFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="partsFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="partsFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('partsFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadPartsExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pastePartsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Tek Parça / Poz Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pastePartsModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_parts_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="p1	Kolon Gövde	HEB 300	12	8500	1000	12000	S275JR&#10;p2	Taban Flanşı	PL 25mm	12	450	45.2	542.4	S355JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Poz No</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet</b> | <b>Boy</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pastePartsModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}

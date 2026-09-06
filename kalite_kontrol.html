@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 
 {% block title %}7. Kalite Kontrol (QA / QC) - Çelik İmalat MES{% endblock %}
-{% block page_title %}7. Kalite Kontrol (QA / QC Muayene & Yorum Paneli){% endblock %}
+{% block page_title %}7. Kalite Kontrol (QA / QC Muayene & Fotoğraflı Onay/Red){% endblock %}
 
 {% block content %}
 <div class="space-y-6">
@@ -13,7 +13,7 @@
                 <i class="fa-solid fa-clipboard-check text-teal-400"></i>
                 <span>Kalite Kontrol Havuzu & Denetim Kararları</span>
             </h3>
-            <p class="text-xs text-slate-400 mt-0.5">İmalatı bitip kaliteye gönderilen parçaların boyutsal ve kaynak muayenesi</p>
+            <p class="text-xs text-slate-400 mt-0.5">İmalatı bitip kaliteye gönderilen parçaların boyutsal ve kaynak muayenesi, fotoğraflı hata takibi</p>
         </div>
 
         <form method="GET" action="{{ url_for('kalite_kontrol') }}" class="flex items-center gap-2">
@@ -33,22 +33,25 @@
             <table class="w-full text-left text-xs border-collapse">
                 <thead>
                     <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
-                        <th class="py-2.5 px-3">Geliş Tarihi</th>
-                        <th class="py-2.5 px-2">Proje Kodu</th>
-                        <th class="py-2.5 px-2">Montaj / Marka No</th>
+                        <th class="py-2.5 px-3">Tarih</th>
+                        <th class="py-2.5 px-2">Proje</th>
+                        <th class="py-2.5 px-2">Montaj / Marka</th>
                         <th class="py-2.5 px-2">Profil & Tanım</th>
-                        <th class="py-2.5 px-2 text-right font-bold text-white">Muayene Adedi</th>
+                        <th class="py-2.5 px-2">Tezgah / İstasyon</th>
+                        <th class="py-2.5 px-2 text-right font-bold text-white">Adet</th>
                         <th class="py-2.5 px-2 text-center">Durum</th>
-                        <th class="py-2.5 px-2">İmalatçı Notu</th>
-                        <th class="py-2.5 px-2">Kalite Notu / Yorum</th>
-                        <th class="py-2.5 px-2">Denetçi & Rapor No</th>
-                        <th class="py-2.5 px-3 text-right">Karar Ver</th>
+                        <th class="py-2.5 px-2 text-center">Fotoğraf</th>
+                        <th class="py-2.5 px-2">Kalite Notu / Hata</th>
+                        <th class="py-2.5 px-2">Denetçi</th>
+                        {% if can_user_edit('kalite') %}
+                        <th class="py-2.5 px-3 text-right">İşlem</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-800/60 text-slate-200">
                     {% for q in inspections %}
                     <tr class="hover:bg-slate-900/50 transition-colors {% if q.status == 'Onaylandı' %}bg-teal-950/10{% elif q.status == 'Reddedildi' %}bg-rose-950/20{% endif %}">
-                        <td class="py-2.5 px-3 font-mono text-slate-400">{{ q.inspection_date | format_date }}</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-400">{{ q.inspection_date | format_datetime }}</td>
                         <td class="py-2.5 px-2 font-mono font-bold text-blue-400">{{ q.project_code }}</td>
                         <td class="py-2.5 px-2 font-mono font-black text-white flex items-center gap-1.5">
                             <span class="w-2 h-2 rounded-full {% if q.status == 'Onaylandı' %}bg-teal-400{% elif q.status == 'Reddedildi' %}bg-rose-500{% else %}bg-amber-400{% endif %}"></span>
@@ -58,6 +61,7 @@
                             <span class="font-mono text-blue-300">{{ q.profile_type or '-' }}</span>
                             <span class="block text-[11px] text-slate-500">{{ q.description or '' }}</span>
                         </td>
+                        <td class="py-2.5 px-2 text-amber-300 font-medium">{{ q.workstation or '-' }}</td>
                         <td class="py-2.5 px-2 text-right font-mono font-black text-white text-sm">{{ q.quantity }} Adet</td>
                         <td class="py-2.5 px-2 text-center">
                             {% if q.status == 'Onaylandı' %}
@@ -74,28 +78,38 @@
                                 </span>
                             {% endif %}
                         </td>
-                        <td class="py-2.5 px-2 text-slate-400 max-w-xs truncate">{{ q.comments or '-' }}</td>
+                        <!-- Fotoğraf sütunu -->
+                        <td class="py-2.5 px-2 text-center">
+                            {% if q.photo_url %}
+                            <button onclick="viewQaPhoto('{{ url_for('static', filename=q.photo_url) }}', '{{ q.assembly_pos }}')" class="p-1 text-teal-400 hover:text-teal-300 rounded hover:bg-teal-900/40 transition-colors" title="Fotoğrafı Görüntüle">
+                                <i class="fa-solid fa-image text-base"></i>
+                            </button>
+                            {% else %}
+                            <span class="text-slate-600">-</span>
+                            {% endif %}
+                        </td>
                         <td class="py-2.5 px-2 text-slate-300 max-w-xs truncate font-medium">
                             {% if q.defect_type %}<span class="text-rose-400 font-bold block">[{{ q.defect_type }}]</span>{% endif %}
                             {{ q.comments or '-' }}
                         </td>
                         <td class="py-2.5 px-2 text-slate-400 font-mono text-[11px]">
                             <span>{{ q.inspector_name or '-' }}</span>
-                            {% if q.certificate_no %}<span class="block text-teal-400 font-bold">{{ q.certificate_no }}</span>{% endif %}
                         </td>
+                        {% if can_user_edit('kalite') %}
                         <td class="py-2.5 px-3 text-right">
                             {% if q.status == 'Bekliyor' %}
                             <button onclick="openQaDecisionModal('{{ q.id }}', '{{ q.assembly_pos }}', {{ q.quantity }})"
-                                    class="px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-teal-600/20">
+                                    class="px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-teal-600/20 whitespace-nowrap">
                                 Denetle / Karar Ver
                             </button>
                             {% else %}
                             <span class="text-[11px] text-slate-500">Tamamlandı</span>
                             {% endif %}
                         </td>
+                        {% endif %}
                     </tr>
                     {% else %}
-                    <tr><td colspan="10" class="py-8 text-center text-slate-500">Kalite kontrol havuzunda muayene kaydı yok.</td></tr>
+                    <tr><td colspan="11" class="py-8 text-center text-slate-500">Kalite kontrol havuzunda muayene kaydı yok.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -104,7 +118,7 @@
 
 </div>
 
-<!-- KALİTE KARARI VE YORUM MODAL -->
+<!-- KALİTE KARARI VE FOTOĞRAF YÜKLEME MODAL -->
 <div id="qaDecisionModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
         <div class="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -117,7 +131,7 @@
             </button>
         </div>
 
-        <form action="{{ url_for('api_kalite_karar') }}" method="POST" class="mt-4 space-y-3.5">
+        <form action="{{ url_for('api_kalite_karar') }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-3.5">
             <input type="hidden" id="decision_inspection_id" name="inspection_id">
 
             <div>
@@ -138,23 +152,20 @@
                 <label class="block text-slate-400 mb-1 font-semibold">Hata Türü (Red / Uyarı Durumunda)</label>
                 <select name="defect_type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
                     <option value="">-- Hata Yok / Uygun --</option>
+                    <option value="Hatalı Ölçü">Hatalı Ölçü</option>
                     <option value="Kaynak Gözenek / Porozite">Kaynak Gözenek / Porozite</option>
                     <option value="Yetersiz Nüfuziyet">Yetersiz Nüfuziyet</option>
                     <option value="Boyutsal Sapma / Tolerans Dışı">Boyutsal Sapma / Tolerans Dışı</option>
                     <option value="Çapak / Taşlama Kusuru">Çapak / Taşlama Kusuru</option>
                     <option value="Delik Ekseni Kaçıklığı">Delik Ekseni Kaçıklığı</option>
+                    <option value="Diğer Hata">Diğer Hata</option>
                 </select>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Kalite Rapor / Sertifika No</label>
-                    <input type="text" name="certificate_no" placeholder="Örn: QC-2026-04" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase">
-                </div>
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Muayene Tarihi</label>
-                    <input type="date" name="inspection_date" value="{{ today_str }}" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
-                </div>
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Fotoğraf Yükle (İsteğe Bağlı)</label>
+                <input type="file" name="photo" accept="image/*" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-white file:mr-3 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-teal-600 file:text-white hover:file:bg-teal-500">
+                <p class="text-[10px] text-slate-500 mt-1">Muayene sırasında çekilen kusur veya onay fotoğrafı.</p>
             </div>
 
             <div>
@@ -169,6 +180,21 @@
         </form>
     </div>
 </div>
+
+<!-- FOTOĞRAF GÖRÜNTÜLEME LIGHTBOX MODAL -->
+<div id="qaPhotoModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-4 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <h4 class="font-bold text-sm text-white" id="qaPhotoTitle">Muayene Fotoğrafı</h4>
+            <button onclick="closeModal('qaPhotoModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="mt-3 flex justify-center items-center max-h-[70vh] overflow-hidden rounded-xl bg-slate-950">
+            <img id="qaPhotoImg" src="" alt="Muayene Fotoğrafı" class="max-h-[68vh] object-contain rounded-lg">
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -178,5 +204,12 @@
         document.getElementById('decisionModalTitle').innerText = `${pos} (${qty} Adet) - Kalite Kararı`;
         openModal('qaDecisionModal');
     }
+
+    function viewQaPhoto(imgUrl, posName) {
+        document.getElementById('qaPhotoImg').src = imgUrl;
+        document.getElementById('qaPhotoTitle').innerText = `${posName} - Muayene Fotoğrafı`;
+        openModal('qaPhotoModal');
+    }
 </script>
 {% endblock %}
+

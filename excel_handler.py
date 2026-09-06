@@ -172,10 +172,183 @@ def parse_tekla_excel(file_stream):
         'parts': list(unique_parts.values())
     }
 
+def parse_assemblies_file(file_stream):
+    """Sadece Montaj / Assembly Listesi içeren Excel dosyasını ayrıştırır."""
+    res = parse_tekla_excel(file_stream)
+    return res['assemblies']
+
+def parse_assembly_parts_file(file_stream):
+    """Sadece Montaj Parça Listesi içeren Excel dosyasını ayrıştırır."""
+    res = parse_tekla_excel(file_stream)
+    if res['assembly_parts']:
+        return res['assembly_parts']
+    # If not detected as assembly_parts, convert assemblies or parts
+    ap_list = []
+    for a in res['assemblies']:
+        ap_list.append({
+            'assembly_pos': a['assembly_pos'],
+            'part_pos': a['assembly_pos'],
+            'description': a.get('description', ''),
+            'profile_type': a.get('profile_type', ''),
+            'quantity_per_assembly': 1,
+            'total_quantity': a.get('quantity', 1),
+            'length': 0.0,
+            'unit_weight': a.get('unit_weight', 0.0),
+            'total_weight': a.get('total_weight', 0.0),
+            'material_grade': a.get('material_grade', 'S275JR')
+        })
+    return ap_list
+
+def parse_parts_file(file_stream):
+    """Sadece Tek Parça / Poz Listesi içeren Excel dosyasını ayrıştırır."""
+    res = parse_tekla_excel(file_stream)
+    return res['parts']
+
+def parse_clipboard_table(text, target_type='assemblies'):
+    """
+    Excel veya Tekla'dan kopyalanan tablo metnini (Tab veya noktalı virgül / virgül ayrılmış) ayrıştırır.
+    target_type: 'assemblies' | 'assembly_parts' | 'parts'
+    """
+    if not text or not text.strip():
+        return []
+
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    if not lines:
+        return []
+
+    # Sütun ayırıcıyı belirle (Tab, noktalı virgül veya virgül)
+    first_line = lines[0]
+    delimiter = '\t'
+    if '\t' in first_line:
+        delimiter = '\t'
+    elif ';' in first_line:
+        delimiter = ';'
+    elif ',' in first_line and not any(c.isdigit() for c in first_line.split(',')[0]):
+        delimiter = ','
+
+    rows = []
+    for line in lines:
+        parts = [p.strip() for p in line.split(delimiter)]
+        if any(parts):
+            rows.append(parts)
+
+    if not rows:
+        return []
+
+    # İlk satır başlık mı kontrol et
+    headers = [c.lower() for c in rows[0]]
+    has_header = any(k in ' '.join(headers) for k in ['poz', 'pos', 'mark', 'profil', 'adet', 'qty', 'montaj', 'assembly', 'tanım', 'name', 'weight', 'ağırlık'])
+    
+    data_rows = rows[1:] if has_header else rows
+
+    def safe_float(v, default=0.0):
+        try:
+            return float(str(v).replace(',', '.').replace(' ', ''))
+        except:
+            return default
+
+    def safe_int(v, default=1):
+        try:
+            val = int(safe_float(v, default))
+            return val if val > 0 else default
+        except:
+            return default
+
+    results = []
+
+    if target_type == 'assemblies':
+        for r in data_rows:
+            if not r or not any(r): continue
+            # Standart kolonlar: Poz/Marka, Tanım, Profil, Adet, Birim Kg, Toplam Kg, Kalite
+            pos = r[0] if len(r) > 0 else ''
+            if not pos: continue
+            desc = r[1] if len(r) > 1 and r[1] else 'İmalat Elemanı'
+            prof = r[2] if len(r) > 2 and r[2] else '-'
+            qty = safe_int(r[3] if len(r) > 3 else 1, 1)
+            u_wt = safe_float(r[4] if len(r) > 4 else 0.0)
+            t_wt = safe_float(r[5] if len(r) > 5 else 0.0)
+            if t_wt == 0.0 and u_wt > 0:
+                t_wt = qty * u_wt
+            grade = r[6] if len(r) > 6 and r[6] else 'S275JR'
+
+            results.append({
+                'assembly_pos': pos,
+                'description': desc,
+                'profile_type': prof,
+                'quantity': qty,
+                'unit_weight': round(u_wt, 2),
+                'total_weight': round(t_wt, 2),
+                'material_grade': grade
+            })
+
+    elif target_type == 'assembly_parts':
+        for r in data_rows:
+            if not r or not any(r): continue
+            # Standart kolonlar: Montaj Poz, Parça Poz, Tanım, Profil, Adet/Montaj, Toplam Adet, Boy, Birim Kg, Toplam Kg, Kalite
+            ass_pos = r[0] if len(r) > 0 else ''
+            part_pos = r[1] if len(r) > 1 else ass_pos
+            if not ass_pos and not part_pos: continue
+            if not ass_pos: ass_pos = part_pos
+            if not part_pos: part_pos = ass_pos
+
+            desc = r[2] if len(r) > 2 and r[2] else 'Montaj Parçası'
+            prof = r[3] if len(r) > 3 and r[3] else '-'
+            q_ass = safe_int(r[4] if len(r) > 4 else 1, 1)
+            tot_q = safe_int(r[5] if len(r) > 5 else q_ass, q_ass)
+            length = safe_float(r[6] if len(r) > 6 else 0.0)
+            u_wt = safe_float(r[7] if len(r) > 7 else 0.0)
+            t_wt = safe_float(r[8] if len(r) > 8 else 0.0)
+            if t_wt == 0.0 and u_wt > 0:
+                t_wt = tot_q * u_wt
+            grade = r[9] if len(r) > 9 and r[9] else 'S275JR'
+
+            results.append({
+                'assembly_pos': ass_pos,
+                'part_pos': part_pos,
+                'description': desc,
+                'profile_type': prof,
+                'quantity_per_assembly': q_ass,
+                'total_quantity': tot_q,
+                'length': round(length, 1),
+                'unit_weight': round(u_wt, 2),
+                'total_weight': round(t_wt, 2),
+                'material_grade': grade
+            })
+
+    elif target_type == 'parts':
+        for r in data_rows:
+            if not r or not any(r): continue
+            # Standart kolonlar: Poz No, Tanım, Profil, Adet, Boy, Birim Kg, Toplam Kg, Kalite
+            pos = r[0] if len(r) > 0 else ''
+            if not pos: continue
+            name = r[1] if len(r) > 1 and r[1] else 'Poz Parçası'
+            prof = r[2] if len(r) > 2 and r[2] else '-'
+            qty = safe_int(r[3] if len(r) > 3 else 1, 1)
+            length = safe_float(r[4] if len(r) > 4 else 0.0)
+            u_wt = safe_float(r[5] if len(r) > 5 else 0.0)
+            t_wt = safe_float(r[6] if len(r) > 6 else 0.0)
+            if t_wt == 0.0 and u_wt > 0:
+                t_wt = qty * u_wt
+            grade = r[7] if len(r) > 7 and r[7] else 'S275JR'
+
+            results.append({
+                'pos_no': pos,
+                'name': name,
+                'profile_type': prof,
+                'quantity': qty,
+                'length': round(length, 1),
+                'unit_weight': round(u_wt, 2),
+                'total_weight': round(t_wt, 2),
+                'material_grade': grade
+            })
+
+    return results
+
 # Geriye uyumluluk için eski fonksiyon adı
 def parse_excel_parts(file_stream):
     res = parse_tekla_excel(file_stream)
     return res['parts']
+
 
 # =========================================================================
 # 2. ÖRNEK EXCEL ŞABLONU OLUŞTURUCU

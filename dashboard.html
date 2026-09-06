@@ -177,10 +177,10 @@
                 <canvas id="statusDoughnutChart"></canvas>
             </div>
             <div class="grid grid-cols-2 gap-2 text-xs pt-3 border-t border-slate-800 text-slate-300 font-medium">
-                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Sevk: %{{ metrics.ship_pct }}</div>
-                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span> Stok: %{{ metrics.stock_pct }}</div>
-                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Boya: %{{ metrics.paint_pct }}</div>
-                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> İmalat: %{{ metrics.fab_pct }}</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> İmalat: %{{ metrics.fab_pct }} ({{ metrics.fab_completed_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Boya: %{{ metrics.paint_pct }} ({{ metrics.paint_completed_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Sevk: %{{ metrics.ship_pct }} ({{ metrics.shipped_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span> Stok: %{{ metrics.stock_pct }} ({{ metrics.factory_stock_tonnage | format_num }} T)</div>
             </div>
         </div>
 
@@ -222,7 +222,7 @@
                                     <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ p.color or '#3b82f6' }};"></span>
                                     <div>
                                         <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="font-bold text-white hover:text-blue-400 transition-colors">
-                                            {{ p.code }}
+                                             {{ p.code }}
                                         </a>
                                         <p class="text-[11px] text-slate-400 truncate max-w-xs">{{ p.name }}</p>
                                     </div>
@@ -280,12 +280,12 @@
                     {% for act in recent_activities %}
                     <div class="p-2.5 bg-slate-900/60 border border-slate-800/80 rounded-xl text-xs flex items-start gap-2.5">
                         <div class="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0 mt-0.5 text-[10px]">
-                            <i class="fa-solid fa-user"></i>
+                            <i class="fa-solid fa-clock"></i>
                         </div>
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between gap-1">
                                 <span class="font-semibold text-slate-200 truncate">{{ act.username or 'Sistem' }}</span>
-                                <span class="text-[10px] text-slate-500 font-mono shrink-0">{{ act.created_at | format_date }}</span>
+                                <span class="text-[10px] text-slate-400 font-mono shrink-0">{{ act.created_at | format_datetime }}</span>
                             </div>
                             <p class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{{ act.details }}</p>
                         </div>
@@ -366,20 +366,21 @@
         }
     });
 
-    // 2. Pasta Grafik (Doughnut)
+    // 2. Pasta Grafik (Doughnut) - İmalat, Boya, Sevk ve Stok
     const ctxDoughnut = document.getElementById('statusDoughnutChart').getContext('2d');
     new Chart(ctxDoughnut, {
         type: 'doughnut',
         data: {
-            labels: ['Sevk Edilen', 'Atölye Stoğu', 'Boyada/İmalatta', 'Kalan İmalat'],
+            labels: ['İmalatı Biten', 'Boyanan', 'Sevk Edilen', 'Atölye Stoğu', 'Kalan İmalat'],
             datasets: [{
                 data: [
-                    {{ metrics.shipped_tonnage }},
-                    {{ metrics.factory_stock_tonnage }},
-                    {{ metrics.paint_completed_tonnage }},
-                    {{ metrics.pending_fab_tonnage }}
+                    {{ metrics.fab_completed_tonnage or 0.01 }},
+                    {{ metrics.paint_completed_tonnage or 0 }},
+                    {{ metrics.shipped_tonnage or 0 }},
+                    {{ metrics.factory_stock_tonnage or 0 }},
+                    {{ metrics.pending_fab_tonnage or 0 }}
                 ],
-                backgroundColor: ['#10b981', '#0ea5e9', '#a855f7', '#334155'],
+                backgroundColor: ['#f59e0b', '#a855f7', '#10b981', '#0ea5e9', '#334155'],
                 borderWidth: 0
             }]
         },
@@ -389,8 +390,9 @@
             plugins: {
                 legend: { display: false }
             },
-            cutout: '70%'
+            cutout: '65%'
         }
     });
 </script>
+
 {% endblock %}

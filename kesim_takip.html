@@ -1,27 +1,37 @@
 {% extends "layout.html" %}
 
-{% block title %}4. Kesim Takip (Hızlı Kesilenler Girişi) - Çelik İmalat MES{% endblock %}
-{% block page_title %}4. Kesim Takip & Hızlı Kesilenler İstasyonu{% endblock %}
+{% block title %}4. Kesim Girişi - Çelik İmalat MES{% endblock %}
+{% block page_title %}4. Kesim Girişi & Çoklu Poz İşleme İstasyonu{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
 
-    <!-- 1. HIZLI KESİLENLER GİRİŞ FORMU KARTI -->
-    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
-            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                <i class="fa-solid fa-bolt text-yellow-400"></i>
-                <span>Fabrika Hızlı Kesilen Poz Girişi</span>
-            </h3>
-            <span class="text-xs text-slate-400">💡 Girilen kesimler proje parça listesindeki kalan adetleri anında günceller.</span>
+    <!-- 1. KESİM GİRİŞİ KARTI (SEKMELİ: ÇOKLU POZ GİRİŞİ & TEKLİ HIZLI GİRİŞ) -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- Sekme Başlıkları -->
+        <div class="flex items-center justify-between border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+                <button onclick="switchCutTab('tabCoklu', this)" class="cut-tab-btn px-4 py-2.5 rounded-t-xl bg-yellow-500 text-slate-950 font-black text-xs flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>1) Toplu / Çoklu Poz Kesim Girişi</span>
+                </button>
+                <button onclick="switchCutTab('tabTekli', this)" class="cut-tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-bold text-xs flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-bolt"></i>
+                    <span>2) Tekli Hızlı Giriş</span>
+                </button>
+            </div>
+            <span class="text-xs text-slate-400 py-1 hidden sm:inline">💡 Girilen kesimler parça listesindeki kalan adetleri ve imalat durumunu anında günceller.</span>
         </div>
 
-        <form action="{{ url_for('api_kesim_kaydet') }}" method="POST" class="space-y-4 text-xs">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <!-- Proje Seçimi -->
+        <!-- 1. TAB: ÇOKLU POZ KESİM GİRİŞİ -->
+        <div id="tabCoklu" class="cut-tab-content p-5 space-y-4">
+            
+            <!-- Üst Ortak Bilgiler (Proje, Makine, Operatör, Tarih vb.) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
                 <div>
                     <label class="block text-slate-400 mb-1 font-semibold">Proje Seç *</label>
-                    <select id="cut_project_id" name="project_id" required onchange="onCuttingProjectChanged(this)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-yellow-500">
+                    <select id="batch_project_id" onchange="onBatchProjectChanged(this)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-yellow-500">
                         <option value="">-- Proje Seçin --</option>
                         {% for p in projects %}
                         <option value="{{ p.id }}" data-prefix="{{ p.pos_prefix or '' }}">{{ p.code }} - {{ p.name }}</option>
@@ -29,43 +39,9 @@
                     </select>
                 </div>
 
-                <!-- Poz Prefix & Poz No -->
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Poz No *</label>
-                    <div class="flex items-center gap-1.5">
-                        <input type="text" id="cut_prefix" placeholder="Prefix" readonly class="w-24 bg-slate-900/60 border border-slate-800 rounded-xl px-2 py-2 text-yellow-400 font-mono font-bold text-center">
-                        <input type="text" id="cut_pos_no" name="pos_no" required placeholder="Örn: P1 veya 25" oninput="checkPosDetails()" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase focus:outline-none focus:border-yellow-500">
-                    </div>
-                </div>
-
-                <!-- Profil Cinsi (Otomatik Gelir) -->
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Profil / Kesit</label>
-                    <input type="text" id="cut_profile" name="profile" placeholder="Otomatik bulunur..." class="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-blue-300 font-mono font-bold">
-                </div>
-
-                <!-- Kesilen Adet (Matematiksel Formül Destekli: Örn 5*4+2) -->
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Kesilen Adet * <span class="text-[10px] text-yellow-400">(Örn: 10 veya 4*6)</span></label>
-                    <input type="text" id="cut_quantity" name="cut_quantity" value="1" required placeholder="Adet veya formül" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-yellow-400 font-mono font-black text-sm focus:outline-none focus:border-yellow-500">
-                </div>
-            </div>
-
-            <!-- Canlı Poz Bilgilendirme Rozeti -->
-            <div id="posInfoBadge" class="hidden p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-center gap-4">
-                    <span>Toplam Proje Adedi: <b id="infoTotalQty" class="text-white font-mono">0</b></span>
-                    <span>Şu Ana Kadar Kesilen: <b id="infoCutQty" class="text-yellow-400 font-mono">0</b></span>
-                    <span>Kalan Kesim: <b id="infoRemQty" class="text-emerald-400 font-mono">0</b></span>
-                </div>
-                <span id="overcutWarning" class="text-rose-400 font-bold hidden">⚠️ Dikkat: Bu giriş toplam miktarı aşacaktır!</span>
-            </div>
-
-            <!-- Makine, Operatör, Vardiya, Tarih -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
                 <div>
                     <label class="block text-slate-400 mb-1 font-semibold">Kesim Makinesi</label>
-                    <select name="machine" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    <select id="batch_machine" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
                         {% for m in machines %}
                         <option value="{{ m }}">{{ m }}</option>
                         {% endfor %}
@@ -74,7 +50,7 @@
 
                 <div>
                     <label class="block text-slate-400 mb-1 font-semibold">Operatör</label>
-                    <select name="operator" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    <select id="batch_operator" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
                         {% for op in operators %}
                         <option value="{{ op }}">{{ op }}</option>
                         {% endfor %}
@@ -83,7 +59,7 @@
 
                 <div>
                     <label class="block text-slate-400 mb-1 font-semibold">Yardımcı</label>
-                    <select name="helper" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    <select id="batch_helper" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
                         <option value="">-- Yok --</option>
                         {% for h in helpers %}
                         <option value="{{ h }}">{{ h }}</option>
@@ -91,28 +67,162 @@
                     </select>
                 </div>
 
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Vardiya</label>
-                    <select name="shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
-                        <option value="Gündüz">☀️ Gündüz</option>
-                        <option value="Gece">🌙 Gece</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-slate-400 mb-1 font-semibold">Kesim Tarihi</label>
-                    <input type="date" name="cut_date" value="{{ today_str }}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Vardiya</label>
+                        <select id="batch_shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            <option value="Gündüz">☀️ Gündüz</option>
+                            <option value="Gece">🌙 Gece</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Tarih</label>
+                        <input type="date" id="batch_cut_date" value="{{ today_str }}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    </div>
                 </div>
             </div>
 
-            <!-- Kaydet Butonu -->
-            <div class="flex items-center justify-end gap-3 pt-2">
-                <button type="submit" class="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-yellow-500/20 flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-check"></i>
-                    <span>Kesimi Ana Listeye İşle</span>
+            <!-- Çoklu Satır Kesim Tablosu -->
+            <div class="border border-slate-800 rounded-xl overflow-hidden">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-400 font-semibold uppercase text-[10px] border-b border-slate-800">
+                            <th class="py-2.5 px-3 w-12 text-center">#</th>
+                            <th class="py-2.5 px-3 min-w-[180px]">Poz No / Marka *</th>
+                            <th class="py-2.5 px-3">Profil / Kesit</th>
+                            <th class="py-2.5 px-3 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-3 text-right text-yellow-400">Kalan Adet</th>
+                            <th class="py-2.5 px-3 w-40 text-right">Kesilen Adet * (Örn: 4*6)</th>
+                            <th class="py-2.5 px-3">Açıklama / Not</th>
+                            <th class="py-2.5 px-2 w-12 text-center">Sil</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchCutRows" class="divide-y divide-slate-800/60 text-slate-200 bg-slate-950/40">
+                        <!-- Dinamik Satırlar JS ile eklenir -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tablo Altı Butonlar -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <button type="button" onclick="addBatchRow()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus text-yellow-400"></i>
+                    <span>Satır Ekle (+1)</span>
                 </button>
+
+                {% if can_user_edit('kesim') %}
+                <button type="button" onclick="submitBatchCutting()" id="btnSubmitBatch" class="px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-yellow-500/20 flex items-center gap-2">
+                    <i class="fa-solid fa-check-double"></i>
+                    <span>Tüm Kesimleri Ana Listeye Kaydet</span>
+                </button>
+                {% endif %}
             </div>
-        </form>
+
+        </div>
+
+        <!-- 2. TAB: TEKLİ HIZLI GİRİŞ FORMU -->
+        <div id="tabTekli" class="cut-tab-content p-5 space-y-4 hidden">
+            <form action="{{ url_for('api_kesim_kaydet') }}" method="POST" class="space-y-4 text-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <!-- Proje Seçimi -->
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Proje Seç *</label>
+                        <select id="cut_project_id" name="project_id" required onchange="onCuttingProjectChanged(this)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-yellow-500">
+                            <option value="">-- Proje Seçin --</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}" data-prefix="{{ p.pos_prefix or '' }}">{{ p.code }} - {{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Poz Prefix & Poz No -->
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Poz No *</label>
+                        <div class="flex items-center gap-1.5">
+                            <input type="text" id="cut_prefix" placeholder="Prefix" readonly class="w-24 bg-slate-900/60 border border-slate-800 rounded-xl px-2 py-2 text-yellow-400 font-mono font-bold text-center">
+                            <input type="text" id="cut_pos_no" name="pos_no" required placeholder="Örn: P1 veya 25" oninput="checkPosDetails()" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold uppercase focus:outline-none focus:border-yellow-500">
+                        </div>
+                    </div>
+
+                    <!-- Profil Cinsi (Otomatik Gelir) -->
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Profil / Kesit</label>
+                        <input type="text" id="cut_profile" name="profile" placeholder="Otomatik bulunur..." class="w-full bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2 text-blue-300 font-mono font-bold">
+                    </div>
+
+                    <!-- Kesilen Adet (Matematiksel Formül Destekli: Örn 5*4+2) -->
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Kesilen Adet * <span class="text-[10px] text-yellow-400">(Örn: 10 veya 4*6)</span></label>
+                        <input type="text" id="cut_quantity" name="cut_quantity" value="1" required placeholder="Adet veya formül" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-yellow-400 font-mono font-black text-sm focus:outline-none focus:border-yellow-500">
+                    </div>
+                </div>
+
+                <!-- Canlı Poz Bilgilendirme Rozeti -->
+                <div id="posInfoBadge" class="hidden p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-4">
+                        <span>Toplam Proje Adedi: <b id="infoTotalQty" class="text-white font-mono">0</b></span>
+                        <span>Şu Ana Kadar Kesilen: <b id="infoCutQty" class="text-yellow-400 font-mono">0</b></span>
+                        <span>Kalan Kesim: <b id="infoRemQty" class="text-emerald-400 font-mono">0</b></span>
+                    </div>
+                    <span id="overcutWarning" class="text-rose-400 font-bold hidden">⚠️ Dikkat: Bu giriş toplam miktarı aşacaktır!</span>
+                </div>
+
+                <!-- Makine, Operatör, Vardiya, Tarih -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 pt-2 border-t border-slate-800/80">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Kesim Makinesi</label>
+                        <select name="machine" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            {% for m in machines %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Operatör</label>
+                        <select name="operator" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            {% for op in operators %}
+                            <option value="{{ op }}">{{ op }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Yardımcı</label>
+                        <select name="helper" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            <option value="">-- Yok --</option>
+                            {% for h in helpers %}
+                            <option value="{{ h }}">{{ h }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Vardiya</label>
+                        <select name="shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            <option value="Gündüz">☀️ Gündüz</option>
+                            <option value="Gece">🌙 Gece</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Kesim Tarihi</label>
+                        <input type="date" name="cut_date" value="{{ today_str }}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    </div>
+                </div>
+
+                <!-- Kaydet Butonu -->
+                {% if can_user_edit('kesim') %}
+                <div class="flex items-center justify-end gap-3 pt-2">
+                    <button type="submit" class="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-yellow-500/20 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check"></i>
+                        <span>Kesimi Ana Listeye İşle</span>
+                    </button>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+
     </div>
 
     <!-- 2. KESİM ANALİZLERİ VE ÖZET TABLOLAR -->
@@ -209,6 +319,176 @@
 
 {% block extra_scripts %}
 <script>
+    function switchCutTab(tabId, btn) {
+        document.querySelectorAll('.cut-tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.cut-tab-btn').forEach(el => {
+            el.classList.remove('bg-yellow-500', 'text-slate-950', 'font-black');
+            el.classList.add('text-slate-400', 'font-bold');
+        });
+
+        const activeTab = document.getElementById(tabId);
+        if (activeTab) activeTab.classList.remove('hidden');
+
+        btn.classList.remove('text-slate-400', 'font-bold');
+        btn.classList.add('bg-yellow-500', 'text-slate-950', 'font-black');
+    }
+
+    let projectPartsCache = [];
+    let rowCounter = 0;
+
+    function onBatchProjectChanged(sel) {
+        const prjId = sel.value;
+        const tbody = document.getElementById('batchCutRows');
+        tbody.innerHTML = '';
+        rowCounter = 0;
+        projectPartsCache = [];
+
+        if (!prjId) return;
+
+        fetch(`/api/kesim-takip/proje-pozlar?proje_id=${prjId}`)
+        .then(res => res.json())
+        .then(parts => {
+            projectPartsCache = parts || [];
+            // Varsayılan olarak 3 boş satır ekle
+            for (let i = 0; i < 3; i++) {
+                addBatchRow();
+            }
+        })
+        .catch(err => console.error(err));
+    }
+
+    function addBatchRow() {
+        rowCounter++;
+        const tbody = document.getElementById('batchCutRows');
+        const tr = document.createElement('tr');
+        tr.id = `batchRow_${rowCounter}`;
+        tr.className = 'hover:bg-slate-900/60 transition-colors';
+
+        let optionsHtml = '<option value="">-- Poz Seçin veya Yazın --</option>';
+        projectPartsCache.forEach(p => {
+            optionsHtml += `<option value="${p.pos_no}" data-profile="${p.profile_type || ''}" data-total="${p.quantity}" data-rem="${p.remaining_quantity}">${p.pos_no} (${p.name || ''}) - Kalan: ${p.remaining_quantity}</option>`;
+        });
+
+        tr.innerHTML = `
+            <td class="py-2 px-3 font-mono text-slate-500 text-center">${rowCounter}</td>
+            <td class="py-2 px-3">
+                <select onchange="onBatchRowPosSelected(this, ${rowCounter})" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono font-bold focus:outline-none focus:border-yellow-500">
+                    ${optionsHtml}
+                </select>
+            </td>
+            <td class="py-2 px-3">
+                <input type="text" id="b_profile_${rowCounter}" placeholder="-" class="w-full bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1.5 text-blue-300 font-mono font-bold text-xs" readonly>
+            </td>
+            <td class="py-2 px-3 text-right font-mono text-slate-300" id="b_total_${rowCounter}">-</td>
+            <td class="py-2 px-3 text-right font-mono font-bold text-yellow-400" id="b_rem_${rowCounter}">-</td>
+            <td class="py-2 px-3 text-right">
+                <input type="text" id="b_qty_${rowCounter}" placeholder="Adet / formül" value="" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-yellow-400 font-mono font-bold text-right focus:outline-none focus:border-yellow-500">
+            </td>
+            <td class="py-2 px-3">
+                <input type="text" id="b_notes_${rowCounter}" placeholder="Not (isteğe bağlı)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:border-yellow-500 text-xs">
+            </td>
+            <td class="py-2 px-2 text-center">
+                <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-400 hover:text-rose-300 p-1">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    function removeBatchRow(idx) {
+        const row = document.getElementById(`batchRow_${idx}`);
+        if (row) row.remove();
+    }
+
+    function onBatchRowPosSelected(selectEl, idx) {
+        const opt = selectEl.options[selectEl.selectedIndex];
+        const profile = opt.getAttribute('data-profile') || '';
+        const total = opt.getAttribute('data-total') || '-';
+        const rem = opt.getAttribute('data-rem') || '-';
+
+        document.getElementById(`b_profile_${idx}`).value = profile;
+        document.getElementById(`b_total_${idx}`).innerText = total;
+        document.getElementById(`b_rem_${idx}`).innerText = rem;
+        
+        const qtyInput = document.getElementById(`b_qty_${idx}`);
+        if (!qtyInput.value && rem !== '-') {
+            qtyInput.value = rem > 0 ? rem : 1;
+        }
+    }
+
+    function submitBatchCutting() {
+        const prjId = document.getElementById('batch_project_id').value;
+        if (!prjId) {
+            alert('Lütfen bir proje seçin.');
+            return;
+        }
+
+        const machine = document.getElementById('batch_machine').value;
+        const operator = document.getElementById('batch_operator').value;
+        const helper = document.getElementById('batch_helper').value;
+        const shift = document.getElementById('batch_shift').value;
+        const cut_date = document.getElementById('batch_cut_date').value;
+
+        const items = [];
+        const rows = document.querySelectorAll('#batchCutRows tr');
+        rows.forEach(tr => {
+            const selectEl = tr.querySelector('select');
+            const pos_no = selectEl ? selectEl.value : '';
+            const qtyInput = tr.querySelector('input[id^="b_qty_"]');
+            const cut_quantity = qtyInput ? qtyInput.value.trim() : '';
+            const profileInput = tr.querySelector('input[id^="b_profile_"]');
+            const profile = profileInput ? profileInput.value.trim() : '';
+            const notesInput = tr.querySelector('input[id^="b_notes_"]');
+            const notes = notesInput ? notesInput.value.trim() : '';
+
+            if (pos_no && cut_quantity) {
+                items.push({ pos_no, cut_quantity, profile, notes });
+            }
+        });
+
+        if (items.length === 0) {
+            alert('Lütfen en az bir poz ve kesilen adet girin.');
+            return;
+        }
+
+        const btn = document.getElementById('btnSubmitBatch');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Kaydediliyor...';
+
+        fetch('/api/kesim-takip/toplu-kaydet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_id: prjId,
+                machine,
+                operator,
+                helper,
+                shift,
+                cut_date,
+                items
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(`Başarılı! ${data.saved_count} poz kesimi sisteme işlendi.`);
+                window.location.reload();
+            } else {
+                alert('Hata: ' + (data.message || 'Kesim kaydedilemedi.'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-check-double"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Bir bağlantı hatası oluştu.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-check-double"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+        });
+    }
+
+    // Tekli Giriş JS Kodları
     function onCuttingProjectChanged(selectElement) {
         const selectedOption = selectElement.options[selectElement.selectedIndex];
         const prefix = selectedOption.getAttribute('data-prefix') || '';
@@ -258,3 +538,4 @@
     }
 </script>
 {% endblock %}
+

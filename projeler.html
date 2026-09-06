@@ -17,15 +17,12 @@
         </div>
 
         <div class="flex items-center gap-2">
-            <a href="{{ url_for('api_excel_sablon') }}" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm">
-                <i class="fa-solid fa-file-excel text-emerald-400"></i>
-                <span>Boş Tekla Şablonu İndir</span>
-            </a>
-
+            {% if can_user_edit('projeler') %}
             <button onclick="openModal('newProjectModal')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5">
                 <i class="fa-solid fa-plus"></i>
                 <span>Yeni Proje Ekle</span>
             </button>
+            {% endif %}
         </div>
     </div>
 

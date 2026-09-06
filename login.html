@@ -17,11 +17,11 @@
 
         <!-- Logo & Başlık -->
         <div class="text-center mb-8 relative">
-            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-xl shadow-blue-500/20 text-white text-3xl mx-auto mb-4">
-                <i class="fa-solid fa-industry"></i>
-            </div>
-            <h1 class="text-2xl font-bold text-white tracking-wide">ÇELİK İMALAT MES</h1>
-            <p class="text-xs text-slate-400 mt-1 font-medium">Tekla Entegre İmalat, Boya ve Sevkiyat Takip Portalı</p>
+            <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" class="inline-block mb-3 hover:opacity-90 transition-opacity">
+                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Logo" class="h-14 w-auto mx-auto object-contain" onerror="this.src='/static/img/ordumak_logo.svg'">
+            </a>
+            <h1 class="text-xl font-bold text-white tracking-wide">{{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}</h1>
+            <p class="text-xs text-slate-400 mt-1 font-medium">{{ system_settings.app_subtitle or 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı' }}</p>
         </div>
 
         <!-- Flash Mesajları -->
@@ -47,7 +47,7 @@
                     <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-500 text-sm">
                         <i class="fa-solid fa-user"></i>
                     </span>
-                    <input type="text" name="username" required autofocus placeholder="Örn: yozi veya admin"
+                    <input type="text" name="username" required autofocus placeholder="Kullanıcı adınız"
                            class="w-full bg-slate-950/70 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all">
                 </div>
             </div>
@@ -69,22 +69,11 @@
             </button>
         </form>
 
-        <!-- Hızlı Test Girişleri Rozeti -->
-        <div class="mt-8 pt-5 border-t border-slate-800/80 text-center">
-            <p class="text-[11px] text-slate-500 mb-2">Örnek Giriş Bilgileri:</p>
-            <div class="flex flex-wrap items-center justify-center gap-1.5 text-[10px] text-slate-400 font-mono">
-                <span class="px-2 py-1 bg-slate-800/80 rounded-md border border-slate-700">yozi / 2507</span>
-                <span class="px-2 py-1 bg-slate-800/80 rounded-md border border-slate-700">admin / admin123</span>
-                <span class="px-2 py-1 bg-slate-800/80 rounded-md border border-slate-700">imalat / imalat123</span>
-            </div>
-            <div class="mt-4">
-                <a href="{{ url_for('index') }}" class="text-xs text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1.5 transition-colors">
-                    <span>Giriş yapmadan kontrol paneline göz at</span>
-                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
-                </a>
-            </div>
+        <div class="mt-6 pt-4 border-t border-slate-800/80 text-center">
+            <p class="text-[11px] text-slate-500">© {{ now.year }} {{ system_settings.company_name or 'ORDUMAK ÇELİK SANAYİ' }}</p>
         </div>
     </div>
 
 </body>
 </html>
+
