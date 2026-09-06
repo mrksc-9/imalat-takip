@@ -14,7 +14,7 @@ from flask import (
 
 from database import (
     get_db, init_db, log_activity, hash_password,
-    get_global_metrics, get_project_summary,
+    get_global_metrics, get_project_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings,
     get_machines, add_machine, delete_machine,
     get_all_role_permissions, update_role_permission,
@@ -27,6 +27,8 @@ from database import (
     get_chat_messages, save_chat_message,
     get_meetings, get_meeting_by_id, add_meeting, update_meeting, delete_meeting,
     get_meeting_action_items, add_meeting_action_item, update_action_item_status, delete_meeting_action_item,
+    add_notification, get_recent_notifications,
+    get_shipments_with_accounting, update_shipment_accounting, get_accounting_summary_stats,
     ROLES_LIST, MODULES_LIST
 )
 from excel_handler import (
@@ -265,13 +267,18 @@ def logout():
 # =========================================================================
 @app.route('/')
 def index():
-    metrics = get_global_metrics()
+    selected_customer = request.args.get('musteri', '').strip()
+    customers = get_customers()
+    metrics = get_global_metrics(customer=selected_customer if selected_customer else None)
     
     conn = get_db()
     cursor = conn.cursor()
     
-    # Projelerin aşama durumlarıyla listesi
-    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY id DESC")
+    # Projelerin aşama durumlarıyla listesi (Aktif olanlar)
+    if selected_customer:
+        cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' AND customer = ? ORDER BY id DESC", (selected_customer,))
+    else:
+        cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' ORDER BY id DESC")
     projects_raw = cursor.fetchall()
     projects = []
     for p in projects_raw:
@@ -280,12 +287,21 @@ def index():
             projects.append(summary)
 
     # Son Sevkiyatlar
-    cursor.execute('''
-    SELECT s.*, p.name as project_name, p.code as project_code
-    FROM shipments s
-    LEFT JOIN projects p ON s.project_id = p.id
-    ORDER BY s.id DESC LIMIT 5
-    ''')
+    if selected_customer:
+        cursor.execute('''
+        SELECT s.*, p.name as project_name, p.code as project_code
+        FROM shipments s
+        LEFT JOIN projects p ON s.project_id = p.id
+        WHERE p.customer = ?
+        ORDER BY s.id DESC LIMIT 5
+        ''', (selected_customer,))
+    else:
+        cursor.execute('''
+        SELECT s.*, p.name as project_name, p.code as project_code
+        FROM shipments s
+        LEFT JOIN projects p ON s.project_id = p.id
+        ORDER BY s.id DESC LIMIT 5
+        ''')
     recent_shipments = [dict(r) for r in cursor.fetchall()]
 
     # Son Aktivite Günlüğü
@@ -296,6 +312,8 @@ def index():
     return render_template('dashboard.html',
                            metrics=metrics,
                            projects=projects,
+                           customers=customers,
+                           selected_customer=selected_customer,
                            recent_shipments=recent_shipments,
                            recent_activities=recent_activities)
 
@@ -305,17 +323,101 @@ def index():
 # =========================================================================
 @app.route('/projeler')
 def projeler():
+    tab = request.args.get('tab', 'aktif')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY id DESC")
-    projects_raw = cursor.fetchall()
-    projects = []
-    for p in projects_raw:
+    
+    # Aktif Projeler
+    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' ORDER BY id DESC")
+    active_raw = cursor.fetchall()
+    active_projects = []
+    for p in active_raw:
         summary = get_project_summary(p['id'])
-        if summary: projects.append(summary)
+        if summary: active_projects.append(summary)
+        
+    # Biten Projeler
+    cursor.execute("SELECT * FROM projects WHERE status = 'Tamamlandı' ORDER BY id DESC")
+    finished_raw = cursor.fetchall()
+    finished_projects = []
+    for p in finished_raw:
+        summary = get_project_summary(p['id'])
+        if summary: finished_projects.append(summary)
+
     conn.close()
     metrics = get_global_metrics()
-    return render_template('projeler.html', projects=projects, metrics=metrics)
+    return render_template('projeler.html',
+                           active_projects=active_projects,
+                           finished_projects=finished_projects,
+                           active_tab=tab,
+                           projects=active_projects if tab == 'aktif' else finished_projects,
+                           metrics=metrics)
+
+@app.route('/api/projeler/<int:project_id>/durum', methods=['POST'])
+def api_proje_durum(project_id):
+    """Projenin durumunu değiştirir (Örn: Tamamlandı / Aktif)."""
+    status = request.form.get('status', 'Tamamlandı').strip()
+    set_project_status(project_id, status)
+    
+    u = session.get('user', {})
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
+    p_row = cursor.fetchone()
+    conn.close()
+    p_name = f"{p_row['code']} - {p_row['name']}" if p_row else f"Proje #{project_id}"
+    
+    log_activity(
+        action=f"Proje Durumu: {status}",
+        entity_type="projects",
+        entity_id=project_id,
+        details=f"'{p_name}' projesinin durumu '{status}' olarak güncellendi.",
+        username=u.get('username', 'Kullanıcı'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+    
+    add_notification(
+        category='proje_durum',
+        title=f"Proje Durumu: {status}",
+        message=f"'{p_name}' projesi '{status}' olarak işaretlendi.",
+        icon='fa-flag-checkered' if status == 'Tamamlandı' else 'fa-play',
+        color='emerald' if status == 'Tamamlandı' else 'blue',
+        link_url=url_for('projeler', tab='biten' if status == 'Tamamlandı' else 'aktif')
+    )
+    
+    flash(f"'{p_name}' projesi başarıyla '{status}' olarak güncellendi.", "success")
+    return redirect(url_for('projeler', tab='biten' if status == 'Tamamlandı' else 'aktif'))
+
+@app.route('/api/projeler/<int:project_id>/guncelle', methods=['POST'])
+def api_proje_guncelle(project_id):
+    """Proje temel bilgilerini günceller."""
+    code = request.form.get('code', '').strip().upper()
+    name = request.form.get('name', '').strip()
+    customer = request.form.get('customer', '').strip()
+    site_location = request.form.get('site_location', '').strip()
+    start_date = request.form.get('start_date', '')
+    cutting_start_date = request.form.get('cutting_start_date', '')
+    delivery_date = request.form.get('delivery_date', '')
+    target_tonnage = clean_float(request.form.get('target_tonnage', 0))
+    color = request.form.get('color', '#3b82f6')
+    pos_prefix = request.form.get('pos_prefix', '').strip()
+    notes = request.form.get('notes', '').strip()
+    status = request.form.get('status', 'Aktif').strip()
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE projects
+        SET code = ?, name = ?, customer = ?, site_location = ?, start_date = ?,
+            cutting_start_date = ?, delivery_date = ?, target_tonnage = ?, color = ?,
+            pos_prefix = ?, notes = ?, status = ?
+        WHERE id = ?
+    """, (code, name, customer, site_location, start_date, cutting_start_date, delivery_date, target_tonnage, color, pos_prefix, notes, status, project_id))
+    conn.commit()
+    conn.close()
+
+    flash(f"'{name}' projesi bilgileri güncellendi.", "success")
+    return redirect(url_for('projeler', tab='biten' if status == 'Tamamlandı' else 'aktif'))
 
 @app.route('/projeler/<int:project_id>')
 def proje_detay(project_id):
@@ -782,8 +884,24 @@ def api_siparis_verilen_ekle():
     conn.close()
 
     if is_auto_approved:
+        add_notification(
+            category='siparis_onay',
+            title='Yeni Sipariş Onaylandı',
+            message=f"{p_code or 'Genel'} - {material} ({quantity} adet, {weight} kg) siparişi onaylandı.",
+            icon='fa-circle-check',
+            color='emerald',
+            link_url=url_for('siparis_takip', tab='onaylanan')
+        )
         flash(f"'{material}' siparişi onaylı olarak kaydedildi.", "success")
     else:
+        add_notification(
+            category='siparis_talep',
+            title='Yeni Sipariş Talebi',
+            message=f"{u.get('full_name', 'Personel')} {material} ({quantity} adet) için sipariş talebi açtı. Satınalma onayı bekleniyor.",
+            icon='fa-cart-plus',
+            color='amber',
+            link_url=url_for('siparis_takip', tab='talepler')
+        )
         flash(f"'{material}' malzeme sipariş talebi oluşturuldu, Satınalma onayına gönderildi.", "info")
 
     return redirect(url_for('siparis_takip', proje_id=project_id or '', tab='talepler' if not is_auto_approved else 'onaylanan'))
@@ -794,6 +912,14 @@ def api_siparis_talep_onayla(order_id):
     u = session.get('user', {})
     approver_name = u.get('full_name', 'Satınalma Yetkilisi')
     approve_material_order(order_id, approver_name)
+    add_notification(
+        category='siparis_onay',
+        title='Sipariş Talebi Onaylandı',
+        message=f"Talep #{order_id} Satınalma ({approver_name}) tarafından ONAYLANDI ve onaylanan siparişlere aktarıldı.",
+        icon='fa-circle-check',
+        color='emerald',
+        link_url=url_for('siparis_takip', tab='onaylanan')
+    )
     flash("Malzeme sipariş talebi ONAYLANDI ve onaylanan siparişler havuzuna aktarıldı.", "success")
     return redirect(request.referrer or url_for('siparis_takip', tab='onaylanan'))
 
@@ -803,6 +929,14 @@ def api_siparis_talep_reddet(order_id):
     u = session.get('user', {})
     approver_name = u.get('full_name', 'Satınalma Yetkilisi')
     reject_material_order(order_id, approver_name)
+    add_notification(
+        category='siparis_red',
+        title='Sipariş Talebi Reddedildi',
+        message=f"Talep #{order_id} Satınalma ({approver_name}) tarafından REDDEDİLDİ.",
+        icon='fa-circle-xmark',
+        color='rose',
+        link_url=url_for('siparis_takip', tab='talepler')
+    )
     flash("Malzeme sipariş talebi REDDEDİLDİ.", "warning")
     return redirect(request.referrer or url_for('siparis_takip', tab='talepler'))
 
@@ -856,6 +990,18 @@ def api_siparis_gelen_ekle():
     received_date = request.form.get('received_date') or datetime.now().strftime("%Y-%m-%d")
     waybill_no = request.form.get('waybill_no', '').strip()
     notes = request.form.get('notes', '').strip()
+    invoice_photo_url = ""
+
+    if 'invoice_photo' in request.files:
+        photo = request.files['invoice_photo']
+        if photo and photo.filename != '':
+            ext = os.path.splitext(photo.filename)[1].lower()
+            if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                filename = f"inv_{int(datetime.now().timestamp())}_{photo.filename}"
+                save_dir = os.path.join(BASE_DIR, 'static', 'uploads', 'invoices')
+                os.makedirs(save_dir, exist_ok=True)
+                photo.save(os.path.join(save_dir, filename))
+                invoice_photo_url = f"/static/uploads/invoices/{filename}"
 
     conn = get_db()
     cursor = conn.cursor()
@@ -866,13 +1012,22 @@ def api_siparis_gelen_ekle():
         if r: p_code = r['code']
 
     cursor.execute('''
-    INSERT INTO material_orders_received (project_id, project_code, material, thickness, width, length, quantity, weight, received_date, waybill_no, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (project_id, p_code, material, thickness, width, length, quantity, weight, received_date, waybill_no, notes))
+    INSERT INTO material_orders_received (project_id, project_code, material, thickness, width, length, quantity, weight, received_date, waybill_no, notes, invoice_photo_url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (project_id, p_code, material, thickness, width, length, quantity, weight, received_date, waybill_no, notes, invoice_photo_url))
     conn.commit()
     conn.close()
 
-    flash("Gelen malzeme başarıyla kaydedildi.", "success")
+    add_notification(
+        category='malzeme_geldi',
+        title='Malzeme Teslim Alındı',
+        message=f"{p_code or 'Genel'} - {material} ({quantity} Adet, {weight} kg) irsaliye #{waybill_no} ile fabrikaya teslim alındı.",
+        icon='fa-boxes-packing',
+        color='emerald',
+        link_url=url_for('siparis_takip', proje_id=project_id or '')
+    )
+
+    flash("Gelen malzeme ve irsaliye görseli başarıyla kaydedildi.", "success")
     return redirect(url_for('siparis_takip', proje_id=project_id or ''))
 
 @app.route('/api/siparis-takip/gelen-guncelle', methods=['POST'])
@@ -1444,6 +1599,15 @@ def api_imalat_kaliteye_gonder():
         ip_address=request.remote_addr
     )
 
+    add_notification(
+        category='qa_gonderildi',
+        title='Kalite Kontrole Sevk',
+        message=f"Marka '{ass['assembly_pos']}' ({send_qty} Adet) kalite kontrol havuzuna sevk edildi ({workstation or 'İstasyon'}).",
+        icon='fa-clipboard-check',
+        color='blue',
+        link_url=url_for('kalite_kontrol')
+    )
+
     flash(f"'{ass['assembly_pos']}' markasından {send_qty} adet başarıyla Kalite Kontrol sayfasına gönderildi.", "success")
     return redirect(request.referrer or url_for('imalat_takip'))
 
@@ -1566,9 +1730,17 @@ def api_kalite_karar():
         ip_address=request.remote_addr
     )
 
+    add_notification(
+        category='qa_karar',
+        title=f"Kalite Kararı: {decision}",
+        message=f"Marka '{qa['assembly_pos']}' ({qa['quantity']} Adet) kalite kontrol tarafından '{decision}' olarak sonuçlandırıldı.",
+        icon='fa-shield-halved' if decision == 'Onaylandı' else 'fa-triangle-exclamation',
+        color='teal' if decision == 'Onaylandı' else 'rose',
+        link_url=url_for('kalite_kontrol')
+    )
+
     flash(f"Kalite denetim kararı ({decision}) başarıyla kaydedildi.", "success")
     return redirect(url_for('kalite_kontrol'))
-
 
 
 # =========================================================================
@@ -1643,6 +1815,24 @@ def api_boya_kaydet():
     INSERT INTO paint_records (project_id, assembly_id, assembly_pos, process_type, quantity, ral_code, dft_micron, lot_no, completion_date, operator_name, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (ass['project_id'], assembly_id, ass['assembly_pos'], process_type, quantity, ral_code, dft_micron, lot_no, completion_date, u.get('full_name'), notes))
+
+    if process_type in ('Tamamlandı', 'Boya'):
+        new_done = ass['paint_done_qty'] + quantity
+        cursor.execute("UPDATE assemblies SET paint_done_qty = ? WHERE id = ?", (new_done, assembly_id))
+        add_notification(
+            category='boya_tamam',
+            title='Boya Tamamlandı & Sevke Hazır',
+            message=f"Marka '{ass['assembly_pos']}' ({quantity} Adet) boyandı ve sevkiyat havuzuna hazırlandı.",
+            icon='fa-truck-ramp-box',
+            color='purple',
+            link_url=url_for('sevk')
+        )
+
+    conn.commit()
+    conn.close()
+
+    flash(f"'{ass['assembly_pos']}' için boya/yüzey işlem kaydı işlendi.", "success")
+    return redirect(request.referrer or url_for('boya_takip'))
 
     # Assemblies adetlerini güncelle
     if process_type == 'Tamamlandı' or process_type == 'Boya':
@@ -1819,6 +2009,15 @@ def api_sevk_olustur():
     conn.commit()
     conn.close()
 
+    add_notification(
+        category='sevk_cikis',
+        title='Sevkiyat İrsaliyesi Kesildi',
+        message=f"{dispatch_no} irsaliyesi ile {vehicle_plate} aracı ({total_qty} Parça, {total_tonnage} Ton) {destination or 'Şantiye'} yönüne sevk edildi.",
+        icon='fa-truck-moving',
+        color='emerald',
+        link_url=url_for('sevk')
+    )
+
     log_activity(
         action="Sevkiyat Oluşturuldu",
         entity_type="shipments",
@@ -1872,7 +2071,7 @@ def api_sevk_sil(shipment_id):
     items = cursor.fetchall()
     for it in items:
         if it['assembly_id']:
-            cursor.execute("UPDATE assemblies SET shipped_qty = MAX(0, shipped_qty - ?) WHERE id = ?", (it['quantity'], it['assembly_id']))
+            cursor.execute("UPDATE assemblies SET shipped_qty = CASE WHEN shipped_qty - ? < 0 THEN 0 ELSE shipped_qty - ? END WHERE id = ?", (it['quantity'], it['quantity'], it['assembly_id']))
 
     cursor.execute("DELETE FROM shipments WHERE id = ?", (shipment_id,))
     conn.commit()
@@ -1880,6 +2079,128 @@ def api_sevk_sil(shipment_id):
 
     flash("Sevkiyat iptal edildi ve parçalar tekrar sevk bekliyor havuzuna alındı.", "info")
     return redirect(url_for('sevk'))
+
+
+# =========================================================================
+# 10.5. MUHASEBE & İRSALİYE TAKİP MODÜLÜ
+# =========================================================================
+@app.route('/muhasebe-irsaliye')
+def muhasebe_irsaliye():
+    """Muhasebe ve Finans Ekibi için İrsaliye & Fatura Takip ve Onay Ekranı."""
+    project_id = request.args.get('proje_id')
+    accounting_status = request.args.get('durum', 'Tümü')
+    search = request.args.get('q', '').strip()
+    customer = request.args.get('musteri', '').strip()
+
+    shipments = get_shipments_with_accounting(
+        project_id=project_id,
+        accounting_status=accounting_status,
+        search=search,
+        customer=customer
+    )
+    stats = get_accounting_summary_stats()
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name, customer FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    customers = get_customers()
+    conn.close()
+
+    metrics = get_global_metrics(customer=customer)
+
+    return render_template(
+        'muhasebe_irsaliye.html',
+        shipments=shipments,
+        stats=stats,
+        projects=projects,
+        customers=customers,
+        selected_project_id=project_id,
+        selected_status=accounting_status,
+        selected_customer=customer,
+        search_query=search,
+        metrics=metrics,
+        today_str=datetime.now().strftime("%Y-%m-%d")
+    )
+
+@app.route('/api/muhasebe-irsaliye/<int:shipment_id>/islem', methods=['POST'])
+def api_muhasebe_irsaliye_islem(shipment_id):
+    """İrsaliyenin muhasebe işleme durumunu kaydeder/günceller ve bildirim üretir."""
+    status = request.form.get('accounting_status', 'İşlendi').strip()
+    invoice_no = request.form.get('accounting_invoice_no', '').strip()
+    notes = request.form.get('accounting_notes', '').strip()
+    
+    u = session.get('user', {})
+    user_name = u.get('full_name') or u.get('username') or 'Muhasebe Sorumlusu'
+
+    # İrsaliye detayını çek
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT s.*, p.name as project_name FROM shipments s LEFT JOIN projects p ON s.project_id = p.id WHERE s.id = ?", (shipment_id,))
+    shipment = cursor.fetchone()
+    conn.close()
+
+    if not shipment:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+            return jsonify({'status': 'error', 'message': 'İrsaliye bulunamadı'}), 404
+        flash("İrsaliye bulunamadı!", "danger")
+        return redirect(url_for('muhasebe_irsaliye'))
+
+    dispatch_no = shipment['dispatch_no']
+    project_name = shipment['project_name'] or 'Proje'
+
+    update_shipment_accounting(
+        shipment_id=shipment_id,
+        accounting_status=status,
+        accounting_processed_by=user_name if status == 'İşlendi' else None,
+        accounting_invoice_no=invoice_no,
+        accounting_notes=notes
+    )
+
+    if status == 'İşlendi':
+        msg = f"'{dispatch_no}' numaralı irsaliye ({project_name}) muhasebe sistemine işlendi."
+        if invoice_no:
+            msg += f" (Resmi Fatura/İrsaliye No: {invoice_no})"
+        add_notification(
+            category='muhasebe_islem',
+            title='İrsaliye Muhasebeye İşlendi',
+            message=msg,
+            icon='fa-file-invoice-dollar',
+            color='indigo',
+            link_url=url_for('muhasebe_irsaliye')
+        )
+        flash(f"'{dispatch_no}' numaralı irsaliye başarıyla 'Muhasebeye İşlendi' olarak kaydedildi.", "success")
+    else:
+        add_notification(
+            category='muhasebe_bekliyor',
+            title='İrsaliye Muhasebe Durumu Geri Alındı',
+            message=f"'{dispatch_no}' numaralı irsaliye muhasebe bekleme havuzuna geri alındı.",
+            icon='fa-clock-rotate-left',
+            color='amber',
+            link_url=url_for('muhasebe_irsaliye')
+        )
+        flash(f"'{dispatch_no}' numaralı irsaliye muhasebe bekleme durumuna geri alındı.", "info")
+
+    log_activity(
+        action=f"Muhasebe İrsaliye {status}",
+        entity_type="shipments",
+        entity_id=shipment_id,
+        details=f"İrsaliye No: {dispatch_no}, Fatura No: {invoice_no or '-'}, Not: {notes or '-'}",
+        username=u.get('username', 'Kullanıcı'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.is_json:
+        return jsonify({
+            'status': 'success',
+            'accounting_status': status,
+            'accounting_processed_by': user_name if status == 'İşlendi' else None,
+            'accounting_invoice_no': invoice_no,
+            'message': f"'{dispatch_no}' durumu güncellendi."
+        })
+
+    return redirect(request.referrer or url_for('muhasebe_irsaliye'))
 
 
 # =========================================================================
@@ -2304,12 +2625,16 @@ def toplantilar():
     cursor = conn.cursor()
     cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
     projects = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT id, username, full_name, role FROM users WHERE is_active = 1 ORDER BY full_name ASC")
+    users = [dict(r) for r in cursor.fetchall()]
     conn.close()
 
     meetings_list = get_meetings(project_id=p_id)
 
     return render_template('toplantilar.html',
                            projects=projects,
+                           users=users,
                            selected_project_id=selected_project_id,
                            meetings=meetings_list)
 
@@ -2322,11 +2647,18 @@ def api_toplanti_ekle():
     meeting_date = request.form.get('meeting_date')
     meeting_time = request.form.get('meeting_time', '')
     location = request.form.get('location', '')
-    organizer = request.form.get('organizer', '')
-    attendees = request.form.get('attendees', '')
+    organizer = u.get('full_name', 'Sistem')
+    
+    # Katılımcılar listesi (checkbox veya metin)
+    att_list = request.form.getlist('attendees')
+    if att_list:
+        attendees = ', '.join([a.strip() for a in att_list if a.strip()])
+    else:
+        attendees = request.form.get('attendees', '').strip()
+        
     summary = request.form.get('summary', '')
     decisions = request.form.get('decisions', '')
-    status = request.form.get('status', 'Tamamlandı')
+    status = 'Tamamlandı'
 
     if not title or not meeting_date:
         flash("Toplantı başlığı ve tarihi zorunludur.", "danger")
@@ -2435,6 +2767,29 @@ def api_toplanti_aksiyon_sil(item_id):
 # =========================================================================
 # 19. CANLI SOHBET & FOTOĞRAFLI İLETİŞİM SİSTEMİ
 # =========================================================================
+def generate_steel_ai_response(msg, user_name='Değerli Personel'):
+    text = (msg or '').strip().lower()
+    
+    if any(k in text for k in ['ağırlık', 'hesapla', 'tonaj', 'kg', 'formül']):
+        return f"📐 **Çelik / Sac Ağırlık Formülü:**\n- `Ağırlık (kg) = Kalınlık (mm) × Genişlik (mm) × Boy (mm) × 0.00000785`\n- *Örnek:* 10mm × 1500mm × 6000mm sac = `10 × 1500 × 6000 × 7.85 / 1.000.000 = 706.5 kg`\n\nProfil ağırlıklarında ise standart çelik cetvelindeki metre ağırlığı (kg/m) boy ile çarpılır."
+    
+    if any(k in text for k in ['s235', 's275', 's355', 'kalite', 'st37', 'st52', 'malzeme']):
+        return f"🔩 **Yapısal Çelik Kaliteleri (EN 10025):**\n- **S235JR (Eski St37):** Akma dayanımı min. 235 MPa. Tali elemanlar, aşıklar, gerdirmeler için uygundur.\n- **S275JR (Eski St44):** Akma dayanımı min. 275 MPa. Standart kiriş ve kolonlar için dengeli tercih.\n- **S355JR/J2 (Eski St52):** Akma dayanımı min. 355 MPa. Ağır yük taşıyan ana kolonlar, vinç kirişleri ve yüksek gerilmeli düğüm noktaları için zorunludur.\n- *Kaynak Uyarısı:* S355 çeliklerde et kalınlığı arttıkça ön ısıtma ve uygun elektrod/gaz seçimine dikkat edilmelidir."
+    
+    if any(k in text for k in ['kaynak', 'kalite', 'muayene', 'tolerans', 'en 1090', 'iso 5817', 'ndt']):
+        return f"🛡️ **Kalite & Kaynak Standartları (EN 1090 / ISO 5817):**\n- **Görsel Muayene (VT):** Kaynak dikişlerinde gözenek, yanma oluğu (undercut) ve nüfuziyetsizlik kontrol edilir.\n- **Tahribatsız Muayene (NDT):** T-bağlantıları ve alın kaynaklarında MT (Manyetik) veya UT (Ultrasonik) testleri uygulanır.\n- **Kabul Seviyesi:** EXC2 ve EXC3 yapılarda genellikle EN ISO 5817 Seviye B veya C aranır."
+    
+    if any(k in text for k in ['boya', 'kumlama', 'sa 2.5', 'mikron', 'dft', 'ral']):
+        return f"🎨 **Yüzey İşlem & Boya Standartları (ISO 12944 / ISO 8501):**\n- **Kumlama Derecesi:** Çelik yüzeyinde hadde kabuğu ve pas tamamen temizlenmeli, en az **Sa 2.5** pürüzlülük sağlanmalıdır.\n- **Kuru Film Kalınlığı (DFT):** Şartnamede belirtilen mikron kalınlığı (örn. 80-120 µm) boya kalınlık ölçer ile kontrol edilmeli ve yüzey kuru iken ölçülmelidir."
+    
+    if any(k in text for k in ['kesim', 'fire', 'lazer', 'plazma', 'nesting', 'testere']):
+        return f"⚡ **Ön İmalat Kesim & Yerleşim (Nesting) Tavsiyesi:**\n- Plaka kesimlerinde (Plazma/Lazer) parça arası boşluklar sac kalınlığı kadar (min. t mm) bırakılmalıdır.\n- Ortak kenar kesimi (Common Cut) ile gaz ve zaman tasarrufu sağlanabilir.\n- Profil kesimlerinde testere açı payı ve bıçak kalınlığı (3-4 mm) hesaba katılmalıdır."
+    
+    if any(k in text for k in ['tekla', 'poz', 'marka', 'assembly', 'part']):
+        return f"🏗️ **Tekla & İmalat Pozlama Kuralı:**\n- **Montaj Markası (Assembly):** Atölyede birleştirilip şantiyeye tek parça giden eleman (örn. `C-101`, `B-201`).\n- **Tekil Poz (Part):** CNC'de kesilen sac ve profil parçaları (örn. `PL-1`, `p1`, `flans-10`).\n- Kesim girişinde Prefix ile eşleşmeyen pozları tam marka koduyla girerek otomatik profil eşleştirmesi yapabilirsiniz."
+    
+    return f"🤖 Merhaba {user_name}! ORDUMAK Çelik İmalat AI Danışmanıyım.\n\nSana aşağıdaki konularda anında yardımcı olabilirim:\n1. 📐 **Ağırlık ve Tonaj Hesapları** (Sac, profil, boru)\n2. 🔩 **Çelik Kaliteleri ve Malzeme Seçimi** (S235, S275, S355)\n3. ⚡ **Kesim Optimizasyonu & Makine Parametreleri** (Plazma, Sac/Profil Lazer)\n4. 🛡️ **Kaynak ve Kalite Standartları** (EN 1090, ISO 5817, NDT)\n5. 🎨 **Boya, Kumlama ve DFT Mikron Ölçümleri** (Sa 2.5, RAL)\n6. 📦 **Sevkiyat ve Montaj Sıralaması**\n\nHerhangi bir teknik sorunuzu veya hesaplama talebinizi doğrudan sorabilirsiniz!"
+
 @app.route('/api/chat/<channel>')
 def api_chat_get(channel):
     """Kanal bazlı sohbet mesajlarını JSON döner."""
@@ -2443,7 +2798,7 @@ def api_chat_get(channel):
 
 @app.route('/api/chat/send', methods=['POST'])
 def api_chat_send():
-    """Yeni sohbet mesajı ve görsel kaydeder."""
+    """Yeni sohbet mesajı ve görsel kaydeder; AI kanalı ise anında yanıt üretir."""
     u = session.get('user', {})
     if not u:
         return jsonify({'status': 'error', 'message': 'Oturum açılmamış.'}), 401
@@ -2475,7 +2830,67 @@ def api_chat_send():
         photo_url=photo_url
     )
 
+    # Yapay Zeka Kanalı Yanıtı
+    if channel == 'ai_ortak' or channel.startswith('ai_ozel'):
+        ai_reply = generate_steel_ai_response(message, u.get('full_name', 'Personel'))
+        save_chat_message(
+            channel=channel,
+            user_id=0,
+            username='ai_asistan',
+            full_name='🤖 ORDUMAK AI Danışmanı',
+            message=ai_reply,
+            photo_url=""
+        )
+
     return jsonify({'status': 'success', 'photo_url': photo_url})
+
+@app.route('/api/notifications/recent')
+def api_notifications_recent():
+    """En son canlı bildirimleri JSON formatında döner."""
+    since_id = request.args.get('since_id', 0)
+    notifs = get_recent_notifications(since_id=since_id, limit=10)
+    return jsonify(notifs)
+
+@app.route('/api/veritabani/yedek-indir')
+def api_veritabani_yedek_indir():
+    """Yöneticinin yerel SQLite veritabanını tek tıkla indirmesini sağlar."""
+    cur_u = session.get('user', {})
+    if cur_u.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz erişim! Sadece Yöneticiler veritabanı yedeği indirebilir.", "danger")
+        return redirect(url_for('index'))
+    db_file = os.path.join(BASE_DIR, 'imalat_takip.db')
+    if os.path.exists(db_file):
+        return send_file(
+            db_file,
+            as_attachment=True,
+            download_name=f"imalat_takip_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+        )
+    flash("Yerel SQLite veritabanı dosyası bulunamadı (PostgreSQL kullanılıyor olabilir).", "warning")
+    return redirect(url_for('index'))
+
+@app.route('/manifest.json')
+def pwa_manifest():
+    """PWA mobil ana ekrana ekleme manifest verisi döner."""
+    settings = get_system_settings()
+    logo_url = settings.get('company_logo_url') or '/static/img/ordumak_logo.svg'
+    manifest = {
+        "name": settings.get('app_title', 'ORDUMAK ÇELİK İMALAT MES'),
+        "short_name": "İmalat MES",
+        "description": settings.get('app_subtitle', 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı'),
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#020617",
+        "theme_color": "#020617",
+        "icons": [
+            {
+                "src": logo_url,
+                "sizes": "192x192 512x512",
+                "type": "image/png" if logo_url.endswith('.png') else "image/svg+xml",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return jsonify(manifest)
 
 
 # =========================================================================

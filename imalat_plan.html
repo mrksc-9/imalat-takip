@@ -61,6 +61,22 @@
     .fc-theme-standard td {
         border-color: #1e293b;
     }
+    .fc .fc-col-header-cell, .fc-daygrid-day {
+        width: 14.2857% !important;
+        min-width: 0 !important;
+    }
+    .fc-scrollgrid {
+        border-radius: 1rem;
+        overflow: hidden;
+        width: 100% !important;
+        table-layout: fixed !important;
+    }
+    .fc-daygrid-day-frame {
+        min-height: 85px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
     .fc-daygrid-day-number {
         color: #94a3b8;
         font-family: monospace;
@@ -93,7 +109,7 @@
         <div>
             <h3 class="text-base font-bold text-white flex items-center gap-2">
                 <i class="fa-solid fa-calendar-days text-indigo-400"></i>
-                <span>İmalat ve Termin Planlama Takvimi</span>
+                <span>İmalat ve Termin Planlama Çizelgesi</span>
             </h3>
             <p class="text-xs text-slate-400 mt-0.5">Projelerin kesim, çatım, kaynak, boya ve sevkiyat hedef bitiş tarihleri</p>
         </div>
@@ -101,13 +117,13 @@
         <div class="flex items-center gap-2 w-full md:w-auto">
             <!-- Görünüm Butonları -->
             <div class="bg-slate-900 p-1 rounded-xl border border-slate-800 flex items-center gap-1 text-xs font-bold">
-                <button id="btnViewCalendar" onclick="switchView('calendar')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white flex items-center gap-1.5 transition-all shadow-sm">
+                <button id="btnViewTimeline" onclick="switchView('timeline')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white flex items-center gap-1.5 transition-all shadow-sm">
+                    <i class="fa-solid fa-timeline"></i>
+                    <span>Proje Çizelgeleri (Liste)</span>
+                </button>
+                <button id="btnViewCalendar" onclick="switchView('calendar')" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
                     <i class="fa-solid fa-calendar-week"></i>
                     <span>Takvim Görünümü</span>
-                </button>
-                <button id="btnViewTimeline" onclick="switchView('timeline')" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
-                    <i class="fa-solid fa-timeline"></i>
-                    <span>Proje Çizelgeleri</span>
                 </button>
             </div>
         </div>
@@ -119,11 +135,14 @@
         <span class="flex items-center gap-1.5 font-medium text-yellow-300">
             <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span> Kesim Başlama
         </span>
-        <span class="flex items-center gap-1.5 font-medium text-orange-300">
-            <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> Çatım Başlama/Bitiş
+        <span class="flex items-center gap-1.5 font-medium text-cyan-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span> Çatım Başlama
         </span>
-        <span class="flex items-center gap-1.5 font-medium text-pink-300">
-            <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span> Kaynak & Temizlik
+        <span class="flex items-center gap-1.5 font-medium text-amber-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Çatım Bitiş
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-orange-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> Kaynak & Temizlik Bitiş
         </span>
         <span class="flex items-center gap-1.5 font-medium text-purple-300">
             <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Boya Bitiş
@@ -133,13 +152,8 @@
         </span>
     </div>
 
-    <!-- 1. GÖRÜNÜM: İNTERAKTİF FULLCALENDAR -->
-    <div id="calendarViewContainer" class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
-        <div id="manufacturingCalendar"></div>
-    </div>
-
-    <!-- 2. GÖRÜNÜM: PROJE AŞAMA ÇİZELGELERİ (LİSTE / GANTT) -->
-    <div id="timelineViewContainer" class="space-y-4 hidden">
+    <!-- 1. GÖRÜNÜM: PROJE AŞAMA ÇİZELGELERİ (LİSTE / GANTT - VARSAYILAN AKTİF) -->
+    <div id="timelineViewContainer" class="space-y-4">
         {% for p in projects %}
         <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl transition-all hover:bg-slate-900/40 relative overflow-hidden">
             <div class="absolute top-0 left-0 bottom-0 w-1.5" style="background-color: {{ p.color or '#3b82f6' }};"></div>
@@ -226,6 +240,11 @@
             Planlanacak aktif proje bulunmuyor.
         </div>
         {% endfor %}
+    </div>
+
+    <!-- 2. GÖRÜNÜM: İNTERAKTİF FULLCALENDAR (İSTENİRSE AÇILIR) -->
+    <div id="calendarViewContainer" class="hidden bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+        <div id="manufacturingCalendar"></div>
     </div>
 
 </div>

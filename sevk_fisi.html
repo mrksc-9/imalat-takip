@@ -28,8 +28,12 @@
             </a>
 
             <div class="flex items-center gap-2">
-                <a href="{{ url_for('api_sevk_excel', shipment_id=shipment.id) }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
-                    <i class="fa-solid fa-file-excel"></i>
+                <button type="button" onclick="shareCurrentShipmentWhatsApp()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
+                    <i class="fa-brands fa-whatsapp text-sm"></i>
+                    <span>WhatsApp Paylaş</span>
+                </button>
+                <a href="{{ url_for('api_sevk_excel', shipment_id=shipment.id) }}" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i>
                     <span>Excel İndir</span>
                 </a>
                 <button onclick="window.print()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-blue-600/30 flex items-center gap-2">
@@ -56,6 +60,21 @@
                     <span class="text-xs font-mono text-slate-600 block mt-2">Tarih: <b>{{ shipment.dispatch_date | format_date }}</b></span>
                 </div>
             </div>
+
+            {% if shipment.accounting_status == 'İşlendi' %}
+            <div class="mb-5 p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span class="font-bold uppercase tracking-wider">MUHASEBEYE İŞLENDİ</span>
+                    {% if shipment.accounting_invoice_no %}
+                    <span class="font-mono bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 font-semibold">Resmi Belge / Fatura No: {{ shipment.accounting_invoice_no }}</span>
+                    {% endif %}
+                </div>
+                <div class="text-[11px] text-emerald-700">
+                    İşleyen: <b>{{ shipment.accounting_processed_by or 'Muhasebe' }}</b> {% if shipment.accounting_processed_at %}({{ shipment.accounting_processed_at }}){% endif %}
+                </div>
+            </div>
+            {% endif %}
 
             <!-- 2. PROJE, MÜŞTERİ VE NAKLİYE BİLGİ KUTULARI -->
             <div class="grid grid-cols-2 gap-4 text-xs mb-6">
@@ -145,5 +164,57 @@
 
     </div>
 
+    <script>
+    async function shareCurrentShipmentWhatsApp() {
+        try {
+            const res = await fetch(`/api/sevk/{{ shipment.id }}/excel`);
+            if (!res.ok) throw new Error('Excel dosyası alınamadı');
+            const blob = await res.blob();
+            
+            const fileName = "Irsaliye_{{ shipment.dispatch_no }}.xlsx";
+            const file = new File([blob], fileName, {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+
+            var text = "🚛 *SEVKİYAT İRSALİYESİ BİLGİLENDİRMESİ*\n" +
+                       "━━━━━━━━━━━━━━━━━━━━\n" +
+                       "📄 *İrsaliye No:* {{ shipment.dispatch_no }}\n" +
+                       "📅 *Sevk Tarihi:* {{ shipment.dispatch_date | format_date }}\n" +
+                       "🏗️ *Proje:* {{ shipment.project_code }} - {{ shipment.project_name }}\n" +
+                       "📍 *Şantiye / Teslimat:* {{ shipment.site_location or shipment.destination or '-' }}\n" +
+                       "🚚 *Araç Plakası:* {{ shipment.vehicle_plate }}\n" +
+                       "👤 *Şoför:* {{ shipment.driver_name or '-' }}{% if shipment.driver_phone %} ({{ shipment.driver_phone }}){% endif %}\n" +
+                       "📦 *Toplam Sevk:* {{ shipment.total_quantity }} Parça / Marka\n" +
+                       "⚖️ *Toplam Ağırlık:* {{ shipment.total_tonnage | format_num }} Ton\n" +
+                       "━━━━━━━━━━━━━━━━━━━━\n" +
+                       "🔗 *İrsaliye Fişi & Detay:* " + window.location.href;
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: "İrsaliye - {{ shipment.dispatch_no }}",
+                    text: text
+                });
+            } else {
+                // Otomatik indir ve WhatsApp Web aç
+                const fileUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = fileUrl;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(fileUrl);
+
+                var url = "https://api.whatsapp.com/send?text=" + encodeURIComponent(text);
+                window.open(url, '_blank');
+            }
+        } catch (e) {
+            console.error(e);
+            var text = "🚛 *SEVKİYAT İRSALİYESİ BİLGİLENDİRMESİ*\n📄 *İrsaliye No:* {{ shipment.dispatch_no }}\n🔗 " + window.location.href;
+            window.open("https://api.whatsapp.com/send?text=" + encodeURIComponent(text), '_blank');
+        }
+    }
+    </script>
 </body>
 </html>

@@ -32,6 +32,7 @@ MODULES_LIST = [
     ('kalite_kontrol', 'Kalite Kontrol (QA/QC)'),
     ('boya_takip', 'Boya & Yüzey İşlem'),
     ('sevk', 'Sevkiyat & İrsaliye'),
+    ('muhasebe_irsaliye', 'Muhasebe & İrsaliye Takip'),
     ('kullanicilar', 'Kullanıcılar & Roller'),
     ('ayarlar', 'Firma Başlığı & Sistem Ayarları')
 ]
@@ -415,9 +416,15 @@ def init_db():
         received_date TEXT,
         waybill_no TEXT,
         notes TEXT,
+        invoice_photo_url TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+    if not use_pg:
+        cursor.execute("PRAGMA table_info(material_orders_received)")
+        mor_cols = [c[1] for c in cursor.fetchall()]
+        if 'invoice_photo_url' not in mor_cols:
+            cursor.execute("ALTER TABLE material_orders_received ADD COLUMN invoice_photo_url TEXT DEFAULT ''")
 
     # 10. MAKİNELER TABLOSU
     cursor.execute(f'''
@@ -432,13 +439,13 @@ def init_db():
     cursor.execute("SELECT COUNT(*) as count FROM machines")
     if cursor.fetchone()['count'] == 0:
         default_machines = [
-            ("Hol 1 - Plazma 1", "Kesim"),
-            ("Hol 1 - Plazma 2", "Kesim"),
-            ("Hol 2 - Lazer 1", "Kesim"),
-            ("Hol 2 - Testere 1", "Kesim"),
-            ("Hol 2 - Oksijen Kesim", "Kesim"),
+            ("Plazma 1 (Sac/Plaka)", "Kesim"),
+            ("Sac Lazer 1 (Sac/Plaka)", "Kesim"),
+            ("Profil Lazer 1 (Profil)", "Kesim"),
+            ("Bant Testere 1 (Profil)", "Kesim"),
+            ("Oksijen Kesim (Plaka)", "Kesim"),
             ("Hol 3 - Çatım & Kaynak 1", "İmalat"),
-            ("Boyahane - Kumlama", "Yüzey İşlem")
+            ("Boyahane - Kumlama & Boya", "Yüzey İşlem")
         ]
         cursor.executemany("INSERT OR IGNORE INTO machines (name, type) VALUES (?, ?)", default_machines)
 
@@ -540,9 +547,24 @@ def init_db():
         total_tonnage REAL DEFAULT 0,
         notes TEXT,
         created_by TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        accounting_status TEXT DEFAULT 'Bekliyor',
+        accounting_processed_by TEXT,
+        accounting_processed_at TIMESTAMP,
+        accounting_invoice_no TEXT,
+        accounting_notes TEXT
     )
     ''')
+
+    if not use_pg:
+        cursor.execute("PRAGMA table_info(shipments)")
+        ship_cols = [c[1] for c in cursor.fetchall()]
+        if 'accounting_status' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_status TEXT DEFAULT 'Bekliyor'")
+        if 'accounting_processed_by' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_processed_by TEXT")
+        if 'accounting_processed_at' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_processed_at TIMESTAMP")
+        if 'accounting_invoice_no' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_invoice_no TEXT")
+        if 'accounting_notes' not in ship_cols: cursor.execute("ALTER TABLE shipments ADD COLUMN accounting_notes TEXT")
+
 
     # 16. SEVKİYAT KALEMLERİ
     cursor.execute(f'''
@@ -682,6 +704,21 @@ def init_db():
     )
     ''')
 
+    # 24. CANLI BİLDİRİMLER TABLOSU (TOAST / PUSH)
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS notifications (
+        id {pk_type},
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        icon TEXT DEFAULT 'fa-bell',
+        color TEXT DEFAULT 'blue',
+        link_url TEXT DEFAULT '',
+        user_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -740,64 +777,134 @@ def can_user_edit(user_role, module_name):
         return True
     return False
 
-def get_global_metrics():
-    """Tüm projelerin toplam metriklerini hesaplar."""
+def get_customers():
+    """Sistemdeki tüm kayıtlı müşterileri listeler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT customer FROM projects WHERE customer IS NOT NULL AND customer != '' AND status != 'Arşiv' ORDER BY customer ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [r['customer'] for r in rows if r['customer']]
+
+def set_project_status(project_id, status):
+    """Projenin durumunu günceller (Aktif, Tamamlandı, Arşiv)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
+    conn.commit()
+    conn.close()
+
+def get_global_metrics(customer=None):
+    """Tüm projelerin (veya seçilen müşterinin) toplam metriklerini hesaplar."""
     init_db()
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) as count FROM projects WHERE status != 'Arşiv'")
+    cust_filter_proj = ""
+    cust_params = []
+    if customer and customer.strip():
+        cust_filter_proj = " AND customer = ?"
+        cust_params = [customer.strip()]
+
+    cursor.execute(f"SELECT COUNT(*) as count FROM projects WHERE status != 'Arşiv'{cust_filter_proj}", cust_params)
     active_projects = cursor.fetchone()['count']
 
-    cursor.execute('''
-    SELECT 
-        COUNT(id) as total_parts_count,
-        COALESCE(SUM(quantity), 0) as total_parts_qty,
-        COALESCE(SUM(cut_quantity), 0) as total_parts_cut_qty,
-        COALESCE(SUM(total_weight), 0) / 1000.0 as total_parts_tonnage,
-        COALESCE(SUM((unit_weight * cut_quantity)), 0) / 1000.0 as total_cut_tonnage
-    FROM parts
-    ''')
-    parts_row = cursor.fetchone()
+    # Proje ID listesi
+    if customer and customer.strip():
+        cursor.execute("SELECT id FROM projects WHERE status != 'Arşiv' AND customer = ?", (customer.strip(),))
+        p_ids = [r['id'] for r in cursor.fetchall()]
+        if not p_ids:
+            p_ids = [-1]
+        placeholders = ','.join(['?'] * len(p_ids))
+        
+        cursor.execute(f'''
+        SELECT 
+            COUNT(id) as total_parts_count,
+            COALESCE(SUM(quantity), 0) as total_parts_qty,
+            COALESCE(SUM(cut_quantity), 0) as total_parts_cut_qty,
+            COALESCE(SUM(total_weight), 0) / 1000.0 as total_parts_tonnage,
+            COALESCE(SUM((unit_weight * cut_quantity)), 0) / 1000.0 as total_cut_tonnage
+        FROM parts WHERE project_id IN ({placeholders})
+        ''', p_ids)
+        parts_row = cursor.fetchone()
+
+        cursor.execute(f'''
+        SELECT
+            COUNT(id) as total_assemblies_count,
+            COALESCE(SUM(quantity), 0) as total_assemblies_qty,
+            COALESCE(SUM(total_weight), 0) / 1000.0 as total_assembly_tonnage,
+            COALESCE(SUM((unit_weight * fab_fitup_qty)), 0) / 1000.0 as fitup_tonnage,
+            COALESCE(SUM((unit_weight * fab_welding_qty)), 0) / 1000.0 as welding_tonnage,
+            COALESCE(SUM((unit_weight * fab_cleaning_qty)), 0) / 1000.0 as cleaning_tonnage,
+            COALESCE(SUM((unit_weight * fab_done_qty)), 0) / 1000.0 as fab_completed_tonnage,
+            COALESCE(SUM((unit_weight * qa_pending_qty)), 0) / 1000.0 as qa_pending_tonnage,
+            COALESCE(SUM((unit_weight * qa_approved_qty)), 0) / 1000.0 as qa_approved_tonnage,
+            COALESCE(SUM((unit_weight * (paint_sandblast_qty + paint_paint_qty + paint_galv_qty))), 0) / 1000.0 as paint_in_progress_tonnage,
+            COALESCE(SUM((unit_weight * paint_done_qty)), 0) / 1000.0 as paint_completed_tonnage,
+            COALESCE(SUM((unit_weight * shipped_qty)), 0) / 1000.0 as shipped_tonnage
+        FROM assemblies WHERE project_id IN ({placeholders})
+        ''', p_ids)
+        ass_row = cursor.fetchone()
+
+        cursor.execute(f"SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_ordered_tonnage FROM material_orders_ordered WHERE project_id IN ({placeholders})", p_ids)
+        ordered_tonnage = cursor.fetchone()['total_ordered_tonnage'] or 0.0
+
+        cursor.execute(f"SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_received_tonnage FROM material_orders_received WHERE project_id IN ({placeholders})", p_ids)
+        received_tonnage = cursor.fetchone()['total_received_tonnage'] or 0.0
+
+        cursor.execute(f"SELECT COUNT(*) as count FROM shipments WHERE project_id IN ({placeholders})", p_ids)
+        total_shipments = cursor.fetchone()['count']
+    else:
+        cursor.execute('''
+        SELECT 
+            COUNT(id) as total_parts_count,
+            COALESCE(SUM(quantity), 0) as total_parts_qty,
+            COALESCE(SUM(cut_quantity), 0) as total_parts_cut_qty,
+            COALESCE(SUM(total_weight), 0) / 1000.0 as total_parts_tonnage,
+            COALESCE(SUM((unit_weight * cut_quantity)), 0) / 1000.0 as total_cut_tonnage
+        FROM parts
+        ''')
+        parts_row = cursor.fetchone()
+
+        cursor.execute('''
+        SELECT
+            COUNT(id) as total_assemblies_count,
+            COALESCE(SUM(quantity), 0) as total_assemblies_qty,
+            COALESCE(SUM(total_weight), 0) / 1000.0 as total_assembly_tonnage,
+            COALESCE(SUM((unit_weight * fab_fitup_qty)), 0) / 1000.0 as fitup_tonnage,
+            COALESCE(SUM((unit_weight * fab_welding_qty)), 0) / 1000.0 as welding_tonnage,
+            COALESCE(SUM((unit_weight * fab_cleaning_qty)), 0) / 1000.0 as cleaning_tonnage,
+            COALESCE(SUM((unit_weight * fab_done_qty)), 0) / 1000.0 as fab_completed_tonnage,
+            COALESCE(SUM((unit_weight * qa_pending_qty)), 0) / 1000.0 as qa_pending_tonnage,
+            COALESCE(SUM((unit_weight * qa_approved_qty)), 0) / 1000.0 as qa_approved_tonnage,
+            COALESCE(SUM((unit_weight * (paint_sandblast_qty + paint_paint_qty + paint_galv_qty))), 0) / 1000.0 as paint_in_progress_tonnage,
+            COALESCE(SUM((unit_weight * paint_done_qty)), 0) / 1000.0 as paint_completed_tonnage,
+            COALESCE(SUM((unit_weight * shipped_qty)), 0) / 1000.0 as shipped_tonnage
+        FROM assemblies
+        ''')
+        ass_row = cursor.fetchone()
+
+        cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_ordered_tonnage FROM material_orders_ordered")
+        ordered_tonnage = cursor.fetchone()['total_ordered_tonnage'] or 0.0
+
+        cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_received_tonnage FROM material_orders_received")
+        received_tonnage = cursor.fetchone()['total_received_tonnage'] or 0.0
+
+        cursor.execute("SELECT COUNT(*) as count FROM shipments")
+        total_shipments = cursor.fetchone()['count']
+
+    conn.close()
+
     parts_stats = dict(parts_row) if parts_row else {
         'total_parts_count': 0, 'total_parts_qty': 0, 'total_parts_cut_qty': 0,
         'total_parts_tonnage': 0.0, 'total_cut_tonnage': 0.0
     }
-
-    cursor.execute('''
-    SELECT
-        COUNT(id) as total_assemblies_count,
-        COALESCE(SUM(quantity), 0) as total_assemblies_qty,
-        COALESCE(SUM(total_weight), 0) / 1000.0 as total_assembly_tonnage,
-        COALESCE(SUM((unit_weight * fab_fitup_qty)), 0) / 1000.0 as fitup_tonnage,
-        COALESCE(SUM((unit_weight * fab_welding_qty)), 0) / 1000.0 as welding_tonnage,
-        COALESCE(SUM((unit_weight * fab_cleaning_qty)), 0) / 1000.0 as cleaning_tonnage,
-        COALESCE(SUM((unit_weight * fab_done_qty)), 0) / 1000.0 as fab_completed_tonnage,
-        COALESCE(SUM((unit_weight * qa_pending_qty)), 0) / 1000.0 as qa_pending_tonnage,
-        COALESCE(SUM((unit_weight * qa_approved_qty)), 0) / 1000.0 as qa_approved_tonnage,
-        COALESCE(SUM((unit_weight * (paint_sandblast_qty + paint_paint_qty + paint_galv_qty))), 0) / 1000.0 as paint_in_progress_tonnage,
-        COALESCE(SUM((unit_weight * paint_done_qty)), 0) / 1000.0 as paint_completed_tonnage,
-        COALESCE(SUM((unit_weight * shipped_qty)), 0) / 1000.0 as shipped_tonnage
-    FROM assemblies
-    ''')
-    ass_row = cursor.fetchone()
     ass_stats = dict(ass_row) if ass_row else {
         'total_assemblies_count': 0, 'total_assemblies_qty': 0, 'total_assembly_tonnage': 0.0,
         'fitup_tonnage': 0.0, 'welding_tonnage': 0.0, 'cleaning_tonnage': 0.0, 'fab_completed_tonnage': 0.0,
         'qa_pending_tonnage': 0.0, 'qa_approved_tonnage': 0.0, 'paint_in_progress_tonnage': 0.0,
         'paint_completed_tonnage': 0.0, 'shipped_tonnage': 0.0
     }
-
-    cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_ordered_tonnage FROM material_orders_ordered")
-    ordered_tonnage = cursor.fetchone()['total_ordered_tonnage'] or 0.0
-
-    cursor.execute("SELECT COALESCE(SUM(weight), 0) / 1000.0 as total_received_tonnage FROM material_orders_received")
-    received_tonnage = cursor.fetchone()['total_received_tonnage'] or 0.0
-
-    cursor.execute("SELECT COUNT(*) as count FROM shipments")
-    total_shipments = cursor.fetchone()['count']
-
-    conn.close()
 
     total_ton = ass_stats['total_assembly_tonnage'] if ass_stats['total_assembly_tonnage'] > 0 else parts_stats['total_parts_tonnage']
     tot = total_ton or 0.0001
@@ -1066,7 +1173,7 @@ def get_cutting_progress_analysis(project_id=None):
     for p in projects:
         pid = p['id']
         cursor.execute("SELECT * FROM parts WHERE project_id = ?", (pid,))
-        parts = cursor.fetchall()
+        parts = [dict(r) for r in cursor.fetchall()]
 
         total_parts_count = len(parts)
         total_tonnage = 0.0
@@ -1082,6 +1189,44 @@ def get_cutting_progress_analysis(project_id=None):
         profile_total_kg = 0.0
         profile_cut_kg = 0.0
 
+        # Poz sözlüğü (hızlı erişim için)
+        parts_map = {pt['pos_no']: pt for pt in parts}
+
+        # Makine loglarından gelen kesimleri analiz et
+        cursor.execute("SELECT pos_no, cut_quantity, machine FROM cutting_entries WHERE project_id = ?", (pid,))
+        cut_logs = [dict(r) for r in cursor.fetchall()]
+
+        has_cutting_logs = len(cut_logs) > 0
+        plate_log_cut_qty = 0
+        plate_log_cut_kg = 0.0
+        profile_log_cut_qty = 0
+        profile_log_cut_kg = 0.0
+
+        if has_cutting_logs:
+            for clog in cut_logs:
+                cpos = clog['pos_no']
+                cqty = clog['cut_quantity'] or 0
+                mach = str(clog['machine'] or '').lower()
+                pt_match = parts_map.get(cpos)
+                u_w = pt_match['unit_weight'] if pt_match and pt_match.get('unit_weight') else 0.0
+                cut_w = cqty * u_w
+
+                if 'plazma' in mach or 'sac lazer' in mach or 'oksijen' in mach or ('lazer' in mach and 'profil' not in mach):
+                    plate_log_cut_qty += cqty
+                    plate_log_cut_kg += cut_w
+                elif 'profil' in mach or 'testere' in mach or 'boru' in mach:
+                    profile_log_cut_qty += cqty
+                    profile_log_cut_kg += cut_w
+                else:
+                    # Makine tipi belli değilse parçanın profil tipine bak
+                    p_type = str(pt_match['profile_type'] if pt_match else '').upper()
+                    if any(p_type.startswith(x) for x in ['PL', 'SAC', 'FLANŞ', 'GUSE', 'BERKİTME']) or 'PL' in p_type:
+                        plate_log_cut_qty += cqty
+                        plate_log_cut_kg += cut_w
+                    else:
+                        profile_log_cut_qty += cqty
+                        profile_log_cut_kg += cut_w
+
         parts_breakdown = []
 
         for pt in parts:
@@ -1095,21 +1240,23 @@ def get_cutting_progress_analysis(project_id=None):
             total_tonnage += tot_weight / 1000.0
             total_cut_tonnage += cut_weight / 1000.0
 
-            # Plaka vs Profil Ayrımı
+            # Plaka vs Profil Ayrımı (Hedef / Toplam hesaplama için)
             is_plate = any(p_type.startswith(x) for x in ['PL', 'SAC', 'FLANŞ', 'GUSE', 'BERKİTME']) or 'PL' in p_type
 
             if is_plate:
                 category = "Plaka / Sac"
                 plate_total_qty += qty
-                plate_cut_qty += cut_qty
                 plate_total_kg += tot_weight
-                plate_cut_kg += cut_weight
+                if not has_cutting_logs:
+                    plate_cut_qty += cut_qty
+                    plate_cut_kg += cut_weight
             else:
                 category = "Profil / Çelik"
                 profile_total_qty += qty
-                profile_cut_qty += cut_qty
                 profile_total_kg += tot_weight
-                profile_cut_kg += cut_weight
+                if not has_cutting_logs:
+                    profile_cut_qty += cut_qty
+                    profile_cut_kg += cut_weight
 
             parts_breakdown.append({
                 'id': pt['id'],
@@ -1126,6 +1273,13 @@ def get_cutting_progress_analysis(project_id=None):
                 'cut_pct': round((cut_qty / qty) * 100, 1) if qty > 0 else 0.0,
                 'material_grade': pt['material_grade']
             })
+
+        if has_cutting_logs:
+            plate_cut_qty = plate_log_cut_qty
+            plate_cut_kg = plate_log_cut_kg
+            profile_cut_qty = profile_log_cut_qty
+            profile_cut_kg = profile_log_cut_kg
+            total_cut_tonnage = (plate_cut_kg + profile_cut_kg) / 1000.0
 
         plate_pct = round((plate_cut_kg / plate_total_kg) * 100, 1) if plate_total_kg > 0 else 0.0
         profile_pct = round((profile_cut_kg / profile_total_kg) * 100, 1) if profile_total_kg > 0 else 0.0
@@ -1158,6 +1312,36 @@ def get_cutting_progress_analysis(project_id=None):
 
     conn.close()
     return analysis_data
+
+
+# =========================================================================
+# CANLI BİLDİRİMLER SİSTEMİ (TOAST & PUSH)
+# =========================================================================
+def add_notification(category, title, message, icon='fa-bell', color='blue', link_url='', user_id=None):
+    """Sistem geneline veya kullanıcıya canlı işlem bildirimi ekler."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO notifications (category, title, message, icon, color, link_url, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (category, title.strip(), message.strip(), icon, color, link_url or '', user_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Notification insert error: {e}")
+
+def get_recent_notifications(since_id=0, limit=15):
+    """En son bildirimleri JSON formatı için döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if since_id and int(since_id) > 0:
+        cursor.execute("SELECT * FROM notifications WHERE id > ? ORDER BY id DESC LIMIT ?", (int(since_id), limit))
+    else:
+        cursor.execute("SELECT * FROM notifications ORDER BY id DESC LIMIT ?", (limit,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
 
 
 # =========================================================================
@@ -1380,5 +1564,98 @@ def delete_meeting_action_item(item_id):
     cursor.execute("DELETE FROM meeting_action_items WHERE id = ?", (item_id,))
     conn.commit()
     conn.close()
+
+
+# =========================================================================
+# 25. MUHASEBE & İRSALİYE TAKİP MODÜLÜ VERİTABANI FONKSİYONLARI
+# =========================================================================
+def get_shipments_with_accounting(project_id=None, accounting_status=None, search=None, customer=None):
+    """Muhasebe ve sevkiyat takip listesi için irsaliyeleri filtreli getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    query = """
+        SELECT s.*, p.code as project_code, p.name as project_name, p.customer, p.site_location
+        FROM shipments s
+        LEFT JOIN projects p ON s.project_id = p.id
+        WHERE 1=1
+    """
+    params = []
+    
+    if project_id and str(project_id).isdigit():
+        query += " AND s.project_id = ?"
+        params.append(int(project_id))
+        
+    if accounting_status and accounting_status != 'Tümü':
+        if accounting_status == 'Bekliyor':
+            query += " AND (s.accounting_status = 'Bekliyor' OR s.accounting_status IS NULL OR s.accounting_status = '')"
+        else:
+            query += " AND s.accounting_status = ?"
+            params.append(accounting_status)
+        
+    if customer and customer.strip():
+        query += " AND p.customer = ?"
+        params.append(customer.strip())
+        
+    if search and search.strip():
+        s_term = f"%{search.strip()}%"
+        query += " AND (s.dispatch_no LIKE ? OR s.vehicle_plate LIKE ? OR s.driver_name LIKE ? OR s.accounting_invoice_no LIKE ? OR p.name LIKE ? OR p.customer LIKE ?)"
+        params.extend([s_term, s_term, s_term, s_term, s_term, s_term])
+        
+    query += " ORDER BY s.id DESC"
+    cursor.execute(query, params)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def update_shipment_accounting(shipment_id, accounting_status, accounting_processed_by, accounting_invoice_no=None, accounting_notes=None):
+    """İrsaliyenin muhasebe işleme durumunu günceller."""
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if accounting_status == 'İşlendi' else None
+    
+    cursor.execute("""
+        UPDATE shipments
+        SET accounting_status = ?,
+            accounting_processed_by = ?,
+            accounting_processed_at = ?,
+            accounting_invoice_no = ?,
+            accounting_notes = ?
+        WHERE id = ?
+    """, (accounting_status, accounting_processed_by, now_str, accounting_invoice_no or '', accounting_notes or '', shipment_id))
+    conn.commit()
+    conn.close()
+
+def get_accounting_summary_stats():
+    """Muhasebe takip modülü için özet metrikleri hesaplar."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) as total, COALESCE(SUM(total_tonnage), 0) as total_tonnage FROM shipments")
+    tot_row = cursor.fetchone()
+    total_count = (tot_row['total'] if tot_row else 0) or 0
+    total_tonnage = round((tot_row['total_tonnage'] if tot_row else 0.0) or 0.0, 2)
+    
+    cursor.execute("SELECT COUNT(*) as processed, COALESCE(SUM(total_tonnage), 0) as processed_tonnage FROM shipments WHERE accounting_status = 'İşlendi'")
+    proc_row = cursor.fetchone()
+    processed_count = (proc_row['processed'] if proc_row else 0) or 0
+    processed_tonnage = round((proc_row['processed_tonnage'] if proc_row else 0.0) or 0.0, 2)
+    
+    cursor.execute("SELECT COUNT(*) as pending, COALESCE(SUM(total_tonnage), 0) as pending_tonnage FROM shipments WHERE accounting_status != 'İşlendi' OR accounting_status IS NULL OR accounting_status = ''")
+    pend_row = cursor.fetchone()
+    pending_count = (pend_row['pending'] if pend_row else 0) or 0
+    pending_tonnage = round((pend_row['pending_tonnage'] if pend_row else 0.0) or 0.0, 2)
+    
+    conn.close()
+    return {
+        'total_count': total_count,
+        'total_tonnage': total_tonnage,
+        'processed_count': processed_count,
+        'processed_tonnage': processed_tonnage,
+        'pending_count': pending_count,
+        'pending_tonnage': pending_tonnage,
+        'completion_pct': round((processed_count / total_count * 100), 1) if total_count > 0 else 0
+    }
+
 
 
