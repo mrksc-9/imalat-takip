@@ -108,11 +108,25 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Veritabanını başlat
+_db_initialized = False
+
+@app.before_request
+def ensure_db_ready():
+    global _db_initialized
+    if not _db_initialized:
+        try:
+            init_db()
+            seed_demo_data()
+            _db_initialized = True
+        except Exception as e:
+            print(f"Veritabani hazirlama uyarisi: {e}")
+
+# Baslangicta da calistir
 with app.app_context():
     try:
         init_db()
         seed_demo_data()
+        _db_initialized = True
     except Exception as e:
         print(f"Veritabanı başlatma uyarısı: {e}")
 
