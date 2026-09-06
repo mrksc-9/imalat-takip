@@ -1,0 +1,336 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ project.code }} - {{ project.name }} - Çelik İmalat MES{% endblock %}
+{% block page_title %}{{ project.code }} - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- 1. PROJE ÖZET BAŞLIK KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-1.5" style="background-color: {{ project.color or '#3b82f6' }};"></div>
+
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-md bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                        {{ project.code }}
+                    </span>
+                    <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                        {{ project.status }}
+                    </span>
+                    {% if project.pos_prefix %}
+                    <span class="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-yellow-400 font-semibold" title="Poz Prefix">
+                        Prefix: {{ project.pos_prefix }}
+                    </span>
+                    {% endif %}
+                </div>
+                <h2 class="text-lg font-black text-white tracking-wide">{{ project.name }}</h2>
+                <p class="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span><i class="fa-solid fa-building text-slate-500 mr-1"></i> Müşteri: <b>{{ project.customer or '-' }}</b></span>
+                    <span><i class="fa-solid fa-location-dot text-slate-500 mr-1"></i> Şantiye: <b>{{ project.site_location or '-' }}</b></span>
+                    <span><i class="fa-solid fa-calendar text-slate-500 mr-1"></i> Termin: <b>{{ project.delivery_date | format_date }}</b></span>
+                </p>
+            </div>
+
+            <!-- Eylem Butonları -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="openModal('uploadTeklaModal')" class="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-import"></i>
+                    <span>Tekla Excel'den Yükle</span>
+                </button>
+
+                <a href="{{ url_for('api_excel_sablon') }}" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-download text-slate-400"></i>
+                    <span>Şablon</span>
+                </a>
+
+                <form action="{{ url_for('api_proje_sil', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projeyi ve tüm parça/montaj kayıtlarını silmek istediğinizden emin misiniz?');" class="inline">
+                    <button type="submit" class="p-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs transition-colors" title="Projeyi Sil">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- KPI Tonaj Şeridi -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 text-xs">
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-slate-400 block text-[10px] uppercase font-semibold">Toplam Tonaj</span>
+                <span class="text-base font-black text-white font-mono">{{ project.total_tonnage | format_num }} Ton</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-yellow-400 block text-[10px] uppercase font-semibold">Kesilen Tonaj</span>
+                <span class="text-base font-black text-white font-mono">{{ project.cut_tonnage | format_num }} Ton (%{{ project.cut_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-amber-400 block text-[10px] uppercase font-semibold">İmalatı Biten</span>
+                <span class="text-base font-black text-white font-mono">{{ project.fab_completed_tonnage | format_num }} Ton (%{{ project.fab_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-purple-400 block text-[10px] uppercase font-semibold">Boyanan Tonaj</span>
+                <span class="text-base font-black text-white font-mono">{{ project.paint_completed_tonnage | format_num }} Ton (%{{ project.paint_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-emerald-400 block text-[10px] uppercase font-semibold">Sevk Edilen</span>
+                <span class="text-base font-black text-white font-mono">{{ project.shipped_tonnage | format_num }} Ton (%{{ project.ship_pct }})</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. TEKLA 3'LÜ LİSTE SEKMELERİ (Montaj Listesi, Montaj Parça Listesi, Tek Parça Listesi) -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        <!-- Sekme Başlıkları -->
+        <div class="flex items-center border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 overflow-x-auto text-xs font-bold">
+            <button onclick="switchTab('assembliesTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl bg-blue-600 text-white flex items-center gap-2 border-t-2 border-blue-400 transition-all">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>1. Montaj / Assembly Listesi ({{ assemblies|length }})</span>
+            </button>
+            <button onclick="switchTab('assemblyPartsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-cubes-stacked"></i>
+                <span>2. Montaj Eleman / Parça Listesi ({{ assembly_parts|length }})</span>
+            </button>
+            <button onclick="switchTab('partsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-puzzle-piece"></i>
+                <span>3. Tek Parça / Poz Listesi ({{ parts|length }})</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: MONTAJ / ASSEMBLY LİSTESİ -->
+        <div id="assembliesTab" class="tab-content p-4">
+            <div class="flex items-center justify-between mb-3 text-xs">
+                <p class="text-slate-400">Ana imalat markaları (Kolon, Kiriş, Makas) ve canlı aşama adetleri:</p>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="filterAssInput" onkeyup="filterTable('assembliesTable', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="assembliesTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Marka / Montaj No</th>
+                            <th class="py-2.5 px-2">Eleman Açıklaması</th>
+                            <th class="py-2.5 px-2">Ana Profil</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Ton</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Çatım</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Kaynak</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Temizlik</th>
+                            <th class="py-2.5 px-2 text-center text-teal-400">Kalite</th>
+                            <th class="py-2.5 px-2 text-center text-purple-400">Boya</th>
+                            <th class="py-2.5 px-2 text-center text-emerald-400">Sevk</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for a in assemblies %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-2.5 px-3 font-mono font-bold text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>{{ a.assembly_pos }}</span>
+                            </td>
+                            <td class="py-2.5 px-2 text-slate-300 font-medium">{{ a.description or '-' }}</td>
+                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ a.profile_type or '-' }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ a.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ (a.total_weight / 1000.0) | format_num }} Ton</td>
+                            
+                            <!-- Aşamalar -->
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_fitup_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_welding_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_cleaning_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center">
+                                {% if a.qa_approved_qty >= a.quantity %}
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-teal-500/10 text-teal-400 border border-teal-500/20 font-bold">Onaylı</span>
+                                {% elif a.qa_pending_qty > 0 %}
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">{{ a.qa_pending_qty }} Bekliyor</span>
+                                {% else %}
+                                    <span class="text-slate-500">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.paint_done_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono font-bold text-emerald-400">{{ a.shipped_qty }} / {{ a.quantity }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="12" class="py-8 text-center text-slate-500">Bu projeye henüz montaj/assembly listesi eklenmedi. 'Tekla Excel'den Yükle' butonunu kullanabilirsiniz.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 2: MONTAJ ELEMAN / PARÇA LİSTESİ (Assembly Parts) -->
+        <div id="assemblyPartsTab" class="tab-content p-4 hidden">
+            <div class="flex items-center justify-between mb-3 text-xs">
+                <p class="text-slate-400">Hangi montaj markasının hangi tekil plaka/profillerden oluştuğu listesi:</p>
+                <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="Marka veya poz ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="assemblyPartsTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Bağlı Olduğu Montaj (Marka)</th>
+                            <th class="py-2.5 px-2">Tek Parça / Poz No</th>
+                            <th class="py-2.5 px-2">Parça Tanımı</th>
+                            <th class="py-2.5 px-2">Profil / Sac Kesiti</th>
+                            <th class="py-2.5 px-2 text-right">Uzunluk (mm)</th>
+                            <th class="py-2.5 px-2 text-right">Montajdaki Adet</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Kg</th>
+                            <th class="py-2.5 px-2 text-center">Çelik Kalitesi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for ap in assembly_parts %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ ap.assembly_pos }}</td>
+                            <td class="py-2.5 px-2 font-mono font-bold text-white">{{ ap.part_pos }}</td>
+                            <td class="py-2.5 px-2 text-slate-300">{{ ap.description or '-' }}</td>
+                            <td class="py-2.5 px-2 font-mono text-emerald-300">{{ ap.profile_type or '-' }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ ap.length | int }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono">{{ ap.quantity_per_assembly }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ ap.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono text-[11px] text-slate-400">{{ ap.material_grade or 'S275JR' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="py-8 text-center text-slate-500">Montaj eleman ilişkisi bulunmuyor.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 3: TEK PARÇA / POZ LİSTESİ & KESİM TAKİBİ -->
+        <div id="partsTab" class="tab-content p-4 hidden">
+            <div class="flex items-center justify-between mb-3 text-xs">
+                <p class="text-slate-400">Atölye kesim ve hammadde hazırlık poz listesi:</p>
+                <input type="text" onkeyup="filterTable('partsTable', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1 text-white text-xs">
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="partsTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Poz No</th>
+                            <th class="py-2.5 px-2">Parça Tanımı</th>
+                            <th class="py-2.5 px-2">Profil / Sac Kesiti</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right text-yellow-400 font-bold">Kesilen Adet</th>
+                            <th class="py-2.5 px-2 text-right text-slate-300">Kalan Adet</th>
+                            <th class="py-2.5 px-2 text-right">Uzunluk (mm)</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Kg</th>
+                            <th class="py-2.5 px-2 text-center">Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for p in parts %}
+                        {% set kalan = p.quantity - p.cut_quantity %}
+                        <tr class="hover:bg-slate-900/50 transition-colors {% if kalan <= 0 %}bg-emerald-950/20{% endif %}">
+                            <td class="py-2.5 px-3 font-mono font-bold text-white">{{ p.pos_no }}</td>
+                            <td class="py-2.5 px-2 text-slate-300">{{ p.name }}</td>
+                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ p.profile_type }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-yellow-400">{{ p.cut_quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold {% if kalan <= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                {{ kalan if kalan > 0 else 0 }}
+                            </td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ p.length | int }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ p.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.total_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-center">
+                                {% if kalan <= 0 %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Kesim Tamam</span>
+                                {% elif p.cut_quantity > 0 %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Kesimde</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">Bekliyor</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="py-8 text-center text-slate-500">Parça poz listesi boş.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- TEKLA EXCEL YÜKLE MODAL -->
+<div id="uploadTeklaModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-import text-emerald-400"></i>
+                <span>Tekla Structures Excel Yükle</span>
+            </h3>
+            <button onclick="closeModal('uploadTeklaModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_tekla_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Tekla Raporu / Excel Dosyası Seç (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60 transition-colors" onclick="document.getElementById('teklaFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="teklaFileName">Dosya seçmek için tıklayın</p>
+                    <p class="text-[10px] text-slate-500 mt-1">Montaj Listesi, Parça Listesi veya Çok Sayfalı Tekla Çıktısı</p>
+                    <input type="file" id="teklaFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('teklaFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+
+            <div class="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl text-[11px] text-blue-300">
+                <i class="fa-solid fa-circle-info mr-1"></i>
+                <span>Sistem Tekla sütun başlıklarını (Marka, Poz, Profil, Adet, Ağırlık) otomatik algılayacak ve eşleştirecektir.</span>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadTeklaModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow-md shadow-emerald-600/30">İçe Aktar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+            el.classList.add('text-slate-400');
+        });
+
+        const activeTab = document.getElementById(tabId);
+        if (activeTab) activeTab.classList.remove('hidden');
+
+        btn.classList.remove('text-slate-400');
+        btn.classList.add('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+    }
+
+    function filterTable(tableId, query) {
+        const q = query.toLowerCase();
+        const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+        rows.forEach(r => {
+            const text = r.innerText.toLowerCase();
+            r.style.display = text.includes(q) ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

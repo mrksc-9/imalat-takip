@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sevk İrsaliyesi & Çeki Listesi - {{ shipment.dispatch_no }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @media print {
+            body { background: white !important; color: black !important; font-size: 11pt; }
+            .no-print { display: none !important; }
+            .print-border { border-color: #000 !important; }
+            .shadow-xl, .shadow-2xl, .shadow-md { box-shadow: none !important; }
+            @page { margin: 1.5cm; size: A4 portrait; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-900 font-sans p-4 sm:p-8 flex justify-center min-h-screen">
+
+    <div class="w-full max-w-4xl bg-white rounded-2xl shadow-2xl p-8 sm:p-12 flex flex-col justify-between">
+        
+        <!-- YAZDIRMA VE AKSİYON ÜST ÇUBUĞU (Ekranda görünür, yazdırmada gizlenir) -->
+        <div class="no-print pb-6 mb-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <a href="{{ url_for('sevk') }}" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-arrow-left"></i>
+                <span>Sevkiyat Listesine Dön</span>
+            </a>
+
+            <div class="flex items-center gap-2">
+                <a href="{{ url_for('api_sevk_excel', shipment_id=shipment.id) }}" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span>Excel İndir</span>
+                </a>
+                <button onclick="window.print()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-blue-600/30 flex items-center gap-2">
+                    <i class="fa-solid fa-print"></i>
+                    <span>A4 Fiş Yazdır / PDF</span>
+                </button>
+            </div>
+        </div>
+
+        <div>
+            <!-- 1. RESMİ BAŞLIK VE LOGO ALANI -->
+            <div class="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
+                <div>
+                    <h1 class="text-2xl font-black tracking-wider text-slate-950 uppercase">{{ settings.company_name or 'ÇELİK KONSTRÜKSİYON SAN. VE TİC. A.Ş.' }}</h1>
+                    <p class="text-xs text-slate-600 font-semibold mt-0.5">{{ settings.company_sub_title or 'Endüstriyel Yapılar, Çelik İmalat & Montaj Tesisleri' }}</p>
+                    <p class="text-[11px] text-slate-500 mt-1">{{ settings.company_address or 'Fabrika: Dilovası Organize Sanayi Bölgesi 4. Cadde No: 12 Kocaeli' }}</p>
+                    <p class="text-[11px] text-slate-500">Tel: {{ settings.company_phone or '+90 262 555 00 00' }} | {{ settings.company_email or 'info@celikimalat.com' }}</p>
+                </div>
+                <div class="text-right">
+                    <div class="border-2 border-slate-900 px-4 py-2 rounded-xl text-center bg-slate-50">
+                        <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">SEVKİYAT İRSALİYESİ</span>
+                        <span class="text-lg font-black font-mono text-slate-950">{{ shipment.dispatch_no }}</span>
+                    </div>
+                    <span class="text-xs font-mono text-slate-600 block mt-2">Tarih: <b>{{ shipment.dispatch_date | format_date }}</b></span>
+                </div>
+            </div>
+
+            <!-- 2. PROJE, MÜŞTERİ VE NAKLİYE BİLGİ KUTULARI -->
+            <div class="grid grid-cols-2 gap-4 text-xs mb-6">
+                <!-- Sol Kutu: Şantiye & Müşteri -->
+                <div class="border border-slate-300 rounded-xl p-3.5 bg-slate-50/50">
+                    <h3 class="font-bold text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-1 mb-2">Proje & Teslimat Bilgileri</h3>
+                    <p class="mb-1"><b>Proje Kodu / Adı:</b> <span class="font-mono text-blue-700 font-bold">{{ shipment.project_code }}</span> - {{ shipment.project_name }}</p>
+                    <p class="mb-1"><b>Müşteri / İşveren:</b> {{ shipment.customer or '-' }}</p>
+                    <p><b>Teslim Yeri / Şantiye:</b> {{ shipment.site_location or shipment.destination or '-' }}</p>
+                </div>
+
+                <!-- Sağ Kutu: Nakliye & Taşıyıcı -->
+                <div class="border border-slate-300 rounded-xl p-3.5 bg-slate-50/50">
+                    <h3 class="font-bold text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-200 pb-1 mb-2">Nakliye & Araç Bilgileri</h3>
+                    <p class="mb-1"><b>Araç Plakası:</b> <span class="font-mono font-bold text-slate-950">{{ shipment.vehicle_plate }}</span></p>
+                    <p class="mb-1"><b>Şoför Adı & İletişim:</b> {{ shipment.driver_name or '-' }} {% if shipment.driver_phone %}({{ shipment.driver_phone }}){% endif %}</p>
+                    <p><b>Taşıyıcı Firma:</b> {{ shipment.carrier_company or 'Öztrans Nakliyat' }}</p>
+                </div>
+            </div>
+
+            <!-- 3. ÇEKİ LİSTESİ TABLOSU -->
+            <div class="mb-6">
+                <table class="w-full text-left text-xs border-collapse border border-slate-300">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-800 font-bold text-[10px] uppercase border-b border-slate-300">
+                            <th class="py-2.5 px-3 border-r border-slate-300 w-12 text-center">S.No</th>
+                            <th class="py-2.5 px-3 border-r border-slate-300">Marka / Montaj No</th>
+                            <th class="py-2.5 px-3 border-r border-slate-300">Eleman Tanımı / Kesiti</th>
+                            <th class="py-2.5 px-3 border-r border-slate-300 text-right w-20">Adet</th>
+                            <th class="py-2.5 px-3 border-r border-slate-300 text-right w-24">Birim Kg</th>
+                            <th class="py-2.5 px-3 text-right w-28 font-bold">Toplam Kg</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-300 text-slate-800">
+                        {% for it in items %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2 px-3 border-r border-slate-300 text-center font-mono text-slate-500">{{ loop.index }}</td>
+                            <td class="py-2 px-3 border-r border-slate-300 font-mono font-bold text-slate-950">{{ it.assembly_pos }}</td>
+                            <td class="py-2 px-3 border-r border-slate-300">{{ it.description or '-' }}</td>
+                            <td class="py-2 px-3 border-r border-slate-300 text-right font-mono font-black">{{ it.quantity }}</td>
+                            <td class="py-2 px-3 border-r border-slate-300 text-right font-mono">{{ it.unit_weight | format_num }}</td>
+                            <td class="py-2 px-3 text-right font-mono font-bold">{{ it.total_weight | format_num }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-slate-100 font-bold border-t-2 border-slate-900 text-slate-950">
+                            <td colspan="3" class="py-2.5 px-3 text-right uppercase text-[11px]">Genel Toplam:</td>
+                            <td class="py-2.5 px-3 text-right font-mono font-black">{{ shipment.total_quantity }} Adet</td>
+                            <td class="py-2.5 px-3 text-right text-slate-500">-</td>
+                            <td class="py-2.5 px-3 text-right font-mono font-black text-sm">{{ shipment.total_tonnage | format_num }} Ton</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            {% if shipment.notes %}
+            <div class="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-6">
+                <b>Sevkiyat Notu:</b> {{ shipment.notes }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 4. İMZA VE ONAY KUTULARI -->
+        <div class="grid grid-cols-3 gap-4 text-xs pt-8 border-t-2 border-slate-900 text-center">
+            <div>
+                <p class="font-bold text-slate-900 mb-1">Teslim Eden (Fabrika / Sevk)</p>
+                <p class="text-[11px] text-slate-500">{{ shipment.created_by or 'Sevkiyat Sorumlusu' }}</p>
+                <div class="h-16 border-b border-dashed border-slate-400 mt-2"></div>
+                <span class="text-[10px] text-slate-400 mt-1 block">İmza & Kaşe</span>
+            </div>
+
+            <div>
+                <p class="font-bold text-slate-900 mb-1">Taşıyan (Sürücü)</p>
+                <p class="text-[11px] text-slate-500">{{ shipment.driver_name or 'Araç Sürücüsü' }}</p>
+                <div class="h-16 border-b border-dashed border-slate-400 mt-2"></div>
+                <span class="text-[10px] text-slate-400 mt-1 block">İmza</span>
+            </div>
+
+            <div>
+                <p class="font-bold text-slate-900 mb-1">Teslim Alan (Şantiye / Müşteri)</p>
+                <p class="text-[11px] text-slate-500">Şantiye Şefi / Yetkili</p>
+                <div class="h-16 border-b border-dashed border-slate-400 mt-2"></div>
+                <span class="text-[10px] text-slate-400 mt-1 block">İmza & Kaşe</span>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>

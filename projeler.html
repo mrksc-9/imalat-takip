@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+
+{% block title %}Projeler ve Montaj Listeleri - Çelik İmalat MES{% endblock %}
+{% block page_title %}1. Proje Takip & Tekla Structures Listeleri{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+    <!-- ÜST BAR: Başlık, İstatistik ve Eylemler -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-folder-tree text-blue-400"></i>
+                <span>Tüm İmalat Projeleri</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Tekla Structures parça listeleri, montaj markaları ve aşama takibi</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <a href="{{ url_for('api_excel_sablon') }}" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Boş Tekla Şablonu İndir</span>
+            </a>
+
+            <button onclick="openModal('newProjectModal')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i>
+                <span>Yeni Proje Ekle</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- PROJE KARTLARI LİSTESİ -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for p in projects %}
+        <div class="bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-5 shadow-xl flex flex-col justify-between transition-all hover:bg-slate-900/60 relative overflow-hidden group">
+            <!-- Proje Rengi Üst Şerit -->
+            <div class="absolute top-0 left-0 right-0 h-1.5" style="background-color: {{ p.color or '#3b82f6' }};"></div>
+
+            <div>
+                <!-- Başlık & Müşteri -->
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                        <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-blue-400">
+                            {{ p.code }}
+                        </span>
+                        <h4 class="text-sm font-bold text-white mt-1.5 line-clamp-1 group-hover:text-blue-400 transition-colors">
+                            <a href="{{ url_for('proje_detay', project_id=p.id) }}">{{ p.name }}</a>
+                        </h4>
+                        <p class="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                            <i class="fa-solid fa-building text-[10px] text-slate-500"></i>
+                            <span>{{ p.customer or 'Müşteri Belirtilmedi' }}</span>
+                        </p>
+                    </div>
+
+                    <span class="text-xs font-mono font-black text-white px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-lg shrink-0">
+                        {{ p.total_tonnage | format_num }} Ton
+                    </span>
+                </div>
+
+                <!-- Şantiye & Tarihler -->
+                <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-400 py-2 border-y border-slate-800/80 mb-3">
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Şantiye:</span>
+                        <span class="text-slate-300 font-medium truncate block">{{ p.site_location or '-' }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Termin Tarihi:</span>
+                        <span class="text-slate-300 font-mono font-medium block">{{ p.delivery_date | format_date }}</span>
+                    </div>
+                </div>
+
+                <!-- 4 Aşamalı İlerleme Çubukları -->
+                <div class="space-y-2 text-xs mb-4">
+                    <!-- Kesim -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-yellow-400 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-[9px]"></i> Kesim</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.cut_pct }} ({{ p.cut_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-yellow-400 h-full rounded-full" style="width: {{ p.cut_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- İmalat (Çatım/Kaynak) -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-amber-400 font-medium flex items-center gap-1"><i class="fa-solid fa-hammer text-[9px]"></i> İmalat (Montaj)</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.fab_pct }} ({{ p.fab_completed_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-amber-500 h-full rounded-full" style="width: {{ p.fab_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Boya -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-purple-400 font-medium flex items-center gap-1"><i class="fa-solid fa-paint-roller text-[9px]"></i> Boya & Yüzey</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.paint_pct }} ({{ p.paint_completed_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-purple-500 h-full rounded-full" style="width: {{ p.paint_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Sevk -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-emerald-400 font-medium flex items-center gap-1"><i class="fa-solid fa-truck-moving text-[9px]"></i> Sevkiyat</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.ship_pct }} ({{ p.shipped_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-emerald-500 h-full rounded-full" style="width: {{ p.ship_pct }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kart Alt Eylem Butonları -->
+            <div class="flex items-center justify-between pt-3 border-t border-slate-800/80 gap-2">
+                <div class="text-[11px] text-slate-400">
+                    <span class="font-bold text-white">{{ p.total_assemblies_count }}</span> Marka | <span class="font-bold text-white">{{ p.total_parts_count }}</span> Poz
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                    <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all">
+                        Listeler & Detay
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-3 py-12 text-center bg-slate-950/60 border border-slate-800 rounded-2xl">
+            <i class="fa-solid fa-folder-open text-4xl text-slate-600 mb-3"></i>
+            <h4 class="text-base font-bold text-slate-300">Henüz Kayıtlı Proje Yok</h4>
+            <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Yukarıdaki 'Yeni Proje Ekle' butonuna basarak ilk çelik konstrüksiyon imalat projenizi oluşturabilirsiniz.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

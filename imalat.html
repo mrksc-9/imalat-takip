@@ -1,0 +1,190 @@
+{% extends "layout.html" %}
+
+{% block title %}İmalat Aşaması | İmalat, Boya ve Sevkiyat Takip{% endblock %}
+{% block page_title %}Atölye İmalat Takip Paneli (Kesim, Montaj, Kaynak){% endblock %}
+{% block page_subtitle %}Atölyede kesim, montaj ve kaynak aşamasındaki tüm elemanların kontrolü ve tonaj hesapları{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- KPI Tonaj Özeti -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <span class="text-xs font-semibold text-slate-400 uppercase">Toplam İmalat Hedefi</span>
+            <div class="text-2xl font-black text-white font-mono mt-1">{{ metrics.total_tonnage }} <span class="text-sm font-semibold text-blue-400">Ton</span></div>
+            <p class="text-[11px] text-slate-500 mt-1">Tüm projelerin toplam çelik ağırlığı</p>
+        </div>
+
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-semibold text-amber-400 uppercase">İmalatı Tamamlanan</span>
+                <span class="text-xs font-bold text-amber-400 font-mono">%{{ metrics.fab_pct }}</span>
+            </div>
+            <div class="text-2xl font-black text-amber-400 font-mono mt-1">{{ metrics.fab_completed_tonnage }} <span class="text-sm font-semibold text-amber-300">Ton</span></div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                <div class="bg-amber-500 h-full rounded-full" style="width: {{ metrics.fab_pct }}%"></div>
+            </div>
+        </div>
+
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <span class="text-xs font-semibold text-slate-400 uppercase">İmalatta / Bekleyen Tonaj</span>
+            <div class="text-2xl font-black text-slate-300 font-mono mt-1">{{ metrics.pending_fab_tonnage }} <span class="text-sm font-semibold text-slate-400">Ton</span></div>
+            <p class="text-[11px] text-slate-500 mt-1">Atölye iş listesindeki kalan tonaj</p>
+        </div>
+    </div>
+
+    <!-- FİLTRELEME VE ARAMA ÇUBUĞU -->
+    <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <form method="GET" action="{{ url_for('imalat') }}" class="flex flex-wrap items-center gap-3 flex-1">
+            <!-- Proje Filtresi -->
+            <select name="proje_id" onchange="this.form.submit()" class="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                <option value="">Tüm Projeler</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                {% endfor %}
+            </select>
+
+            <!-- Durum Filtresi -->
+            <select name="durum" onchange="this.form.submit()" class="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                <option value="">Tüm İmalat Durumları</option>
+                <option value="BEKLIYOR" {% if status_filter == 'BEKLIYOR' %}selected{% endif %}>Bekleyenler</option>
+                <option value="KESIMDE" {% if status_filter == 'KESIMDE' %}selected{% endif %}>Kesim Aşamasında</option>
+                <option value="MONTAJDA" {% if status_filter == 'MONTAJDA' %}selected{% endif %}>Montaj Aşamasında</option>
+                <option value="KAYNAKTA" {% if status_filter == 'KAYNAKTA' %}selected{% endif %}>Kaynak Aşamasında</option>
+                <option value="TAMAMLANDI" {% if status_filter == 'TAMAMLANDI' %}selected{% endif %}>İmalatı Bitenler</option>
+            </select>
+
+            {% if selected_project or status_filter %}
+            <a href="{{ url_for('imalat') }}" class="px-3 py-2 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-xl">
+                Filtreleri Temizle
+            </a>
+            {% endif %}
+        </form>
+
+        <div class="text-xs text-slate-400 font-medium">
+            Listelenen: <b class="text-white">{{ parts|length }}</b> Parça
+        </div>
+    </div>
+
+    <!-- İMALAT PARÇA LİSTESİ TABLOSU -->
+    <div class="bg-slate-950/80 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <form id="fabBulkForm" action="{{ url_for('api_toplu_durum') }}" method="POST">
+            <input type="hidden" name="action_type" value="fab_done">
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="text-slate-400 bg-slate-900/90 border-b border-slate-800 font-semibold select-none">
+                            <th class="py-3.5 px-3 text-center w-10">
+                                <input type="checkbox" onchange="toggleSelectAllFab(this)" class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer">
+                            </th>
+                            <th class="py-3.5 px-3">Proje</th>
+                            <th class="py-3.5 px-3">Poz No</th>
+                            <th class="py-3.5 px-3">Parça Tanımı</th>
+                            <th class="py-3.5 px-3">Profil / Kesit</th>
+                            <th class="py-3.5 px-3 text-right">Adet</th>
+                            <th class="py-3.5 px-3 text-right">Birim Kg</th>
+                            <th class="py-3.5 px-3 text-right">Toplam Kg</th>
+                            <th class="py-3.5 px-3 text-center">İmalat Durumu</th>
+                            <th class="py-3.5 px-3 text-center">Hızlı İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                        {% for p in parts %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-3 px-3 text-center">
+                                <input type="checkbox" name="part_ids" value="{{ p.id }}" data-weight="{{ p.total_weight }}" onchange="updateFabSelectedCounter()" class="fab-part-checkbox w-4 h-4 rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer">
+                            </td>
+                            <td class="py-3 px-3 font-semibold text-blue-400 font-mono text-[11px]">{{ p.project_code }}</td>
+                            <td class="py-3 px-3 font-mono font-bold text-white">{{ p.pos_no }}</td>
+                            <td class="py-3 px-3 text-slate-200 font-medium">{{ p.name }}</td>
+                            <td class="py-3 px-3 font-mono text-slate-300">{{ p.profile_type }}</td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
+                            <td class="py-3 px-3 text-right font-mono text-slate-300">{{ p.unit_weight }}</td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-amber-400">{{ p.total_weight }}</td>
+                            <td class="py-3 px-3 text-center">
+                                <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold 
+                                    {% if p.fab_status == 'TAMAMLANDI' %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20
+                                    {% elif p.fab_status == 'KAYNAKTA' %}bg-amber-500/10 text-amber-400 border border-amber-500/20
+                                    {% elif p.fab_status in ('KESIMDE', 'MONTAJDA') %}bg-blue-500/10 text-blue-400 border border-blue-500/20
+                                    {% else %}bg-slate-800 text-slate-400{% endif %}">
+                                    {{ p.fab_status }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-center">
+                                {% if p.fab_status != 'TAMAMLANDI' %}
+                                <button type="button" onclick="quickSetFabDone({{ p.id }})" class="px-2.5 py-1 bg-amber-600/20 hover:bg-amber-600 text-amber-400 hover:text-white rounded text-[11px] font-semibold transition-all">
+                                    İmalatı Bitir
+                                </button>
+                                {% else %}
+                                <span class="text-xs text-emerald-400 flex items-center justify-center gap-1">
+                                    <i class="fa-solid fa-check"></i> Hazır
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="py-10 text-center text-slate-500">Seçilen filtrelere uygun parça bulunamadı.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Seçilenler için alt çubuk -->
+            <div id="fabBulkBar" class="sticky bottom-4 left-0 right-0 mx-4 my-2 p-4 bg-slate-900/95 backdrop-blur-md border border-amber-500/40 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-4 hidden z-20">
+                <div class="flex items-center gap-3">
+                    <span id="fabSelectedCount" class="w-8 h-8 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center font-bold text-sm">0</span>
+                    <div>
+                        <p class="text-xs font-bold text-white">Parça Seçildi</p>
+                        <p class="text-[11px] text-amber-400 font-mono">Toplam Tonaj: <span id="fabSelectedTonnage" class="font-bold">0.00</span> Ton</p>
+                    </div>
+                </div>
+
+                <button type="submit" class="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow-md transition-all">
+                    Seçilenlerin İmalatını TAMAMLANDI Yap
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function toggleSelectAllFab(master) {
+        document.querySelectorAll('.fab-part-checkbox').forEach(cb => cb.checked = master.checked);
+        updateFabSelectedCounter();
+    }
+
+    function updateFabSelectedCounter() {
+        const checked = document.querySelectorAll('.fab-part-checkbox:checked');
+        const count = checked.length;
+        let totalWeightKg = 0;
+
+        checked.forEach(cb => totalWeightKg += parseFloat(cb.dataset.weight || 0));
+
+        const bar = document.getElementById('fabBulkBar');
+        if (count > 0) {
+            bar.classList.remove('hidden');
+            document.getElementById('fabSelectedCount').innerText = count;
+            document.getElementById('fabSelectedTonnage').innerText = (totalWeightKg / 1000).toFixed(2);
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+
+    function quickSetFabDone(partId) {
+        const formData = new FormData();
+        formData.append('fab_status', 'TAMAMLANDI');
+
+        fetch(`/api/parca/${partId}/guncelle`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(() => window.location.reload());
+    }
+</script>
+{% endblock %}

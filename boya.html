@@ -1,0 +1,206 @@
+{% extends "layout.html" %}
+
+{% block title %}Boya & Kumlama | İmalat, Boya ve Sevkiyat Takip{% endblock %}
+{% block page_title %}Boyahane & Kumlama Takip Paneli{% endblock %}
+{% block page_subtitle %}Kumlama, astar, son kat boya, RAL kodları ve mikron (DFT) kalınlık kontrolleri{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- KPI Tonaj Özeti -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <span class="text-xs font-semibold text-slate-400 uppercase">Toplam İmalatı Biten Çelik</span>
+            <div class="text-2xl font-black text-white font-mono mt-1">{{ metrics.fab_completed_tonnage }} <span class="text-sm font-semibold text-amber-400">Ton</span></div>
+            <p class="text-[11px] text-slate-500 mt-1">Boyaya hazır/girebilecek toplam tonaj</p>
+        </div>
+
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-semibold text-purple-400 uppercase">Boyası Tamamlanan</span>
+                <span class="text-xs font-bold text-purple-400 font-mono">%{{ metrics.paint_pct }}</span>
+            </div>
+            <div class="text-2xl font-black text-purple-400 font-mono mt-1">{{ metrics.paint_completed_tonnage }} <span class="text-sm font-semibold text-purple-300">Ton</span></div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                <div class="bg-purple-500 h-full rounded-full" style="width: {{ metrics.paint_pct }}%"></div>
+            </div>
+        </div>
+
+        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <span class="text-xs font-semibold text-slate-400 uppercase">Boyada / Bekleyen Tonaj</span>
+            <div class="text-2xl font-black text-slate-300 font-mono mt-1">{{ (metrics.fab_completed_tonnage - metrics.paint_completed_tonnage)|round(2) }} <span class="text-sm font-semibold text-slate-400">Ton</span></div>
+            <p class="text-[11px] text-slate-500 mt-1">Boyahanede işlem sırasındaki parçalar</p>
+        </div>
+    </div>
+
+    <!-- FİLTRELEME VE ARAMA ÇUBUĞU -->
+    <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <form method="GET" action="{{ url_for('boya') }}" class="flex flex-wrap items-center gap-3 flex-1">
+            <select name="proje_id" onchange="this.form.submit()" class="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                <option value="">Tüm Projeler</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if selected_project == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                {% endfor %}
+            </select>
+
+            <select name="durum" onchange="this.form.submit()" class="px-3.5 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500">
+                <option value="">Tüm Boya Durumları</option>
+                <option value="BEKLIYOR" {% if status_filter == 'BEKLIYOR' %}selected{% endif %}>Boya Bekleyenler</option>
+                <option value="KUMLAMADA" {% if status_filter == 'KUMLAMADA' %}selected{% endif %}>Kumlamada</option>
+                <option value="ASTARDA" {% if status_filter == 'ASTARDA' %}selected{% endif %}>Astar Boyada</option>
+                <option value="TAMAMLANDI" {% if status_filter == 'TAMAMLANDI' %}selected{% endif %}>Boyası Bitenler</option>
+                <option value="BOYANMAYACAK" {% if status_filter == 'BOYANMAYACAK' %}selected{% endif %}>Boyanmayacak</option>
+            </select>
+
+            {% if selected_project or status_filter %}
+            <a href="{{ url_for('boya') }}" class="px-3 py-2 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-xl">
+                Filtreleri Temizle
+            </a>
+            {% endif %}
+        </form>
+
+        <div class="text-xs text-slate-400 font-medium">
+            Listelenen: <b class="text-white">{{ parts|length }}</b> Parça
+        </div>
+    </div>
+
+    <!-- BOYA LİSTESİ TABLOSU -->
+    <div class="bg-slate-950/80 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <form id="paintBulkForm" action="{{ url_for('api_toplu_durum') }}" method="POST">
+            <input type="hidden" name="action_type" id="paintActionType" value="paint_done">
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="text-slate-400 bg-slate-900/90 border-b border-slate-800 font-semibold select-none">
+                            <th class="py-3.5 px-3 text-center w-10">
+                                <input type="checkbox" onchange="toggleSelectAllPaint(this)" class="w-4 h-4 rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-0 cursor-pointer">
+                            </th>
+                            <th class="py-3.5 px-3">Proje</th>
+                            <th class="py-3.5 px-3">Poz No</th>
+                            <th class="py-3.5 px-3">Parça Tanımı</th>
+                            <th class="py-3.5 px-3 text-right">Adet</th>
+                            <th class="py-3.5 px-3 text-right">Toplam Kg</th>
+                            <th class="py-3.5 px-3 text-center">İmalat</th>
+                            <th class="py-3.5 px-3 text-center">Boya Durumu</th>
+                            <th class="py-3.5 px-3 text-center">RAL Kodu</th>
+                            <th class="py-3.5 px-3 text-center">Mikron (DFT)</th>
+                            <th class="py-3.5 px-3 text-center">Hızlı İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                        {% for p in parts %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-3 px-3 text-center">
+                                <input type="checkbox" name="part_ids" value="{{ p.id }}" data-weight="{{ p.total_weight }}" onchange="updatePaintSelectedCounter()" class="paint-part-checkbox w-4 h-4 rounded bg-slate-800 border-slate-700 text-purple-600 focus:ring-0 cursor-pointer">
+                            </td>
+                            <td class="py-3 px-3 font-semibold text-blue-400 font-mono text-[11px]">{{ p.project_code }}</td>
+                            <td class="py-3 px-3 font-mono font-bold text-white">{{ p.pos_no }}</td>
+                            <td class="py-3 px-3 text-slate-200 font-medium">{{ p.name }}</td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
+                            <td class="py-3 px-3 text-right font-mono font-bold text-purple-400">{{ p.total_weight }}</td>
+                            <td class="py-3 px-3 text-center">
+                                {% if p.fab_status == 'TAMAMLANDI' %}
+                                <span class="text-amber-400 font-semibold"><i class="fa-solid fa-check"></i> Bitti</span>
+                                {% else %}
+                                <span class="text-slate-500">{{ p.fab_status }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3 text-center">
+                                <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold 
+                                    {% if p.paint_status == 'TAMAMLANDI' %}bg-purple-500/10 text-purple-400 border border-purple-500/20
+                                    {% elif p.paint_status in ('KUMLAMADA', 'ASTARDA') %}bg-amber-500/10 text-amber-400 border border-amber-500/20
+                                    {% elif p.paint_status == 'BOYANMAYACAK' %}bg-slate-800 text-slate-500
+                                    {% else %}bg-slate-800 text-slate-400{% endif %}">
+                                    {{ p.paint_status }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-center font-mono text-slate-300">{{ p.paint_ral or '-' }}</td>
+                            <td class="py-3 px-3 text-center font-mono text-slate-300">{{ p.paint_dft or '-' }}</td>
+                            <td class="py-3 px-3 text-center">
+                                {% if p.paint_status != 'TAMAMLANDI' and p.paint_status != 'BOYANMAYACAK' %}
+                                <button type="button" onclick="quickSetPaintDone({{ p.id }})" class="px-2.5 py-1 bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white rounded text-[11px] font-semibold transition-all">
+                                    Boyandı
+                                </button>
+                                {% else %}
+                                <span class="text-xs text-purple-400 flex items-center justify-center gap-1">
+                                    <i class="fa-solid fa-check-double"></i> Tamam
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="11" class="py-10 text-center text-slate-500">Seçilen filtrelere uygun boya kaydı bulunamadı.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Seçilenler için alt çubuk -->
+            <div id="paintBulkBar" class="sticky bottom-4 left-0 right-0 mx-4 my-2 p-4 bg-slate-900/95 backdrop-blur-md border border-purple-500/40 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-4 hidden z-20">
+                <div class="flex items-center gap-3">
+                    <span id="paintSelectedCount" class="w-8 h-8 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center font-bold text-sm">0</span>
+                    <div>
+                        <p class="text-xs font-bold text-white">Parça Seçildi</p>
+                        <p class="text-[11px] text-purple-400 font-mono">Toplam Tonaj: <span id="paintSelectedTonnage" class="font-bold">0.00</span> Ton</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="submitPaintBulk('paint_in_progress')" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+                        Kumlamaya Al
+                    </button>
+                    <button type="button" onclick="submitPaintBulk('paint_done')" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md transition-all">
+                        Seçilenlerin Boyasını TAMAMLANDI Yap
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function toggleSelectAllPaint(master) {
+        document.querySelectorAll('.paint-part-checkbox').forEach(cb => cb.checked = master.checked);
+        updatePaintSelectedCounter();
+    }
+
+    function updatePaintSelectedCounter() {
+        const checked = document.querySelectorAll('.paint-part-checkbox:checked');
+        const count = checked.length;
+        let totalWeightKg = 0;
+
+        checked.forEach(cb => totalWeightKg += parseFloat(cb.dataset.weight || 0));
+
+        const bar = document.getElementById('paintBulkBar');
+        if (count > 0) {
+            bar.classList.remove('hidden');
+            document.getElementById('paintSelectedCount').innerText = count;
+            document.getElementById('paintSelectedTonnage').innerText = (totalWeightKg / 1000).toFixed(2);
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+
+    function submitPaintBulk(action) {
+        document.getElementById('paintActionType').value = action;
+        document.getElementById('paintBulkForm').submit();
+    }
+
+    function quickSetPaintDone(partId) {
+        const formData = new FormData();
+        formData.append('paint_status', 'TAMAMLANDI');
+
+        fetch(`/api/parca/${partId}/guncelle`, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(() => window.location.reload());
+    }
+</script>
+{% endblock %}

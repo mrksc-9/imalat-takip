@@ -1,0 +1,96 @@
+{% extends "layout.html" %}
+
+{% block title %}11. Mobil & Ağ Erişim Rehberi - Çelik İmalat MES{% endblock %}
+{% block page_title %}11. Telefon, Tablet & Dışarıdan Uzak Erişim Rehberi{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-5xl">
+
+    <!-- ÜST BİLGİLENDİRME KARTI -->
+    <div class="bg-gradient-to-r from-blue-950/80 via-slate-900 to-indigo-950/80 border border-blue-800/60 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+        <div class="max-w-2xl">
+            <span class="px-3 py-1 bg-blue-600/20 text-blue-400 border border-blue-500/30 rounded-full text-[11px] font-bold uppercase tracking-wider">
+                <i class="fa-solid fa-wifi mr-1"></i> Web Tabanlı Çoklu Cihaz Mimarisi
+            </span>
+            <h2 class="text-xl sm:text-2xl font-black text-white mt-3">Telefon, Tablet veya Evdeki Bilgisayardan Anında Bağlanın</h2>
+            <p class="text-xs sm:text-sm text-slate-300 mt-2 leading-relaxed">
+                Bu sistem masaüstü bir EXE dosyası yerine modern bir <b>Web Uygulaması</b> olarak geliştirilmiştir.
+                Aynı Wi-Fi ağına bağlı herhangi bir telefondan, atölyedeki tabletten veya dışarıdan istediğiniz an tarayıcı üzerinden sisteme erişebilir ve kesim/imalat/sevkiyat girişi yapabilirsiniz.
+            </p>
+        </div>
+    </div>
+
+    <!-- 1. YEREL AĞ / FABRİKA WI-FI ERİŞİMİ -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center text-lg">
+                <i class="fa-solid fa-mobile-screen-button"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-white">1. Yöntem: Fabrika / Ofis Wi-Fi Ağından Telefon ve Tabletle Bağlantı</h3>
+                <p class="text-xs text-slate-400">Aynı modeme/Wi-Fi'a bağlı cihazlar için en hızlı ve kolay yöntem</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+                <p class="text-slate-300 font-semibold">Adım Adım Bağlanma:</p>
+                <ol class="list-decimal list-inside space-y-2 text-slate-400">
+                    <li>Telefonunuzu veya tabletinizi fabrika/ofis Wi-Fi ağına bağlayın.</li>
+                    <li>Telefonunuzun Chrome veya Safari tarayıcısını açın.</li>
+                    <li>Adres satırına aşağıdaki bağlantıyı yazın ve Enter'a basın:</li>
+                </ol>
+
+                <div class="p-3 bg-slate-950 border border-slate-700 rounded-xl text-center">
+                    <span class="text-[10px] text-slate-400 block mb-1 uppercase font-bold">Telefon / Tablet Tarayıcı Adresi</span>
+                    <span class="text-base font-black text-emerald-400 font-mono select-all">http://{{ local_ip }}:5000</span>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+                <p class="text-slate-300 font-semibold">💡 Telefon Ana Ekranına Uygulama Olarak Ekleme:</p>
+                <p class="text-slate-400 leading-relaxed">
+                    Telefonunuzda siteyi açtıktan sonra tarayıcı menüsünden <b>"Ana Ekrana Ekle" (Add to Home screen)</b> seçeneğine tıklarsanız, telefonunuzun masaüstünde tıpkı bir mobil uygulama simgesi gibi görünecektir.
+                </p>
+                <div class="p-3 bg-blue-950/40 border border-blue-800/40 rounded-xl text-[11px] text-blue-300">
+                    <i class="fa-solid fa-circle-check mr-1"></i>
+                    Kesim operatörleri sahada tablet veya telefonla pozu okutup anında "Kesildi" işaretleyebilir.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. İNTERNET ÜZERİNDEN EVDEN / DIŞARIDAN ERİŞİM (CLOUDFLARE TUNNEL & NGROK) -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-6 shadow-xl">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center text-lg">
+                <i class="fa-solid fa-globe"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-white">2. Yöntem: Evden veya Şantiyeden Dış İnternet Üzerinden Güvenli Erişim</h3>
+                <p class="text-xs text-slate-400">Modem portu açmaya gerek kalmadan ücretsiz ve güvenli tünelleme</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+                <h4 class="font-bold text-purple-300">A) Cloudflare Tunnel (Önerilen - Ücretsiz & Sınırsız):</h4>
+                <p class="text-slate-400">
+                    1. Cloudflared uygulamasını bilgisayara indirin.<br>
+                    2. Komut satırında <code>cloudflared tunnel --url http://localhost:5000</code> çalıştırın.<br>
+                    3. Size özel verilen <b>https://xyz.trycloudflare.com</b> linkini evden veya telefonunuzdan açın.
+                </p>
+            </div>
+
+            <div class="p-4 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2">
+                <h4 class="font-bold text-blue-300">B) Ngrok ile Hızlı Dış Erişim:</h4>
+                <p class="text-slate-400">
+                    1. <code>ngrok http 5000</code> komutunu çalıştırın.<br>
+                    2. Ekrandaki güvenli HTTPS linkini şantiyedeki şeflerinizle paylaşın.
+                </p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
