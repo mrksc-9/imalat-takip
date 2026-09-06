@@ -22,6 +22,8 @@ from excel_handler import (
 )
 from seed_data import seed_demo_data
 
+import jinja2
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(
@@ -29,6 +31,17 @@ app = Flask(
     template_folder=os.path.join(BASE_DIR, 'templates'),
     static_folder=os.path.join(BASE_DIR, 'static')
 )
+
+# Şablonları hem 'templates/' klasöründe hem de ana dizinde bulacak akıllı yükleyici:
+app.jinja_loader = jinja2.ChoiceLoader([
+    jinja2.FileSystemLoader(os.path.join(BASE_DIR, 'templates')),
+    jinja2.FileSystemLoader(BASE_DIR),
+    jinja2.FileSystemLoader(os.path.join(os.getcwd(), 'templates')),
+    jinja2.FileSystemLoader(os.getcwd()),
+    jinja2.FileSystemLoader('/opt/render/project/src/templates'),
+    jinja2.FileSystemLoader('/opt/render/project/src')
+])
+
 app.secret_key = os.environ.get('SECRET_KEY', 'celik_imalat_takip_gizli_anahtar_2026_super_secure')
 
 @app.errorhandler(500)
