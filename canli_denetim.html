@@ -21,6 +21,14 @@
                 <i class="fa-solid fa-arrows-rotate"></i>
                 <span>Günlüğü Yenile</span>
             </button>
+            {% if user_role in ('admin', 'patron', 'genel müdür') or session.get('role') in ('admin', 'patron', 'genel müdür') %}
+            <form action="{{ url_for('api_canli_denetim_temizle') }}" method="POST" onsubmit="return confirm('Tüm geçmiş denetim ve işlem kayıtlarını kalıcı olarak temizlemek istediğinizden emin misiniz?');" class="inline">
+                <button type="submit" class="px-3.5 py-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Günlüğü Temizle</span>
+                </button>
+            </form>
+            {% endif %}
         </div>
     </div>
 

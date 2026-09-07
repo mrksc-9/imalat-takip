@@ -172,54 +172,26 @@
     </div>
 
     <script>
-    async function shareCurrentShipmentWhatsApp() {
-        try {
-            const res = await fetch(`/api/sevk/{{ shipment.id }}/excel`);
-            if (!res.ok) throw new Error('Excel dosyası alınamadı');
-            const blob = await res.blob();
-            
-            const fileName = "Irsaliye_{{ shipment.dispatch_no }}.xlsx";
-            const file = new File([blob], fileName, {
-                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            });
+    function shareWhatsApp() {
+        var origin = window.location.origin;
+        var text = "🚛 *SEVKİYAT İRSALİYESİ BİLGİLENDİRMESİ*\n" +
+                   "━━━━━━━━━━━━━━━━━━━━\n" +
+                   "📄 *İrsaliye No:* {{ shipment.dispatch_no }}\n" +
+                   "🏗️ *Proje:* {{ project.code if project else '' }} - {{ project.name if project else '' }}\n" +
+                   "🚚 *Araç Plakası:* {{ shipment.vehicle_plate or '-' }}\n" +
+                   "⚖️ *Toplam Tonaj:* {{ '%.2f' | format(shipment.total_tonnage or 0) }} Ton\n" +
+                   "🔗 *A4 Sevk Fişi:* " + window.location.href;
 
-            var text = "🚛 *SEVKİYAT İRSALİYESİ BİLGİLENDİRMESİ*\n" +
-                       "━━━━━━━━━━━━━━━━━━━━\n" +
-                       "📄 *İrsaliye No:* {{ shipment.dispatch_no }}\n" +
-                       "📅 *Sevk Tarihi:* {{ shipment.dispatch_date | format_date }}\n" +
-                       "🏗️ *Proje:* {{ shipment.project_code }} - {{ shipment.project_name }}\n" +
-                       "📍 *Şantiye / Teslimat:* {{ shipment.site_location or shipment.destination or '-' }}\n" +
-                       "🚚 *Araç Plakası:* {{ shipment.vehicle_plate }}\n" +
-                       "👤 *Şoför:* {{ shipment.driver_name or '-' }}{% if shipment.driver_phone %} ({{ shipment.driver_phone }}){% endif %}\n" +
-                       "📦 *Toplam Sevk:* {{ shipment.total_quantity }} Parça / Marka\n" +
-                       "⚖️ *Toplam Ağırlık:* {{ shipment.total_tonnage | format_num }} Ton\n" +
-                       "━━━━━━━━━━━━━━━━━━━━\n" +
-                       "🔗 *İrsaliye Fişi & Detay:* " + window.location.href;
-
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: "İrsaliye - {{ shipment.dispatch_no }}",
-                    text: text
-                });
-            } else {
-                // Otomatik indir ve WhatsApp Web aç
-                const fileUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = fileUrl;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(fileUrl);
-
-                var url = "https://api.whatsapp.com/send?text=" + encodeURIComponent(text);
+        var url = "https://api.whatsapp.com/send?text=" + encodeURIComponent(text);
+        if (navigator.share && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            navigator.share({
+                title: "İrsaliye {{ shipment.dispatch_no }}",
+                text: text
+            }).catch(function() {
                 window.open(url, '_blank');
-            }
-        } catch (e) {
-            console.error(e);
-            var text = "🚛 *SEVKİYAT İRSALİYESİ BİLGİLENDİRMESİ*\n📄 *İrsaliye No:* {{ shipment.dispatch_no }}\n🔗 " + window.location.href;
-            window.open("https://api.whatsapp.com/send?text=" + encodeURIComponent(text), '_blank');
+            });
+        } else {
+            window.open(url, '_blank');
         }
     }
     </script>

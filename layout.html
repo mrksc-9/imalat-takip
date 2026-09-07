@@ -90,6 +90,10 @@
                         <i class="fa-solid fa-folder-tree w-3.5 text-center text-blue-400"></i>
                         <span>Proje Takip</span>
                     </a>
+                    <a href="{{ url_for('dizayn_modelleme') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'dizayn_modelleme' %}bg-violet-600/30 text-violet-300 font-semibold border-l-2 border-violet-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-cube w-3.5 text-center text-violet-400"></i>
+                        <span>Dizayn & 3D Modelleme</span>
+                    </a>
                     <a href="{{ url_for('siparis_takip') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'siparis_takip' %}bg-emerald-600/30 text-emerald-300 font-semibold border-l-2 border-emerald-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
                         <i class="fa-solid fa-boxes-stacked w-3.5 text-center text-emerald-400"></i>
                         <span>Malzeme & Sipariş Takip</span>
@@ -97,13 +101,6 @@
                     <a href="{{ url_for('toplantilar') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'toplantilar' %}bg-indigo-600/30 text-indigo-300 font-semibold border-l-2 border-indigo-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
                         <i class="fa-solid fa-handshake w-3.5 text-center text-indigo-400"></i>
                         <span>Toplantı & Kararlar</span>
-                    </a>
-                    <a href="{{ url_for('sohbet') }}" class="nav-link flex items-center justify-between px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'sohbet' %}bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/30{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
-                        <div class="flex items-center gap-2.5">
-                            <i class="fa-solid fa-comments w-3.5 text-center text-blue-400"></i>
-                            <span>Sohbet & İletişim</span>
-                        </div>
-                        <span id="navChatUnreadBadge" class="hidden px-1.5 py-0.2 text-[9px] font-black rounded-full bg-rose-600 text-white animate-pulse">0</span>
                     </a>
                 </div>
 
@@ -373,17 +370,14 @@
                 <a href="{{ url_for('projeler') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-folder-tree w-4 text-center text-blue-400"></i> Proje Takip
                 </a>
+                <a href="{{ url_for('dizayn_modelleme') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-cube w-4 text-center text-violet-400"></i> Dizayn & 3D Modelleme
+                </a>
                 <a href="{{ url_for('siparis_takip') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-boxes-stacked w-4 text-center text-emerald-400"></i> Malzeme & Sipariş Takip
                 </a>
                 <a href="{{ url_for('toplantilar') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-handshake w-4 text-center text-indigo-400"></i> Toplantı & Kararlar
-                </a>
-                <a href="{{ url_for('sohbet') }}" class="flex items-center justify-between px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
-                    <span class="flex items-center gap-3">
-                        <i class="fa-solid fa-comments w-4 text-center text-blue-400"></i> Sohbet & İletişim
-                    </span>
-                    <span id="mobileNavChatUnreadBadge" class="hidden px-1.5 py-0.2 text-[9px] font-black rounded-full bg-rose-600 text-white animate-pulse">0</span>
                 </a>
 
                 <div class="pt-2 text-[10px] font-bold text-slate-500 uppercase">Ön İmalat</div>
@@ -1115,7 +1109,7 @@
                     notifs.forEach(n => {
                         if (n.id > lastNotificationId) {
                             lastNotificationId = n.id;
-                            showToastNotification(n);
+                            // Kullanıcı kuralı 2: Site içi kayar kutu yerine Windows / İşletim Sistemi bildirimi gönderilir
                             triggerBrowserNotification(n);
                         }
                     });
@@ -1124,10 +1118,6 @@
             .catch(err => console.error(err));
         }
 
-        // 6 saniyede bir bildirimleri kontrol et
-        setInterval(pollLiveNotifications, 6000);
-        pollLiveNotifications();
-
         // Global Okunmamış Sohbet Mesajlarını Kontrol Et
         function pollGlobalChatUnread() {
             fetch('/api/chat/unread-summary')
@@ -1135,26 +1125,6 @@
             .then(summary => {
                 if (!summary) return;
                 const total = summary.total_unread || 0;
-                
-                const navBadge = document.getElementById('navChatUnreadBadge');
-                if (navBadge) {
-                    if (total > 0) {
-                        navBadge.innerText = total;
-                        navBadge.classList.remove('hidden');
-                    } else {
-                        navBadge.classList.add('hidden');
-                    }
-                }
-
-                const mobBadge = document.getElementById('mobileNavChatUnreadBadge');
-                if (mobBadge) {
-                    if (total > 0) {
-                        mobBadge.innerText = total;
-                        mobBadge.classList.remove('hidden');
-                    } else {
-                        mobBadge.classList.add('hidden');
-                    }
-                }
 
                 const floatBadge = document.getElementById('floatingChatUnreadBadge');
                 if (floatBadge) {
@@ -1169,8 +1139,22 @@
             .catch(() => {});
         }
 
-        setInterval(pollGlobalChatUnread, 5000);
-        pollGlobalChatUnread();
+        // PERFORMANS OPTİMİZASYONU: Sekme pasif / arka plandayken sorguları durdur
+        function runBackgroundSync() {
+            if (document.hidden) return;
+            pollLiveNotifications();
+            pollGlobalChatUnread();
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                runBackgroundSync();
+            }
+        });
+
+        // 12 saniyede bir hafif kontrol
+        setInterval(runBackgroundSync, 12000);
+        runBackgroundSync();
 
 
         // =========================================================================

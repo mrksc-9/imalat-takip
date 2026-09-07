@@ -25,6 +25,7 @@ ROLES_LIST = [
     'fabrika müdürü',
     'imalat müdürü',
     'imalat mühendisi',
+    'dizayn',
     'iş hazırlama',
     'satınalma',
     'kalite mühendisi',
@@ -35,6 +36,7 @@ ROLES_LIST = [
 
 MODULES_LIST = [
     ('projeler', 'Proje & Tekla Listeleri'),
+    ('dizayn_modelleme', 'Dizayn & 3D Modelleme'),
     ('siparis_takip', 'Sipariş Takip & Malzeme'),
     ('on_imalat_plan', 'Ön İmalat Plan (Makineler)'),
     ('kesim_takip', 'Kesim Girişi'),
@@ -168,21 +170,61 @@ class PostgresCursorWrapper:
     def close(self):
         self._cur.close()
 
+_pg_pool = None
+
+def get_pg_pool():
+    global _pg_pool
+    if _pg_pool is None:
+        db_url = os.environ.get('DATABASE_URL')
+        if db_url:
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            try:
+                import psycopg2.pool
+                _pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1,
+                    maxconn=20,
+                    dsn=db_url
+                )
+            except Exception as e:
+                print(f"PostgreSQL Pool başlatma uyarısı: {e}")
+                _pg_pool = None
+    return _pg_pool
+
 class PostgresConnectionWrapper:
-    def __init__(self, conn):
+    def __init__(self, conn, pool=None):
         self._conn = conn
+        self._pool = pool
 
     def cursor(self):
         return PostgresCursorWrapper(self._conn.cursor())
 
     def commit(self):
-        self._conn.commit()
+        try:
+            self._conn.commit()
+        except Exception:
+            pass
 
     def rollback(self):
-        self._conn.rollback()
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
 
     def close(self):
-        self._conn.close()
+        if self._pool:
+            try:
+                self._pool.putconn(self._conn)
+            except Exception:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+        else:
+            try:
+                self._conn.close()
+            except Exception:
+                pass
 
 def is_postgres():
     return bool(os.environ.get('DATABASE_URL'))
@@ -190,9 +232,18 @@ def is_postgres():
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
     if db_url:
+        pool = get_pg_pool()
+        if pool:
+            try:
+                raw_conn = pool.getconn()
+                if getattr(raw_conn, 'closed', 0) != 0:
+                    raw_conn = pool.getconn()
+                return PostgresConnectionWrapper(raw_conn, pool=pool)
+            except Exception:
+                pass
+        import psycopg2
         if db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
-        import psycopg2
         raw_conn = psycopg2.connect(db_url)
         return PostgresConnectionWrapper(raw_conn)
     else:
@@ -201,18 +252,26 @@ def get_db():
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA busy_timeout=30000;")
+            conn.execute("PRAGMA synchronous = NORMAL;")
+            conn.execute("PRAGMA cache_size = -64000;")
+            conn.execute("PRAGMA temp_store = MEMORY;")
         except Exception:
             pass
         return conn
 
-def ensure_column(cursor, table, column, col_type_sql, default_val=None):
+def ensure_column(cursor, table, column, col_type_sql, default_val=None, conn=None):
     """Hem PostgreSQL hem SQLite için tabloya eksik sütunu güvenle ekler."""
     use_pg = is_postgres()
     if use_pg:
         def_clause = f" DEFAULT {default_val}" if default_val is not None else ""
         try:
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type_sql}{def_clause}")
+            if conn:
+                conn.commit()
         except Exception as e:
+            if conn:
+                try: conn.rollback()
+                except Exception: pass
             print(f"Postgres column migration note ({table}.{column}): {e}")
     else:
         try:
@@ -221,8 +280,118 @@ def ensure_column(cursor, table, column, col_type_sql, default_val=None):
             if column not in cols:
                 def_clause = f" DEFAULT {default_val}" if default_val is not None else ""
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type_sql}{def_clause}")
+                if conn:
+                    conn.commit()
         except Exception as e:
             print(f"SQLite column migration note ({table}.{column}): {e}")
+
+def run_schema_migrations():
+    """Tüm ortamlarda (Render PostgreSQL ve Yerel SQLite) kritik sütun, tablo ve indekslerin varlığını garanti eder."""
+    conn = get_db()
+    cursor = conn.cursor()
+    use_pg = is_postgres()
+    pk_type = "SERIAL PRIMARY KEY" if use_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    try:
+        # 1. cutting_entries tablosu eksik sütunları
+        ensure_column(cursor, "cutting_entries", "unit_weight", "REAL", "0.0", conn=conn)
+        ensure_column(cursor, "cutting_entries", "cut_tonnage", "REAL", "0.0", conn=conn)
+        ensure_column(cursor, "cutting_entries", "project_name", "TEXT", "''", conn=conn)
+        
+        # 2. projects tablosu eksik sütunları
+        ensure_column(cursor, "projects", "manual_tonnage", "REAL", "NULL", conn=conn)
+        
+        # 3. shipments tablosu eksik sütunları
+        ensure_column(cursor, "shipments", "total_tonnage", "REAL", "0.0", conn=conn)
+        ensure_column(cursor, "shipments", "accounting_status", "TEXT", "'Bekliyor'", conn=conn)
+        
+        # 4. ROLLER (Dinamik Rol Yönetimi) Tablosu
+        cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS roles (
+            id {pk_type},
+            name TEXT UNIQUE NOT NULL,
+            description TEXT DEFAULT '',
+            is_system INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Varsayılan rolleri ekle
+        for r in ROLES_LIST:
+            is_sys = 1 if r in ('admin', 'patron', 'genel müdür', 'izleyici') else 0
+            cursor.execute("INSERT OR IGNORE INTO roles (name, description, is_system) VALUES (?, '', ?)", (r, is_sys))
+
+        # 5. DİZAYN & 3D MODELLEME TABLOSU
+        cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS project_design_tasks (
+            id {pk_type},
+            project_id INTEGER,
+            project_code TEXT,
+            project_name TEXT NOT NULL,
+            stage_type TEXT NOT NULL DEFAULT 'Modelleme',
+            status TEXT NOT NULL DEFAULT 'Devam Ediyor',
+            lead_designer TEXT DEFAULT '',
+            designer_user_id INTEGER,
+            start_date TEXT,
+            target_date TEXT,
+            actual_end_date TEXT,
+            estimated_days INTEGER DEFAULT 7,
+            progress_percent INTEGER DEFAULT 0,
+            tekla_version TEXT DEFAULT 'Tekla 2024',
+            revision_no TEXT DEFAULT 'Rev 0',
+            description TEXT DEFAULT '',
+            revision_notes TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+
+        # 6. Modül yetkilerini tüm roller için garanti et
+        for r in ROLES_LIST:
+            for mod, _ in MODULES_LIST:
+                is_admin_patron = r in ('admin', 'patron', 'genel müdür')
+                can_e = 1 if is_admin_patron else 0
+                if r == 'fabrika müdürü': can_e = 1
+                elif r == 'imalat müdürü' and mod in ('projeler', 'dizayn_modelleme', 'kesim_takip', 'imalat_plan', 'imalat_takip', 'on_imalat_plan', 'boya_takip'): can_e = 1
+                elif r == 'imalat mühendisi' and mod in ('kesim_takip', 'imalat_takip', 'imalat_plan', 'boya_takip'): can_e = 1
+                elif r == 'dizayn' and mod in ('projeler', 'dizayn_modelleme'): can_e = 1
+                elif r == 'iş hazırlama' and mod in ('projeler', 'dizayn_modelleme', 'kesim_takip', 'siparis_takip', 'boya_takip'): can_e = 1
+                elif r == 'satınalma' and mod in ('siparis_takip',): can_e = 1
+                elif r == 'kalite mühendisi' and mod in ('kalite_kontrol', 'boya_takip'): can_e = 1
+                elif r == 'formen' and mod in ('kesim_takip', 'imalat_takip', 'boya_takip'): can_e = 1
+                elif r == 'usta' and mod in ('kesim_takip', 'boya_takip'): can_e = 1
+
+                cursor.execute('''
+                INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_edit)
+                VALUES (?, ?, 1, ?)
+                ''', (r, mod, can_e))
+
+        cursor.execute("UPDATE role_permissions SET can_edit = 1, can_view = 1 WHERE role IN ('admin', 'patron', 'genel müdür')")
+
+        # 7. Performans İndeksleri
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_cutting_date ON cutting_entries(cut_date)",
+            "CREATE INDEX IF NOT EXISTS idx_cutting_machine ON cutting_entries(machine)",
+            "CREATE INDEX IF NOT EXISTS idx_cutting_op ON cutting_entries(operator)",
+            "CREATE INDEX IF NOT EXISTS idx_cutting_proj ON cutting_entries(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_parts_proj ON parts(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_assemblies_proj ON assemblies(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_design_proj ON project_design_tasks(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_design_stage ON project_design_tasks(stage_type)",
+            "CREATE INDEX IF NOT EXISTS idx_chat_rec_read ON chat_messages(receiver_id, is_read)",
+            "CREATE INDEX IF NOT EXISTS idx_act_logs_desc ON activity_logs(id DESC)"
+        ]
+        for idx_sql in indexes:
+            try:
+                cursor.execute(idx_sql)
+                conn.commit()
+            except Exception:
+                try: conn.rollback()
+                except Exception: pass
+        conn.commit()
+    except Exception as e:
+        print(f"Schema migration note: {e}")
+    finally:
+        conn.close()
 
 def init_db():
     conn = get_db()
@@ -261,9 +430,10 @@ def init_db():
             is_admin_patron = r in ('admin', 'patron', 'genel müdür')
             can_e = 1 if is_admin_patron else 0
             if r == 'fabrika müdürü': can_e = 1
-            elif r == 'imalat müdürü' and mod in ('projeler', 'kesim_takip', 'imalat_plan', 'imalat_takip', 'on_imalat_plan', 'boya_takip'): can_e = 1
+            elif r == 'imalat müdürü' and mod in ('projeler', 'dizayn_modelleme', 'kesim_takip', 'imalat_plan', 'imalat_takip', 'on_imalat_plan', 'boya_takip'): can_e = 1
             elif r == 'imalat mühendisi' and mod in ('kesim_takip', 'imalat_takip', 'imalat_plan', 'boya_takip'): can_e = 1
-            elif r == 'iş hazırlama' and mod in ('projeler', 'kesim_takip', 'siparis_takip', 'boya_takip'): can_e = 1
+            elif r == 'dizayn' and mod in ('projeler', 'dizayn_modelleme'): can_e = 1
+            elif r == 'iş hazırlama' and mod in ('projeler', 'dizayn_modelleme', 'kesim_takip', 'siparis_takip', 'boya_takip'): can_e = 1
             elif r == 'satınalma' and mod in ('siparis_takip',): can_e = 1
             elif r == 'kalite mühendisi' and mod in ('kalite_kontrol', 'boya_takip'): can_e = 1
             elif r == 'formen' and mod in ('kesim_takip', 'imalat_takip', 'boya_takip'): can_e = 1
@@ -2008,6 +2178,349 @@ def delete_push_subscription(endpoint):
     cursor.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
     conn.commit()
     conn.close()
+
+
+# =========================================================================
+# 27. DİNAMİK ROL YÖNETİMİ
+# =========================================================================
+def get_all_roles():
+    """Tüm sistem ve dinamik rolleri kullanıcı sayısı ile döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT r.id, r.name, r.description, r.is_system, r.created_at,
+               (SELECT COUNT(*) FROM users u WHERE LOWER(u.role) = LOWER(r.name)) as user_count
+        FROM roles r
+        ORDER BY r.is_system DESC, r.name ASC
+    """)
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def get_roles_list():
+    """Tüm aktif rol isimlerini liste olarak döner (dinamik)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM roles ORDER BY is_system DESC, name ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    if rows:
+        return [r['name'] for r in rows]
+    return ROLES_LIST
+
+def add_custom_role(name, description=''):
+    """Yeni dinamik rol ekler ve modül yetki satırlarını oluşturur."""
+    name_clean = name.strip().lower()
+    if not name_clean:
+        return False, "Rol adı boş olamaz."
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT id FROM roles WHERE LOWER(name) = ?", (name_clean,))
+        if cursor.fetchone():
+            conn.close()
+            return False, f"'{name_clean}' rolü zaten mevcut."
+        
+        cursor.execute("INSERT INTO roles (name, description, is_system) VALUES (?, ?, 0)", (name_clean, description.strip()))
+        
+        # Modül yetkilerini varsayılan olarak (can_view=1, can_edit=0) ekle
+        for mod, _ in MODULES_LIST:
+            cursor.execute("""
+                INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_edit)
+                VALUES (?, ?, 1, 0)
+            """, (name_clean, mod))
+            
+        conn.commit()
+        conn.close()
+        return True, f"'{name_clean}' rolü başarıyla oluşturuldu."
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+def delete_custom_role(role_name):
+    """Sistem rolü olmayan özel bir rolü siler ve atanmış kullanıcıları 'izleyici' yapar."""
+    name_clean = role_name.strip().lower()
+    if name_clean in ('admin', 'patron', 'genel müdür', 'izleyici'):
+        return False, "Temel sistem rolleri silinemez."
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT is_system FROM roles WHERE LOWER(name) = ?", (name_clean,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return False, "Silinmek istenen rol bulunamadı."
+        if row['is_system'] == 1:
+            conn.close()
+            return False, "Sistem rolleri korumalıdır ve silinemez."
+            
+        # Bu role sahip kullanıcıları 'izleyici' rolüne güncelle
+        cursor.execute("UPDATE users SET role = 'izleyici' WHERE LOWER(role) = ?", (name_clean,))
+        # Yetki matrisinden sil
+        cursor.execute("DELETE FROM role_permissions WHERE LOWER(role) = ?", (name_clean,))
+        # Roller tablosundan sil
+        cursor.execute("DELETE FROM roles WHERE LOWER(name) = ?", (name_clean,))
+        conn.commit()
+        conn.close()
+        return True, f"'{name_clean}' rolü başarıyla silindi. Bu roldeki kullanıcılar 'izleyici' yapıldı."
+    except Exception as e:
+        conn.close()
+        return False, str(e)
+
+
+# =========================================================================
+# 28. DİZAYN & 3D MODELLEME YÖNETİMİ
+# =========================================================================
+def get_design_tasks(project_id=None, stage_type=None, status=None, search=None):
+    """Dizayn ve modelleme görevlerini süre, kalan gün ve gecikme durumları hesaplanmış olarak döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    query = """
+        SELECT dt.*, p.name as linked_project_name, p.code as linked_project_code,
+               u.full_name as designer_full_name, u.username as designer_username
+        FROM project_design_tasks dt
+        LEFT JOIN projects p ON dt.project_id = p.id
+        LEFT JOIN users u ON dt.designer_user_id = u.id
+        WHERE 1=1
+    """
+    params = []
+    if project_id:
+        query += " AND dt.project_id = ?"
+        params.append(project_id)
+    if stage_type and stage_type != 'Tümü':
+        query += " AND dt.stage_type = ?"
+        params.append(stage_type)
+    if status and status != 'Tümü':
+        query += " AND dt.status = ?"
+        params.append(status)
+    if search:
+        s = f"%{search.strip().lower()}%"
+        query += " AND (LOWER(dt.project_name) LIKE ? OR LOWER(dt.project_code) LIKE ? OR LOWER(dt.lead_designer) LIKE ? OR LOWER(dt.tekla_version) LIKE ?)"
+        params.extend([s, s, s, s])
+        
+    query += " ORDER BY CASE WHEN dt.status = 'Tamamlandı' THEN 2 ELSE 1 END, dt.id DESC"
+    
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    tasks = []
+    today = get_istanbul_now().date()
+    
+    for r in rows:
+        t = dict(r)
+        
+        # Gün ve süre hesaplamaları
+        start_d = None
+        target_d = None
+        
+        if t.get('start_date'):
+            try:
+                start_d = datetime.strptime(str(t['start_date'])[:10], '%Y-%m-%d').date()
+            except Exception:
+                pass
+        if t.get('target_date'):
+            try:
+                target_d = datetime.strptime(str(t['target_date'])[:10], '%Y-%m-%d').date()
+            except Exception:
+                pass
+                
+        # Toplam tahmini süre
+        est_days = t.get('estimated_days') or 0
+        if not est_days and start_d and target_d:
+            est_days = max((target_d - start_d).days, 1)
+        t['estimated_days'] = est_days
+        
+        # Geçen gün
+        if start_d:
+            days_elapsed = (today - start_d).days
+            t['days_elapsed'] = max(days_elapsed, 0)
+        else:
+            t['days_elapsed'] = 0
+            
+        # Kalan gün & Gecikme durumu
+        if target_d:
+            days_remaining = (target_d - today).days
+            t['days_remaining'] = days_remaining
+            t['is_overdue'] = (days_remaining < 0 and t.get('status') != 'Tamamlandı')
+            t['overdue_days'] = abs(days_remaining) if t['is_overdue'] else 0
+        else:
+            t['days_remaining'] = None
+            t['is_overdue'] = False
+            t['overdue_days'] = 0
+            
+        # Sorumlu Dizayn Personeli İsmi
+        t['effective_designer'] = t.get('designer_full_name') or t.get('lead_designer') or 'Belirtilmedi'
+        # Proje Adı & Kodu Fallback
+        t['effective_project_name'] = t.get('linked_project_name') or t.get('project_name') or 'İsimsiz Proje'
+        t['effective_project_code'] = t.get('linked_project_code') or t.get('project_code') or '-'
+        
+        tasks.append(t)
+        
+    return tasks
+
+def get_design_task_by_id(task_id):
+    """Tekil dizayn görevi detayını döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT dt.*, p.name as linked_project_name, p.code as linked_project_code,
+               u.full_name as designer_full_name
+        FROM project_design_tasks dt
+        LEFT JOIN projects p ON dt.project_id = p.id
+        LEFT JOIN users u ON dt.designer_user_id = u.id
+        WHERE dt.id = ?
+    """, (task_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def save_design_task(project_id, project_code, project_name, stage_type, status,
+                     lead_designer, designer_user_id, start_date, target_date,
+                     actual_end_date, estimated_days, progress_percent, tekla_version,
+                     revision_no, description, revision_notes):
+    """Yeni dizayn / modelleme görevi kaydeder."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO project_design_tasks (
+            project_id, project_code, project_name, stage_type, status,
+            lead_designer, designer_user_id, start_date, target_date,
+            actual_end_date, estimated_days, progress_percent, tekla_version,
+            revision_no, description, revision_notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    """, (
+        project_id if project_id else None,
+        project_code.strip() if project_code else '',
+        project_name.strip() if project_name else '',
+        stage_type.strip() if stage_type else 'Modelleme',
+        status.strip() if status else 'Devam Ediyor',
+        lead_designer.strip() if lead_designer else '',
+        designer_user_id if designer_user_id else None,
+        start_date if start_date else None,
+        target_date if target_date else None,
+        actual_end_date if actual_end_date else None,
+        int(estimated_days or 7),
+        int(progress_percent or 0),
+        tekla_version.strip() if tekla_version else 'Tekla 2024',
+        revision_no.strip() if revision_no else 'Rev 0',
+        description.strip() if description else '',
+        revision_notes.strip() if revision_notes else ''
+    ))
+    task_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+def update_design_task(task_id, stage_type, status, lead_designer, designer_user_id,
+                       start_date, target_date, actual_end_date, estimated_days,
+                       progress_percent, tekla_version, revision_no, description,
+                       revision_notes, project_id=None, project_code=None, project_name=None):
+    """Mevcut dizayn / modelleme görevini günceller."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Mevcut kaydı çek
+    cursor.execute("SELECT * FROM project_design_tasks WHERE id = ?", (task_id,))
+    existing = cursor.fetchone()
+    if not existing:
+        conn.close()
+        return False
+        
+    p_id = project_id if project_id is not None else existing['project_id']
+    p_code = project_code if project_code is not None else existing['project_code']
+    p_name = project_name if project_name is not None else existing['project_name']
+    
+    cursor.execute("""
+        UPDATE project_design_tasks
+        SET project_id = ?,
+            project_code = ?,
+            project_name = ?,
+            stage_type = ?,
+            status = ?,
+            lead_designer = ?,
+            designer_user_id = ?,
+            start_date = ?,
+            target_date = ?,
+            actual_end_date = ?,
+            estimated_days = ?,
+            progress_percent = ?,
+            tekla_version = ?,
+            revision_no = ?,
+            description = ?,
+            revision_notes = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, (
+        p_id if p_id else None,
+        p_code.strip() if p_code else '',
+        p_name.strip() if p_name else '',
+        stage_type.strip() if stage_type else 'Modelleme',
+        status.strip() if status else 'Devam Ediyor',
+        lead_designer.strip() if lead_designer else '',
+        designer_user_id if designer_user_id else None,
+        start_date if start_date else None,
+        target_date if target_date else None,
+        actual_end_date if actual_end_date else None,
+        int(estimated_days or 7),
+        int(progress_percent or 0),
+        tekla_version.strip() if tekla_version else 'Tekla 2024',
+        revision_no.strip() if revision_no else 'Rev 0',
+        description.strip() if description else '',
+        revision_notes.strip() if revision_notes else '',
+        task_id
+    ))
+    conn.commit()
+    conn.close()
+    return True
+
+def delete_design_task(task_id):
+    """Dizayn görevini siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM project_design_tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_design_summary_stats():
+    """Dizayn ve Modelleme paneli için özet KPI metrikleri döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) as total FROM project_design_tasks")
+    tot_row = cursor.fetchone()
+    total_tasks = (tot_row['total'] if tot_row else 0) or 0
+    
+    cursor.execute("SELECT COUNT(*) as cnt FROM project_design_tasks WHERE stage_type IN ('Modelleme', 'Sıfırdan Modelleme', 'Sıfırdan 3D Modelleme') AND status != 'Tamamlandı'")
+    mod_row = cursor.fetchone()
+    modelling_count = (mod_row['cnt'] if mod_row else 0) or 0
+    
+    cursor.execute("SELECT COUNT(*) as cnt FROM project_design_tasks WHERE stage_type IN ('Model Düzenleme', 'Revizyon', 'Model Düzenleme / Revizyon', 'Tasarım Revizyonu') AND status != 'Tamamlandı'")
+    rev_row = cursor.fetchone()
+    revision_count = (rev_row['cnt'] if rev_row else 0) or 0
+    
+    cursor.execute("SELECT COUNT(*) as cnt FROM project_design_tasks WHERE (status IN ('Onay Bekliyor', 'Müşteri Onayında') OR stage_type IN ('Müşteri Onayında', 'Onay Bekliyor', 'Statik & Tasarım Kontrol')) AND status != 'Tamamlandı'")
+    app_row = cursor.fetchone()
+    pending_approval_count = (app_row['cnt'] if app_row else 0) or 0
+    
+    cursor.execute("SELECT COUNT(*) as cnt FROM project_design_tasks WHERE status = 'Tamamlandı'")
+    comp_row = cursor.fetchone()
+    completed_count = (comp_row['cnt'] if comp_row else 0) or 0
+    
+    active_count = max(total_tasks - completed_count, 0)
+    
+    conn.close()
+    return {
+        'total_tasks': total_tasks,
+        'modelling_count': modelling_count,
+        'revision_count': revision_count,
+        'pending_approval_count': pending_approval_count,
+        'completed_count': completed_count,
+        'active_count': active_count
+    }
+
 
 
 

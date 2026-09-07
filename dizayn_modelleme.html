@@ -1,0 +1,778 @@
+{% extends "layout.html" %}
+
+{% block title %}Dizayn & 3D Modelleme Takip - Çelik İmalat MES{% endblock %}
+{% block page_title %}1. Proje / Dizayn & 3D Modelleme Yönetimi{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- 1. ÜST KPI ÖZET KARTLARI -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <!-- Toplam Projeler -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl relative overflow-hidden group hover:border-slate-700 transition-all">
+            <div class="absolute -right-2 -bottom-2 w-16 h-16 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all"></div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Toplam Görev</span>
+                <div class="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-cube text-xs"></i>
+                </div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-black text-white font-mono">{{ stats.total_tasks }}</span>
+                <span class="text-[10px] text-slate-400">({{ stats.active_count }} Aktif)</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Dizayn ve Tekla model portföyü</p>
+        </div>
+
+        <!-- Sıfırdan Modelleme -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+            <div class="absolute -right-2 -bottom-2 w-16 h-16 bg-cyan-500/10 rounded-full blur-xl group-hover:bg-cyan-500/20 transition-all"></div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-cyan-300 uppercase tracking-wider">Sıfırdan Modelleme</span>
+                <div class="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-shapes text-xs"></i>
+                </div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-black text-cyan-300 font-mono">{{ stats.modelling_count }}</span>
+                <span class="text-[10px] text-cyan-400/80 font-medium">Model</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">İlk kez 3D modelleme aşamasında</p>
+        </div>
+
+        <!-- Model Düzenleme & Revizyon -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl relative overflow-hidden group hover:border-amber-500/40 transition-all">
+            <div class="absolute -right-2 -bottom-2 w-16 h-16 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition-all"></div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-amber-300 uppercase tracking-wider">Model Düzenleme</span>
+                <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-pen-ruler text-xs"></i>
+                </div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-black text-amber-300 font-mono">{{ stats.revision_count }}</span>
+                <span class="text-[10px] text-amber-400/80 font-medium">Revizyon</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Mevcut modelde düzenleme / revizyon</p>
+        </div>
+
+        <!-- Onayda Bekleyenler -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl relative overflow-hidden group hover:border-purple-500/40 transition-all">
+            <div class="absolute -right-2 -bottom-2 w-16 h-16 bg-purple-500/10 rounded-full blur-xl group-hover:bg-purple-500/20 transition-all"></div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-purple-300 uppercase tracking-wider">Onay Bekleyenler</span>
+                <div class="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-hourglass-half text-xs"></i>
+                </div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-black text-purple-300 font-mono">{{ stats.pending_approval_count }}</span>
+                <span class="text-[10px] text-purple-400/80 font-medium">Onayda</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Müşteri / Statik kontrol onayında</p>
+        </div>
+
+        <!-- Tamamlanan Modeller -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl relative overflow-hidden group hover:border-emerald-500/40 transition-all col-span-2 sm:col-span-1">
+            <div class="absolute -right-2 -bottom-2 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-all"></div>
+            <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">Tamamlandı / İmalatta</span>
+                <div class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                    <i class="fa-solid fa-circle-check text-xs"></i>
+                </div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+                <span class="text-2xl font-black text-emerald-300 font-mono">{{ stats.completed_count }}</span>
+                <span class="text-[10px] text-emerald-400/80 font-medium">Teslim</span>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">Modelleme bitti, imalata aktarıldı</p>
+        </div>
+    </div>
+
+    <!-- 2. FİLTRE VE AKSİYON ÇUBUĞU -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl">
+        <form method="GET" action="{{ url_for('dizayn_modelleme') }}" class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            <!-- Sol Filtreler -->
+            <div class="flex flex-wrap items-center gap-2.5">
+                <!-- Aşama Filtresi -->
+                <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                    <span class="text-[11px] text-slate-400 font-medium whitespace-nowrap"><i class="fa-solid fa-layer-group text-violet-400 mr-1"></i>Aşama:</span>
+                    <select name="stage" onchange="this.form.submit()" class="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer">
+                        <option value="Tümü" {% if selected_stage == 'Tümü' %}selected{% endif %} class="bg-slate-900">Tüm Aşamalar</option>
+                        <option value="Modelleme" {% if selected_stage == 'Modelleme' %}selected{% endif %} class="bg-slate-900">🔷 Sıfırdan 3D Modelleme</option>
+                        <option value="Model Düzenleme" {% if selected_stage == 'Model Düzenleme' %}selected{% endif %} class="bg-slate-900">🔶 Model Düzenleme / Revizyon</option>
+                        <option value="Detaylandırma" {% if selected_stage == 'Detaylandırma' %}selected{% endif %} class="bg-slate-900">🟣 Detaylandırma & Çizim</option>
+                        <option value="Statik & Tasarım Kontrol" {% if selected_stage == 'Statik & Tasarım Kontrol' %}selected{% endif %} class="bg-slate-900">🔵 Statik & Tasarım Kontrol</option>
+                        <option value="Müşteri Onayında" {% if selected_stage == 'Müşteri Onayında' %}selected{% endif %} class="bg-slate-900">🟡 Müşteri Onayında</option>
+                        <option value="İmalata Hazır" {% if selected_stage == 'İmalata Hazır' %}selected{% endif %} class="bg-slate-900">🟢 İmalata Hazır</option>
+                    </select>
+                </div>
+
+                <!-- Durum Filtresi -->
+                <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                    <span class="text-[11px] text-slate-400 font-medium whitespace-nowrap"><i class="fa-solid fa-traffic-light text-amber-400 mr-1"></i>Durum:</span>
+                    <select name="status" onchange="this.form.submit()" class="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer">
+                        <option value="Tümü" {% if selected_status == 'Tümü' %}selected{% endif %} class="bg-slate-900">Tüm Durumlar</option>
+                        <option value="Devam Ediyor" {% if selected_status == 'Devam Ediyor' %}selected{% endif %} class="bg-slate-900">Devam Ediyor</option>
+                        <option value="Revizyonda" {% if selected_status == 'Revizyonda' %}selected{% endif %} class="bg-slate-900">Revizyonda</option>
+                        <option value="Onay Bekliyor" {% if selected_status == 'Onay Bekliyor' %}selected{% endif %} class="bg-slate-900">Onay Bekliyor</option>
+                        <option value="Tamamlandı" {% if selected_status == 'Tamamlandı' %}selected{% endif %} class="bg-slate-900">Tamamlandı</option>
+                    </select>
+                </div>
+
+                <!-- Proje Seçimi -->
+                <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5">
+                    <span class="text-[11px] text-slate-400 font-medium whitespace-nowrap"><i class="fa-solid fa-folder text-blue-400 mr-1"></i>Proje:</span>
+                    <select name="project_id" onchange="this.form.submit()" class="bg-transparent text-white text-xs font-semibold focus:outline-none max-w-[160px] truncate cursor-pointer">
+                        <option value="" class="bg-slate-900">Tüm Projeler</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}" {% if selected_project_id == p.id %}selected{% endif %} class="bg-slate-900">
+                            {{ p.code }} - {{ p.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Arama Kutusu -->
+                <div class="relative flex-1 min-w-[180px]">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                    <input type="text" name="search" value="{{ search or '' }}" placeholder="Proje, modelci, Tekla sürümü ara..." 
+                           class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+                </div>
+                
+                <button type="submit" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all">
+                    Filtrele
+                </button>
+                {% if selected_stage != 'Tümü' or selected_status != 'Tümü' or selected_project_id or search %}
+                <a href="{{ url_for('dizayn_modelleme') }}" class="px-2.5 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-xl text-xs font-semibold transition-all" title="Filtreleri Temizle">
+                    <i class="fa-solid fa-xmark"></i>
+                </a>
+                {% endif %}
+            </div>
+
+            <!-- Sağ Aksiyon Butonu -->
+            {% if can_edit %}
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="openModal('addDesignTaskModal')" 
+                        class="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-1.5 whitespace-nowrap">
+                    <i class="fa-solid fa-plus-circle"></i>
+                    <span>Yeni Dizayn Görevi Ekle</span>
+                </button>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- 3. DİZAYN & MODELLEME GÖREV LİSTESİ -->
+    {% if tasks %}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {% for t in tasks %}
+        <div class="bg-slate-950/80 border {% if t.is_overdue %}border-rose-500/50 shadow-rose-950/20{% elif t.status == 'Tamamlandı' %}border-emerald-500/30{% else %}border-slate-800/80 hover:border-slate-700{% endif %} rounded-2xl p-5 shadow-xl transition-all flex flex-col justify-between relative overflow-hidden group">
+            
+            <!-- Üst Başlık & Rozetler -->
+            <div>
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            {% if t.effective_project_code and t.effective_project_code != '-' %}
+                            <span class="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px] font-bold">
+                                {{ t.effective_project_code }}
+                            </span>
+                            {% endif %}
+                            
+                            <!-- Revizyon Rozeti -->
+                            <span class="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono text-[10px] font-bold">
+                                <i class="fa-solid fa-code-commit text-[9px] mr-1"></i>{{ t.revision_no or 'Rev 0' }}
+                            </span>
+
+                            <!-- Tekla Sürümü -->
+                            <span class="px-2 py-0.5 rounded-md bg-slate-900 text-slate-300 border border-slate-800 text-[10px] font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-cube text-[9px] text-cyan-400"></i>{{ t.tekla_version or 'Tekla 2024' }}
+                            </span>
+                        </div>
+                        
+                        <h4 class="text-sm font-bold text-white mt-1.5 truncate group-hover:text-blue-300 transition-colors" title="{{ t.effective_project_name }}">
+                            {% if t.project_id %}
+                            <a href="{{ url_for('proje_detay', project_id=t.project_id) }}" class="hover:underline flex items-center gap-1.5">
+                                <span>{{ t.effective_project_name }}</span>
+                                <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-500"></i>
+                            </a>
+                            {% else %}
+                            {{ t.effective_project_name }}
+                            {% endif %}
+                        </h4>
+                    </div>
+
+                    <!-- Aşama Rozeti (Modelleme mi / Düzenleme mi) -->
+                    <div>
+                        {% if t.stage_type in ('Modelleme', 'Sıfırdan 3D Modelleme', 'Sıfırdan Modelleme') %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-shapes text-cyan-400 animate-pulse"></i>
+                            <span>Sıfırdan Modelleme</span>
+                        </span>
+                        {% elif t.stage_type in ('Model Düzenleme', 'Revizyon', 'Model Düzenleme / Revizyon', 'Tasarım Revizyonu') %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-pen-ruler text-amber-400"></i>
+                            <span>Model Düzenleme</span>
+                        </span>
+                        {% elif t.stage_type == 'Detaylandırma' %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-draw-polygon text-purple-400"></i>
+                            <span>Detaylandırma</span>
+                        </span>
+                        {% elif t.stage_type == 'Statik & Tasarım Kontrol' %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-blue-500/15 text-blue-300 border border-blue-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-calculator text-blue-400"></i>
+                            <span>Statik Kontrol</span>
+                        </span>
+                        {% elif t.stage_type == 'Müşteri Onayında' %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-user-check text-yellow-400"></i>
+                            <span>Müşteri Onayında</span>
+                        </span>
+                        {% else %}
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-check-double text-emerald-400"></i>
+                            <span>{{ t.stage_type }}</span>
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Açıklama / Detay -->
+                {% if t.description %}
+                <p class="text-xs text-slate-300 mt-2.5 line-clamp-2 bg-slate-900/60 p-2 rounded-xl border border-slate-800/60">
+                    {{ t.description }}
+                </p>
+                {% endif %}
+
+                <!-- Son Revizyon Notu Varsa -->
+                {% if t.revision_notes %}
+                <div class="mt-2.5 bg-amber-500/5 border border-amber-500/20 rounded-xl p-2 text-[11px] text-amber-200/90 flex items-start gap-1.5">
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xs mt-0.5"></i>
+                    <div class="flex-1 min-w-0">
+                        <span class="font-bold text-amber-300 block text-[10px] uppercase tracking-wider">Son Revizyon / Değişiklik Notu:</span>
+                        <p class="mt-0.5 line-clamp-2 text-slate-300">{{ t.revision_notes }}</p>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- SÜRE, TERMİN VE İLERLEME BİLGİSİ (KAÇ GÜN SÜRECEK / KALAN GÜN) -->
+                <div class="mt-4 bg-slate-900/70 border border-slate-800/80 rounded-xl p-3 space-y-2.5">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400 font-medium flex items-center gap-1">
+                            <i class="fa-solid fa-clock text-slate-500"></i>
+                            <span>Modelleme Süresi:</span>
+                        </span>
+                        <span class="font-bold text-white font-mono bg-slate-800 px-2 py-0.5 rounded text-[11px]">
+                            {{ t.estimated_days or 7 }} Gün Sürecek
+                        </span>
+                    </div>
+
+                    <!-- Başlangıç - Hedef Tarihler -->
+                    <div class="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-slate-800/60">
+                        <div>
+                            <span class="text-slate-500 block text-[10px]">Başlangıç:</span>
+                            <span class="font-mono text-slate-300 font-semibold">{{ t.start_date or '-' }}</span>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-slate-500 block text-[10px]">Hedef Teslim:</span>
+                            <span class="font-mono text-slate-300 font-semibold">{{ t.target_date or '-' }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Kalan Gün & Gecikme Rozeti -->
+                    <div class="flex items-center justify-between pt-1 border-t border-slate-800/60 text-xs">
+                        <span class="text-[11px] text-slate-400">Durum / Zamanlama:</span>
+                        <div>
+                            {% if t.status == 'Tamamlandı' %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                <i class="fa-solid fa-check text-[9px]"></i> Tamamlandı
+                            </span>
+                            {% elif t.is_overdue %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                                <i class="fa-solid fa-circle-exclamation text-[9px]"></i> {{ t.overdue_days }} Gün Gecikti!
+                            </span>
+                            {% elif t.days_remaining is not none %}
+                                {% if t.days_remaining == 0 %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                    Bugün Teslim Günü!
+                                </span>
+                                {% elif t.days_remaining > 0 %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                                    {{ t.days_remaining }} Gün Kaldı
+                                </span>
+                                {% endif %}
+                            {% else %}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-400">
+                                Süreçte
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- İlerleme Çubuğu -->
+                    <div class="space-y-1 pt-1">
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400 font-medium">Model İlerleme:</span>
+                            <span class="font-mono font-bold {% if t.progress_percent >= 100 %}text-emerald-400{% elif t.progress_percent >= 50 %}text-blue-400{% else %}text-amber-400{% endif %}">
+                                %{{ t.progress_percent or 0 }}
+                            </span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-500
+                                {% if t.progress_percent >= 100 %}bg-gradient-to-r from-emerald-500 to-teal-400
+                                {% elif t.progress_percent >= 70 %}bg-gradient-to-r from-blue-500 to-cyan-400
+                                {% elif t.progress_percent >= 30 %}bg-gradient-to-r from-amber-500 to-yellow-400
+                                {% else %}bg-gradient-to-r from-violet-500 to-indigo-500{% endif %}"
+                                 style="width: {{ t.progress_percent or 0 }}%;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alt Kısım: Sorumlu Dizayncı & Aksiyon Butonları -->
+            <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                <!-- Sorumlu Kişi -->
+                <div class="flex items-center gap-2 min-w-0">
+                    <div class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+                        {{ t.effective_designer[0]|upper if t.effective_designer else 'D' }}
+                    </div>
+                    <div class="min-w-0">
+                        <span class="text-[10px] text-slate-500 block">Sorumlu Modelci</span>
+                        <span class="text-xs font-semibold text-slate-200 truncate block">{{ t.effective_designer }}</span>
+                    </div>
+                </div>
+
+                <!-- İşlem Butonları -->
+                {% if can_edit %}
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onclick="openEditTaskModal({{ t | tojson | forceescape }})" 
+                            class="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1"
+                            title="Aşama / Durum / Revizyon Güncelle">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        <span>Güncelle</span>
+                    </button>
+
+                    {% if current_user.role in ('admin', 'patron', 'dizayn') %}
+                    <form action="{{ url_for('api_dizayn_gorev_sil', task_id=t.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu dizayn görevini kalıcı olarak silmek istediğinize emin misiniz?');">
+                        <button type="submit" class="w-7 h-7 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center justify-center" title="Görevi Sil">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Boş Durum -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-12 text-center shadow-xl">
+        <div class="w-16 h-16 rounded-2xl bg-violet-500/10 text-violet-400 border border-violet-500/20 flex items-center justify-center mx-auto mb-4 text-2xl">
+            <i class="fa-solid fa-cube"></i>
+        </div>
+        <h4 class="text-base font-bold text-white mb-1">Dizayn / Modelleme Görevi Bulunamadı</h4>
+        <p class="text-xs text-slate-400 max-w-md mx-auto mb-4">
+            Seçilen filtrelere uygun dizayn veya modelleme kaydı bulunmuyor. Yeni bir proje modelleme görevi ekleyebilir veya filtreleri sıfırlayabilirsiniz.
+        </p>
+        {% if can_edit %}
+        <button type="button" onclick="openModal('addDesignTaskModal')" class="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/25 inline-flex items-center gap-1.5">
+            <i class="fa-solid fa-plus-circle"></i>
+            <span>Yeni Dizayn Görevi Ekle</span>
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: YENİ DİZAYN & MODELLEME GÖREVİ EKLE -->
+<!-- ========================================================================= -->
+<div id="addDesignTaskModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/50 shrink-0">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-cube text-violet-400"></i>
+                <span>Yeni Dizayn & 3D Modelleme Görevi Ekle</span>
+            </h3>
+            <button type="button" onclick="closeModal('addDesignTaskModal')" class="text-slate-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_dizayn_gorev_ekle') }}" method="POST" class="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+            
+            <!-- Proje Seçimi veya Yeni Giriş -->
+            <div class="space-y-1.5">
+                <label class="font-bold text-slate-300 flex items-center gap-1">
+                    <i class="fa-solid fa-folder text-blue-400"></i>
+                    <span>Kayıtlı Proje Seçin</span>
+                </label>
+                <select id="add_project_id" name="project_id" onchange="toggleCustomProjectInputs()" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none">
+                    <option value="">-- Mevcut Projelerden Seçin veya Manuel Girin --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div id="custom_project_div" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-900/50 rounded-xl border border-slate-800/60">
+                <div class="space-y-1">
+                    <label class="font-semibold text-slate-400">Özel Proje Adı</label>
+                    <input type="text" id="add_custom_name" name="custom_project_name" placeholder="Örn: Kuzey Fabrika Binası" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none">
+                </div>
+                <div class="space-y-1">
+                    <label class="font-semibold text-slate-400">Proje Kodu</label>
+                    <input type="text" id="add_custom_code" name="custom_project_code" placeholder="Örn: PRJ-2026-04" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono">
+                </div>
+            </div>
+
+            <!-- Aşama Türü & Durum -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-layer-group text-violet-400"></i>
+                        <span>Aşama Türü (Modelleme mi / Düzenleme mi?)</span>
+                    </label>
+                    <select name="stage_type" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-semibold">
+                        <option value="Modelleme" selected>🔷 Sıfırdan 3D Modelleme</option>
+                        <option value="Model Düzenleme">🔶 Model Düzenleme / Revizyon</option>
+                        <option value="Detaylandırma">🟣 Detaylandırma & Çizim Çıkarma</option>
+                        <option value="Statik & Tasarım Kontrol">🔵 Statik & Tasarım Kontrol</option>
+                        <option value="Müşteri Onayında">🟡 Müşteri Onayında</option>
+                        <option value="İmalata Hazır">🟢 İmalata Hazır</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-traffic-light text-amber-400"></i>
+                        <span>İşlem Durumu</span>
+                    </label>
+                    <select name="status" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none">
+                        <option value="Devam Ediyor" selected>Devam Ediyor</option>
+                        <option value="Revizyonda">Revizyonda</option>
+                        <option value="Onay Bekliyor">Onay Bekliyor</option>
+                        <option value="Tamamlandı">Tamamlandı</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Sorumlu Modelci & Tekla Sürümü & Revizyon -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Sorumlu Modelci / Dizayncı</label>
+                    <select name="designer_user_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none">
+                        <option value="">-- Personel Seçin --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Tekla Sürümü</label>
+                    <input type="text" name="tekla_version" value="Tekla 2024" placeholder="Örn: Tekla 2024" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none">
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Revizyon No</label>
+                    <input type="text" name="revision_no" value="Rev 0" placeholder="Örn: Rev 0" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono">
+                </div>
+            </div>
+
+            <!-- Süre Hesabı: Kaç Gün Sürecek, Başlangıç, Hedef Bitiş, İlerleme -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-hourglass-start text-indigo-400"></i>
+                        <span>Kaç Gün Sürecek?</span>
+                    </label>
+                    <input type="number" id="add_estimated_days" name="estimated_days" value="7" min="1" max="365" 
+                           oninput="autoCalcTargetDate('add_start_date', 'add_estimated_days', 'add_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono font-bold text-center">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">Başlangıç Tarihi</label>
+                    <input type="date" id="add_start_date" name="start_date" 
+                           onchange="autoCalcTargetDate('add_start_date', 'add_estimated_days', 'add_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">Hedef Bitiş Tarihi</label>
+                    <input type="date" id="add_target_date" name="target_date" 
+                           onchange="autoCalcEstimatedDays('add_start_date', 'add_estimated_days', 'add_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">İlerleme Oranı (%)</label>
+                    <input type="number" name="progress_percent" value="0" min="0" max="100" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none font-mono font-bold text-center">
+                </div>
+            </div>
+
+            <!-- Açıklama ve Notlar -->
+            <div class="space-y-1.5">
+                <label class="font-bold text-slate-300">Dizayn Açıklaması / Model Notları</label>
+                <textarea name="description" rows="2" placeholder="Modelin kapsamı, statik hesap notları vb." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none"></textarea>
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="font-bold text-slate-300">Revizyon / Değişiklik Notları</label>
+                <textarea name="revision_notes" rows="2" placeholder="Model üzerinde yapılan değişiklikler, müşteri istekleri..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-violet-500 focus:outline-none"></textarea>
+            </div>
+
+            <!-- Butonlar -->
+            <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2 shrink-0">
+                <button type="button" onclick="closeModal('addDesignTaskModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all">
+                    İptal
+                </button>
+                <button type="submit" class="px-5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Dizayn Görevini Kaydet</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: DİZAYN GÖREVİ VE AŞAMA GÜNCELLE -->
+<!-- ========================================================================= -->
+<div id="editDesignTaskModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+        <div class="px-6 py-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-900/50 shrink-0">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+                <span id="edit_modal_title">Dizayn & 3D Modelleme Görevi Güncelle</span>
+            </h3>
+            <button type="button" onclick="closeModal('editDesignTaskModal')" class="text-slate-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form id="editTaskForm" method="POST" action="" class="p-6 space-y-4 overflow-y-auto custom-scrollbar flex-1 text-xs">
+            
+            <!-- Aşama Türü & Durum -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-layer-group text-violet-400"></i>
+                        <span>Aşama Türü</span>
+                    </label>
+                    <select id="edit_stage_type" name="stage_type" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-semibold">
+                        <option value="Modelleme">🔷 Sıfırdan 3D Modelleme</option>
+                        <option value="Model Düzenleme">🔶 Model Düzenleme / Revizyon</option>
+                        <option value="Detaylandırma">🟣 Detaylandırma & Çizim Çıkarma</option>
+                        <option value="Statik & Tasarım Kontrol">🔵 Statik & Tasarım Kontrol</option>
+                        <option value="Müşteri Onayında">🟡 Müşteri Onayında</option>
+                        <option value="İmalata Hazır">🟢 İmalata Hazır</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-traffic-light text-amber-400"></i>
+                        <span>İşlem Durumu</span>
+                    </label>
+                    <select id="edit_status" name="status" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none">
+                        <option value="Devam Ediyor">Devam Ediyor</option>
+                        <option value="Revizyonda">Revizyonda</option>
+                        <option value="Onay Bekliyor">Onay Bekliyor</option>
+                        <option value="Tamamlandı">Tamamlandı</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Sorumlu Modelci & Tekla Sürümü & Revizyon -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Sorumlu Modelci</label>
+                    <select id="edit_designer_user_id" name="designer_user_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none">
+                        <option value="">-- Personel Seçin --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Tekla Sürümü</label>
+                    <input type="text" id="edit_tekla_version" name="tekla_version" placeholder="Örn: Tekla 2024" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none">
+                </div>
+
+                <div class="space-y-1.5">
+                    <label class="font-bold text-slate-300">Revizyon No</label>
+                    <input type="text" id="edit_revision_no" name="revision_no" placeholder="Örn: Rev 1" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono">
+                </div>
+            </div>
+
+            <!-- Süre Hesabı: Kaç Gün Sürecek, Başlangıç, Hedef Bitiş, İlerleme -->
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300 flex items-center gap-1">
+                        <i class="fa-solid fa-hourglass-start text-indigo-400"></i>
+                        <span>Kaç Gün Sürecek?</span>
+                    </label>
+                    <input type="number" id="edit_estimated_days" name="estimated_days" min="1" max="365" 
+                           oninput="autoCalcTargetDate('edit_start_date', 'edit_estimated_days', 'edit_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono font-bold text-center">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">Başlangıç Tarihi</label>
+                    <input type="date" id="edit_start_date" name="start_date" 
+                           onchange="autoCalcTargetDate('edit_start_date', 'edit_estimated_days', 'edit_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">Hedef Bitiş Tarihi</label>
+                    <input type="date" id="edit_target_date" name="target_date" 
+                           onchange="autoCalcEstimatedDays('edit_start_date', 'edit_estimated_days', 'edit_target_date')"
+                           class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono">
+                </div>
+
+                <div class="space-y-1">
+                    <label class="font-bold text-slate-300">İlerleme Oranı (%)</label>
+                    <input type="number" id="edit_progress_percent" name="progress_percent" min="0" max="100" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono font-bold text-center">
+                </div>
+            </div>
+
+            <!-- Açıklama ve Notlar -->
+            <div class="space-y-1.5">
+                <label class="font-bold text-slate-300">Dizayn Açıklaması</label>
+                <textarea id="edit_description" name="description" rows="2" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none"></textarea>
+            </div>
+
+            <div class="space-y-1.5">
+                <label class="font-bold text-amber-300 flex items-center gap-1">
+                    <i class="fa-solid fa-comment-dots"></i>
+                    <span>Revizyon / Değişiklik Notları</span>
+                </label>
+                <textarea id="edit_revision_notes" name="revision_notes" rows="2" placeholder="Yapılan son model revizyonları hakkında bilgi..." class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none"></textarea>
+            </div>
+
+            <!-- Butonlar -->
+            <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2 shrink-0">
+                <button type="button" onclick="closeModal('editDesignTaskModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-all">
+                    İptal
+                </button>
+                <button type="submit" class="px-5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/25 flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Değişiklikleri Kaydet</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleCustomProjectInputs() {
+        const select = document.getElementById('add_project_id');
+        const customDiv = document.getElementById('custom_project_div');
+        if (select && customDiv) {
+            if (select.value) {
+                customDiv.classList.add('hidden');
+            } else {
+                customDiv.classList.remove('hidden');
+            }
+        }
+    }
+
+    function autoCalcTargetDate(startId, daysId, targetId) {
+        const startInput = document.getElementById(startId);
+        const daysInput = document.getElementById(daysId);
+        const targetInput = document.getElementById(targetId);
+
+        if (startInput && daysInput && targetInput && startInput.value && daysInput.value) {
+            const startDate = new Date(startInput.value);
+            const days = parseInt(daysInput.value) || 0;
+            if (days > 0) {
+                const targetDate = new Date(startDate);
+                targetDate.setDate(targetDate.getDate() + days);
+                targetInput.value = targetDate.toISOString().split('T')[0];
+            }
+        }
+    }
+
+    function autoCalcEstimatedDays(startId, daysId, targetId) {
+        const startInput = document.getElementById(startId);
+        const daysInput = document.getElementById(daysId);
+        const targetInput = document.getElementById(targetId);
+
+        if (startInput && daysInput && targetInput && startInput.value && targetInput.value) {
+            const startDate = new Date(startInput.value);
+            const targetDate = new Date(targetInput.value);
+            const diffTime = targetDate - startDate;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+                daysInput.value = diffDays;
+            }
+        }
+    }
+
+    function openEditTaskModal(task) {
+        if (!task) return;
+        
+        const form = document.getElementById('editTaskForm');
+        if (form) {
+            form.action = `/api/dizayn/${task.id}/guncelle`;
+        }
+        
+        document.getElementById('edit_modal_title').textContent = `${task.effective_project_name || 'Proje'} - Dizayn Görevi Güncelle`;
+        
+        if (document.getElementById('edit_stage_type')) {
+            document.getElementById('edit_stage_type').value = task.stage_type || 'Modelleme';
+        }
+        if (document.getElementById('edit_status')) {
+            document.getElementById('edit_status').value = task.status || 'Devam Ediyor';
+        }
+        if (document.getElementById('edit_designer_user_id')) {
+            document.getElementById('edit_designer_user_id').value = task.designer_user_id || '';
+        }
+        if (document.getElementById('edit_tekla_version')) {
+            document.getElementById('edit_tekla_version').value = task.tekla_version || 'Tekla 2024';
+        }
+        if (document.getElementById('edit_revision_no')) {
+            document.getElementById('edit_revision_no').value = task.revision_no || 'Rev 0';
+        }
+        if (document.getElementById('edit_estimated_days')) {
+            document.getElementById('edit_estimated_days').value = task.estimated_days || 7;
+        }
+        if (document.getElementById('edit_start_date')) {
+            document.getElementById('edit_start_date').value = task.start_date || '';
+        }
+        if (document.getElementById('edit_target_date')) {
+            document.getElementById('edit_target_date').value = task.target_date || '';
+        }
+        if (document.getElementById('edit_progress_percent')) {
+            document.getElementById('edit_progress_percent').value = task.progress_percent || 0;
+        }
+        if (document.getElementById('edit_description')) {
+            document.getElementById('edit_description').value = task.description || '';
+        }
+        if (document.getElementById('edit_revision_notes')) {
+            document.getElementById('edit_revision_notes').value = task.revision_notes || '';
+        }
+
+        openModal('editDesignTaskModal');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const addStart = document.getElementById('add_start_date');
+        if (addStart && !addStart.value) {
+            const todayStr = new Date().toISOString().split('T')[0];
+            addStart.value = todayStr;
+            autoCalcTargetDate('add_start_date', 'add_estimated_days', 'add_target_date');
+        }
+        toggleCustomProjectInputs();
+    });
+</script>
+{% endblock %}

@@ -487,56 +487,27 @@
     }
 
     // 3. DOĞRUDAN WHATSAPP DOSYA PAYLAŞIMI (Web Share API Level 2 / Native Attachment)
-    async function shareShipmentFileDirectly(shipmentId, dispatchNo, projectCode, vehiclePlate, tonnage) {
-        showToast('İrsaliye Excel dosyası hazırlanıyor ve WhatsApp paylaşımı başlatılıyor...', 'info');
+    function shareShipmentFileDirectly(shipmentId, dispatchNo, projectCode, vehiclePlate, tonnage) {
+        const origin = window.location.origin;
+        const summaryText = `🚛 *SEVKİYAT İRSALİYESİ* (${dispatchNo || ''})\n` +
+                            `━━━━━━━━━━━━━━━━━━━━\n` +
+                            `🏗️ *Proje:* ${projectCode || '-'}\n` +
+                            `🚚 *Araç Plakası:* ${vehiclePlate || '-'}\n` +
+                            `⚖️ *Toplam Ağırlık:* ${tonnage || 0} Ton\n` +
+                            `📄 *A4 Sevk Fişi:* ${origin}/sevk/${shipmentId}\n` +
+                            `📊 *Excel İndir:* ${origin}/api/sevk/${shipmentId}/excel`;
 
-        try {
-            // Excel dosyasını sunucudan çek
-            const res = await fetch(`/api/sevk/${shipmentId}/excel`);
-            if (!res.ok) throw new Error('Dosya alınamadı');
-            const blob = await res.blob();
-            
-            const fileName = `Irsaliye_${dispatchNo || shipmentId}.xlsx`;
-            const file = new File([blob], fileName, {
-                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            });
+        const waUrl = "https://api.whatsapp.com/send?text=" + encodeURIComponent(summaryText);
 
-            const summaryText = `🚛 *SEVKİYAT İRSALİYESİ* (${dispatchNo})\n` +
-                                `━━━━━━━━━━━━━━━━━━━━\n` +
-                                `🏗️ Proje: ${projectCode || '-'}\n` +
-                                `🚚 Araç: ${vehiclePlate || '-'}\n` +
-                                `⚖️ Ağırlık: ${tonnage || 0} Ton\n` +
-                                `📄 Detay & Yazdır: ${window.location.origin}/sevk/${shipmentId}`;
-
-            // Tarayıcı doğrudan dosya paylaşımını (Web Share API Files) destekliyor mu? (Mobil & Windows modern)
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    title: `İrsaliye - ${dispatchNo}`,
-                    text: summaryText
-                });
-                showToast('İrsaliye dosyası WhatsApp ile paylaşıldı!', 'success');
-            } else {
-                // Desteklemeyen masaüstü tarayıcılarda: Dosyayı otomatik indir ve WhatsApp Web aç
-                const fileUrl = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = fileUrl;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(fileUrl);
-
-                const waUrl = "https://api.whatsapp.com/send?text=" + encodeURIComponent(summaryText);
+        if (navigator.share && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            navigator.share({
+                title: `İrsaliye - ${dispatchNo || shipmentId}`,
+                text: summaryText
+            }).catch(() => {
                 window.open(waUrl, '_blank');
-
-                showToast('İrsaliye Excel dosyası indirildi ve WhatsApp Web açıldı. Dosyayı sohbete ekleyebilirsiniz.', 'success');
-            }
-        } catch (err) {
-            console.error('Share error:', err);
-            // Fallback link
-            const summaryText = `🚛 *SEVKİYAT İRSALİYESİ* (${dispatchNo})\n📄 Detay: ${window.location.origin}/sevk/${shipmentId}`;
-            window.open("https://api.whatsapp.com/send?text=" + encodeURIComponent(summaryText), '_blank');
+            });
+        } else {
+            window.open(waUrl, '_blank');
         }
     }
 </script>

@@ -274,13 +274,20 @@
             else loadChatMessages(true);
         }
 
-        // Periyodik anlık mesaj kontrolü (3 saniyede bir)
-        messagePollTimer = setInterval(() => {
+        // Periyodik anlık mesaj kontrolü (Sekme aktifken 5 saniyede bir)
+        function runActiveChatPoll() {
+            if (document.hidden) return;
             loadChatMessages(false);
-        }, 3000);
+            pollUnreadSummary();
+        }
 
-        // Periyodik okunmamış mesaj sayısı kontrolü (4 saniyede bir)
-        unreadPollTimer = setInterval(pollUnreadSummary, 4000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                runActiveChatPoll();
+            }
+        });
+
+        messagePollTimer = setInterval(runActiveChatPoll, 5000);
         pollUnreadSummary();
     });
 

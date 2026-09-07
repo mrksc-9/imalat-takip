@@ -15,7 +15,7 @@ from flask import (
 )
 
 from database import (
-    get_db, init_db, log_activity, hash_password,
+    get_db, init_db, run_schema_migrations, ensure_column, log_activity, hash_password,
     get_global_metrics, get_project_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings,
     get_machines, get_machine_by_id, add_machine, update_machine, delete_machine,
@@ -33,6 +33,8 @@ from database import (
     add_notification, get_recent_notifications,
     save_push_subscription, get_push_subscriptions, delete_push_subscription,
     get_shipments_with_accounting, update_shipment_accounting, get_accounting_summary_stats,
+    get_all_roles, get_roles_list, add_custom_role, delete_custom_role,
+    get_design_tasks, get_design_task_by_id, save_design_task, update_design_task, delete_design_task, get_design_summary_stats,
     get_istanbul_now, get_istanbul_now_str,
     ROLES_LIST, MODULES_LIST
 )
@@ -262,10 +264,15 @@ def ensure_db_and_auth():
     if not _db_initialized:
         try:
             init_db()
+            run_schema_migrations()
             seed_demo_data()
             _db_initialized = True
         except Exception as e:
             print(f"Veritabani hazirlama uyarisi: {e}")
+            try:
+                run_schema_migrations()
+            except Exception:
+                pass
 
     # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW, Manifest ve Push API hariç)
     if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json', '/api/push/vapid-public-key', '/api/push/subscribe'))):
@@ -278,10 +285,15 @@ def ensure_db_and_auth():
 with app.app_context():
     try:
         init_db()
+        run_schema_migrations()
         seed_demo_data()
         _db_initialized = True
     except Exception as e:
         print(f"Veritabanı başlatma uyarısı: {e}")
+        try:
+            run_schema_migrations()
+        except Exception:
+            pass
 
 
 # =========================================================================
@@ -435,6 +447,235 @@ def projeler():
                            active_tab=tab,
                            projects=active_projects if tab == 'aktif' else finished_projects,
                            metrics=metrics)
+
+# =========================================================================
+# 2.1 DİZAYN & 3D MODELLEME MODÜLÜ
+# =========================================================================
+@app.route('/dizayn-modelleme')
+def dizayn_modelleme():
+    stage_filter = request.args.get('stage', 'Tümü')
+    status_filter = request.args.get('status', 'Tümü')
+    project_id_arg = request.args.get('project_id')
+    search = request.args.get('search', '').strip()
+    
+    selected_project_id = int(project_id_arg) if project_id_arg and project_id_arg.isdigit() else None
+    
+    tasks = get_design_tasks(
+        project_id=selected_project_id,
+        stage_type=stage_filter,
+        status=status_filter,
+        search=search
+    )
+    stats = get_design_summary_stats()
+    
+    # Proje listesi (dropdown için)
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects_list = [dict(r) for r in cursor.fetchall()]
+    
+    # Dizayn personelleri / Kullanıcılar
+    cursor.execute("SELECT id, username, full_name, role FROM users WHERE is_active = 1 ORDER BY full_name ASC")
+    users_list = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    cur_user = session.get('user', {})
+    user_role = cur_user.get('role', 'izleyici')
+    can_edit = can_user_edit(user_role, 'dizayn_modelleme') or user_role in ('admin', 'patron', 'dizayn', 'imalat müdürü')
+    
+    return render_template('dizayn_modelleme.html',
+                           tasks=tasks,
+                           stats=stats,
+                           projects=projects_list,
+                           users=users_list,
+                           selected_stage=stage_filter,
+                           selected_status=status_filter,
+                           selected_project_id=selected_project_id,
+                           search=search,
+                           can_edit=can_edit)
+
+@app.route('/api/dizayn/gorev-ekle', methods=['POST'])
+def api_dizayn_gorev_ekle():
+    cur_user = session.get('user', {})
+    user_role = cur_user.get('role', 'izleyici')
+    if not (can_user_edit(user_role, 'dizayn_modelleme') or user_role in ('admin', 'patron', 'dizayn', 'imalat müdürü')):
+        flash("Yetkisiz işlem! Dizayn ve Modelleme ekleme yetkiniz yok.", "danger")
+        return redirect(url_for('dizayn_modelleme'))
+        
+    project_id_raw = request.form.get('project_id', '').strip()
+    custom_project_name = request.form.get('custom_project_name', '').strip()
+    custom_project_code = request.form.get('custom_project_code', '').strip()
+    
+    project_id = int(project_id_raw) if project_id_raw and project_id_raw.isdigit() else None
+    
+    project_name = ''
+    project_code = ''
+    
+    if project_id:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, code, name FROM projects WHERE id = ?", (project_id,))
+        p_row = cursor.fetchone()
+        conn.close()
+        if p_row:
+            project_name = p_row['name']
+            project_code = p_row['code'] or ''
+    else:
+        project_name = custom_project_name
+        project_code = custom_project_code
+        
+    if not project_name:
+        flash("Lütfen bir proje seçin veya proje adı girin!", "warning")
+        return redirect(url_for('dizayn_modelleme'))
+        
+    stage_type = request.form.get('stage_type', 'Modelleme').strip()
+    status = request.form.get('status', 'Devam Ediyor').strip()
+    lead_designer = request.form.get('lead_designer', '').strip()
+    designer_user_id_raw = request.form.get('designer_user_id', '').strip()
+    designer_user_id = int(designer_user_id_raw) if designer_user_id_raw and designer_user_id_raw.isdigit() else None
+    
+    # Designer name'i user_id'den al eğer varsa
+    if designer_user_id and not lead_designer:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT full_name FROM users WHERE id = ?", (designer_user_id,))
+        u_row = cursor.fetchone()
+        conn.close()
+        if u_row:
+            lead_designer = u_row['full_name']
+            
+    start_date = request.form.get('start_date', '').strip()
+    target_date = request.form.get('target_date', '').strip()
+    estimated_days = request.form.get('estimated_days', '7').strip()
+    progress_percent = request.form.get('progress_percent', '0').strip()
+    tekla_version = request.form.get('tekla_version', 'Tekla 2024').strip()
+    revision_no = request.form.get('revision_no', 'Rev 0').strip()
+    description = request.form.get('description', '').strip()
+    revision_notes = request.form.get('revision_notes', '').strip()
+    
+    task_id = save_design_task(
+        project_id=project_id,
+        project_code=project_code,
+        project_name=project_name,
+        stage_type=stage_type,
+        status=status,
+        lead_designer=lead_designer,
+        designer_user_id=designer_user_id,
+        start_date=start_date,
+        target_date=target_date,
+        actual_end_date=None,
+        estimated_days=int(estimated_days or 7),
+        progress_percent=int(progress_percent or 0),
+        tekla_version=tekla_version,
+        revision_no=revision_no,
+        description=description,
+        revision_notes=revision_notes
+    )
+    
+    log_activity(
+        action="Dizayn Görevi Eklendi",
+        entity_type="project_design_tasks",
+        entity_id=task_id,
+        details=f"'{project_name}' projesi için yeni dizayn/modelleme görevi eklendi ({stage_type} - {revision_no}).",
+        username=cur_user.get('username', 'Kullanıcı'),
+        user_id=cur_user.get('id')
+    )
+    flash(f"'{project_name}' için Dizayn & 3D Modelleme görevi başarıyla oluşturuldu.", "success")
+    return redirect(url_for('dizayn_modelleme'))
+
+@app.route('/api/dizayn/<int:task_id>/guncelle', methods=['POST'])
+def api_dizayn_gorev_guncelle(task_id):
+    cur_user = session.get('user', {})
+    user_role = cur_user.get('role', 'izleyici')
+    if not (can_user_edit(user_role, 'dizayn_modelleme') or user_role in ('admin', 'patron', 'dizayn', 'imalat müdürü')):
+        flash("Yetkisiz işlem! Dizayn ve Modelleme güncelleme yetkiniz yok.", "danger")
+        return redirect(url_for('dizayn_modelleme'))
+        
+    stage_type = request.form.get('stage_type', '').strip()
+    status = request.form.get('status', '').strip()
+    lead_designer = request.form.get('lead_designer', '').strip()
+    designer_user_id_raw = request.form.get('designer_user_id', '').strip()
+    designer_user_id = int(designer_user_id_raw) if designer_user_id_raw and designer_user_id_raw.isdigit() else None
+    
+    if designer_user_id and not lead_designer:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT full_name FROM users WHERE id = ?", (designer_user_id,))
+        u_row = cursor.fetchone()
+        conn.close()
+        if u_row:
+            lead_designer = u_row['full_name']
+            
+    start_date = request.form.get('start_date', '').strip()
+    target_date = request.form.get('target_date', '').strip()
+    actual_end_date = request.form.get('actual_end_date', '').strip()
+    estimated_days = request.form.get('estimated_days', '7').strip()
+    progress_percent = request.form.get('progress_percent', '0').strip()
+    tekla_version = request.form.get('tekla_version', 'Tekla 2024').strip()
+    revision_no = request.form.get('revision_no', 'Rev 0').strip()
+    description = request.form.get('description', '').strip()
+    revision_notes = request.form.get('revision_notes', '').strip()
+    
+    # Eğer durum Tamamlandı yapıldıysa ve bitiş tarihi verilmediyse bugünü ata
+    if status == 'Tamamlandı' and not actual_end_date:
+        actual_end_date = get_istanbul_now_str('%Y-%m-%d')
+        if int(progress_percent or 0) < 100:
+            progress_percent = '100'
+            
+    success = update_design_task(
+        task_id=task_id,
+        stage_type=stage_type,
+        status=status,
+        lead_designer=lead_designer,
+        designer_user_id=designer_user_id,
+        start_date=start_date,
+        target_date=target_date,
+        actual_end_date=actual_end_date,
+        estimated_days=int(estimated_days or 7),
+        progress_percent=int(progress_percent or 0),
+        tekla_version=tekla_version,
+        revision_no=revision_no,
+        description=description,
+        revision_notes=revision_notes
+    )
+    
+    if success:
+        log_activity(
+            action="Dizayn Görevi Güncellendi",
+            entity_type="project_design_tasks",
+            entity_id=task_id,
+            details=f"Dizayn görevi güncellendi (Aşama: {stage_type}, Durum: {status}, Rev: {revision_no}).",
+            username=cur_user.get('username', 'Kullanıcı'),
+            user_id=cur_user.get('id')
+        )
+        flash("Dizayn & 3D Modelleme görevi başarıyla güncellendi.", "success")
+    else:
+        flash("Görev güncellenirken bir hata oluştu.", "danger")
+        
+    return redirect(url_for('dizayn_modelleme'))
+
+@app.route('/api/dizayn/<int:task_id>/sil', methods=['POST'])
+def api_dizayn_gorev_sil(task_id):
+    cur_user = session.get('user', {})
+    user_role = cur_user.get('role', 'izleyici')
+    if user_role not in ('admin', 'patron', 'dizayn'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici, Patron veya Dizayn sorumlusu görev silebilir.", "danger")
+        return redirect(url_for('dizayn_modelleme'))
+        
+    task = get_design_task_by_id(task_id)
+    p_name = task.get('project_name', '') if task else ''
+    
+    delete_design_task(task_id)
+    log_activity(
+        action="Dizayn Görevi Silindi",
+        entity_type="project_design_tasks",
+        entity_id=task_id,
+        details=f"'{p_name}' projesine ait dizayn görevi silindi.",
+        username=cur_user.get('username', 'Kullanıcı'),
+        user_id=cur_user.get('id')
+    )
+    flash(f"'{p_name}' dizayn görevi başarıyla silindi.", "success")
+    return redirect(url_for('dizayn_modelleme'))
 
 @app.route('/api/projeler/<int:project_id>/durum', methods=['POST'])
 def api_proje_durum(project_id):
@@ -852,34 +1093,104 @@ def api_tekla_yukle(project_id):
     return redirect(url_for('proje_detay', project_id=project_id))
 
 
+@app.route('/api/projeler/<int:project_id>/listeleri-temizle', methods=['POST'])
+def api_proje_listeleri_temizle(project_id):
+    """Yanlış liste yüklenmesi durumunda projedeki parça ve montaj listelerini güvenle sıfırlar."""
+    target = request.form.get('target', 'all')
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    try:
+        if target in ('all', 'assemblies'):
+            cursor.execute("DELETE FROM assemblies WHERE project_id = ?", (project_id,))
+        if target in ('all', 'assembly_parts'):
+            cursor.execute("DELETE FROM assembly_parts WHERE project_id = ?", (project_id,))
+        if target in ('all', 'parts'):
+            cursor.execute("DELETE FROM parts WHERE project_id = ?", (project_id,))
+            
+        conn.commit()
+        
+        u = session.get('user', {})
+        username = u.get('username') if isinstance(u, dict) else str(u or 'Kullanıcı')
+        user_id = u.get('id') if isinstance(u, dict) else None
+        
+        log_activity(
+            action="Proje Listeleri Temizlendi",
+            entity_type="projects",
+            entity_id=project_id,
+            details=f"Proje ID {project_id} için yüklenmiş listeler ({target}) temizlendi.",
+            username=username,
+            user_id=user_id,
+            ip_address=request.remote_addr
+        )
+        flash("Proje listeleri başarıyla temizlendi. Şimdi doğru listenizi yükleyebilirsiniz.", "success")
+    except Exception as e:
+        try: conn.rollback()
+        except Exception: pass
+        flash(f"Liste temizlenirken hata: {str(e)}", "danger")
+    finally:
+        conn.close()
+
+    return redirect(url_for('proje_detay', project_id=project_id))
+
+
 @app.route('/api/projeler/<int:project_id>/sil', methods=['POST'])
 def api_proje_sil(project_id):
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
-    p_row = cursor.fetchone()
-    p_info = f"{p_row['code']} - {p_row['name']}" if p_row else f"ID: {project_id}"
-    p_name = p_row['name'] if p_row else ''
-    
-    # Kesim kayıtlarını koru: Proje silinse bile kesim tonajı ve operatör performans logları silinmesin
-    cursor.execute('UPDATE cutting_entries SET project_id = NULL, project_name = ? WHERE project_id = ?', (p_name, project_id))
-    
-    cursor.execute('DELETE FROM projects WHERE id = ?', (project_id,))
-    conn.commit()
-    conn.close()
+    p_info = f"ID: {project_id}"
+    try:
+        cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
+        p_row = cursor.fetchone()
+        p_info = f"{p_row['code']} - {p_row['name']}" if p_row else f"ID: {project_id}"
+        p_name = p_row['name'] if p_row else ''
+        
+        # 1. Kesim kayıtlarını koru: Proje silinse bile kesim tonajı ve operatör performans logları silinmesin
+        try:
+            cursor.execute('UPDATE cutting_entries SET project_id = NULL, project_name = ? WHERE project_id = ?', (p_name, project_id))
+        except Exception as e:
+            try:
+                conn.rollback()
+                ensure_column(cursor, "cutting_entries", "project_name", "TEXT", "''", conn=conn)
+                cursor.execute('UPDATE cutting_entries SET project_id = NULL, project_name = ? WHERE project_id = ?', (p_name, project_id))
+            except Exception:
+                try:
+                    conn.rollback()
+                    cursor.execute('UPDATE cutting_entries SET project_id = NULL WHERE project_id = ?', (project_id,))
+                except Exception:
+                    pass
+
+        # 2. İlgili alt tabloları temizle
+        for tbl in ('parts', 'assemblies', 'assembly_parts', 'qa_inspections', 'material_orders_received', 'material_orders_ordered', 'shipments'):
+            try:
+                cursor.execute(f'DELETE FROM {tbl} WHERE project_id = ?', (project_id,))
+            except Exception:
+                pass
+
+        cursor.execute('DELETE FROM projects WHERE id = ?', (project_id,))
+        conn.commit()
+    except Exception as e:
+        try: conn.rollback()
+        except Exception: pass
+        print(f"api_proje_sil exception note: {e}")
+    finally:
+        conn.close()
 
     u = session.get('user', {})
+    username = u.get('username') if isinstance(u, dict) else str(u or 'Kullanıcı')
+    user_id = u.get('id') if isinstance(u, dict) else None
+
     log_activity(
         action="Proje Silindi",
         entity_type="projects",
         entity_id=project_id,
         details=f"'{p_info}' projesi silindi (kesim performans kayıtları korundu).",
-        username=u.get('username', 'Kullanıcı'),
-        user_id=u.get('id'),
+        username=username,
+        user_id=user_id,
         ip_address=request.remote_addr
     )
 
-    flash("Proje silindi (kesim performans kayıtları korundu).", "info")
+    flash("Proje başarıyla silindi (kesim performans kayıtları korundu).", "info")
     return redirect(url_for('projeler'))
 
 
@@ -1404,31 +1715,62 @@ def kesim_takip():
     cursor.execute('SELECT * FROM cutting_entries ORDER BY id DESC LIMIT 50')
     cutting_logs = [dict(r) for r in cursor.fetchall()]
 
-    # Gün Bazlı Özet (Tonaj ve Adet)
-    cursor.execute('''
-    SELECT cut_date, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
-    FROM cutting_entries
-    GROUP BY cut_date ORDER BY cut_date DESC LIMIT 15
-    ''')
-    daily_summary = [dict(r) for r in cursor.fetchall()]
+    # Özet Sorguları (Tonaj ve Adet)
+    try:
+        cursor.execute('''
+        SELECT cut_date, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+        FROM cutting_entries
+        GROUP BY cut_date ORDER BY cut_date DESC LIMIT 15
+        ''')
+        daily_summary = [dict(r) for r in cursor.fetchall()]
 
-    # Makine Bazlı Özet (Tonaj ve Adet)
-    cursor.execute('''
-    SELECT machine, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
-    FROM cutting_entries
-    WHERE machine IS NOT NULL AND machine != ''
-    GROUP BY machine ORDER BY total_tonnage DESC, total_pieces DESC
-    ''')
-    machine_summary = [dict(r) for r in cursor.fetchall()]
+        cursor.execute('''
+        SELECT machine, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+        FROM cutting_entries
+        WHERE machine IS NOT NULL AND machine != ''
+        GROUP BY machine ORDER BY total_tonnage DESC, total_pieces DESC
+        ''')
+        machine_summary = [dict(r) for r in cursor.fetchall()]
 
-    # Operatör Bazlı Özet (Tonaj ve Adet)
-    cursor.execute('''
-    SELECT operator, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
-    FROM cutting_entries
-    WHERE operator IS NOT NULL AND operator != ''
-    GROUP BY operator ORDER BY total_tonnage DESC, total_pieces DESC
-    ''')
-    operator_summary = [dict(r) for r in cursor.fetchall()]
+        cursor.execute('''
+        SELECT operator, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+        FROM cutting_entries
+        WHERE operator IS NOT NULL AND operator != ''
+        GROUP BY operator ORDER BY total_tonnage DESC, total_pieces DESC
+        ''')
+        operator_summary = [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        print(f"kesim_takip sorgu kurtarma başlatılıyor: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        run_schema_migrations()
+        try:
+            cursor.execute('''
+            SELECT cut_date, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+            FROM cutting_entries
+            GROUP BY cut_date ORDER BY cut_date DESC LIMIT 15
+            ''')
+            daily_summary = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute('''
+            SELECT machine, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+            FROM cutting_entries
+            WHERE machine IS NOT NULL AND machine != ''
+            GROUP BY machine ORDER BY total_tonnage DESC, total_pieces DESC
+            ''')
+            machine_summary = [dict(r) for r in cursor.fetchall()]
+
+            cursor.execute('''
+            SELECT operator, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+            FROM cutting_entries
+            WHERE operator IS NOT NULL AND operator != ''
+            GROUP BY operator ORDER BY total_tonnage DESC, total_pieces DESC
+            ''')
+            operator_summary = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            daily_summary, machine_summary, operator_summary = [], [], []
 
     conn.close()
     return render_template('kesim_takip.html',
@@ -2476,11 +2818,71 @@ def kullanicilar():
     conn.close()
     
     role_perms = get_all_role_permissions()
+    roles_list = get_roles_list()
+    all_role_objects = get_all_roles()
+    
     return render_template('kullanicilar.html',
                            users=users,
-                           roles=ROLES_LIST,
+                           roles=roles_list,
+                           role_objects=all_role_objects,
                            modules=MODULES_LIST,
                            permissions=role_perms)
+
+@app.route('/api/roller/ekle', methods=['POST'])
+def api_roller_ekle():
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici ve Patron yeni rol tanımlayabilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+        
+    role_name = request.form.get('role_name', '').strip().lower()
+    description = request.form.get('description', '').strip()
+    
+    if not role_name:
+        flash("Rol adı zorunludur!", "warning")
+        return redirect(url_for('kullanicilar'))
+        
+    success, msg = add_custom_role(role_name, description)
+    if success:
+        log_activity(
+            action="Yeni Rol Eklendi",
+            entity_type="roles",
+            details=f"Sisteme yeni rol eklendi: '{role_name}'",
+            username=cur_user.get('username', 'Kullanıcı'),
+            user_id=cur_user.get('id')
+        )
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+        
+    return redirect(url_for('kullanicilar'))
+
+@app.route('/api/roller/sil', methods=['POST'])
+def api_roller_sil():
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici ve Patron rol silebilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+        
+    role_name = request.form.get('role_name', '').strip().lower()
+    if not role_name:
+        flash("Silinecek rol belirtilmedi!", "warning")
+        return redirect(url_for('kullanicilar'))
+        
+    success, msg = delete_custom_role(role_name)
+    if success:
+        log_activity(
+            action="Rol Silindi",
+            entity_type="roles",
+            details=f"Sistem rolü silindi: '{role_name}'",
+            username=cur_user.get('username', 'Kullanıcı'),
+            user_id=cur_user.get('id')
+        )
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+        
+    return redirect(url_for('kullanicilar'))
 
 @app.route('/api/kullanicilar/ekle', methods=['POST'])
 def api_kullanici_ekle():
@@ -2523,7 +2925,8 @@ def api_kullanicilar_yetkiler_guncelle():
         return redirect(url_for('kullanicilar'))
 
     # Formdan tüm 'perm_{role}_{module}' alanlarını al
-    for r in ROLES_LIST:
+    all_roles = get_roles_list()
+    for r in all_roles:
         for mod, _ in MODULES_LIST:
             field_name = f"perm_{r}_{mod}"
             can_e = 1 if request.form.get(field_name) == '1' else 0
@@ -2799,6 +3202,37 @@ def canli_denetim():
     logs = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return render_template('canli_denetim.html', logs=logs)
+
+@app.route('/api/canli-denetim/temizle', methods=['POST'])
+def api_canli_denetim_temizle():
+    """Yalnızca yönetici / yetkili kullanıcıların denetim günlüğünü temizlemesini sağlar."""
+    u = session.get('user')
+    user_role = u.get('role') if isinstance(u, dict) else session.get('role', 'izleyici')
+    
+    if user_role not in ('admin', 'patron', 'genel müdür'):
+        flash("Bu işlem için yönetici yetkisi gereklidir.", "danger")
+        return redirect(url_for('canli_denetim'))
+        
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM activity_logs")
+    conn.commit()
+    conn.close()
+    
+    username = u.get('username') if isinstance(u, dict) else str(u or 'Yönetici')
+    user_id = u.get('id') if isinstance(u, dict) else None
+    
+    log_activity(
+        action="Denetim Günlüğü Temizlendi",
+        entity_type="activity_logs",
+        details="Tüm geçmiş canlı denetim kayıtları yönetici tarafından temizlendi.",
+        username=username,
+        user_id=user_id,
+        ip_address=request.remote_addr
+    )
+    
+    flash("Canlı denetim günlüğü başarıyla temizlendi.", "success")
+    return redirect(url_for('canli_denetim'))
 
 
 # =========================================================================

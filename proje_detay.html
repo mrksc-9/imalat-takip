@@ -35,6 +35,13 @@
                     <i class="fa-solid fa-weight-hanging"></i>
                     <span>Tonajı Düzenle</span>
                 </button>
+                <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki yüklenmiş tüm Montaj ve Parça listelerini temizlemek istediğinizden emin misiniz? (Yanlış liste yüklendiğinde yeni listeyi sıfırdan yüklemek için kullanılır)');" class="inline">
+                    <input type="hidden" name="target" value="all">
+                    <button type="submit" class="px-3 py-2 bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Yüklenen Yanlış Listeleri Sıfırla">
+                        <i class="fa-solid fa-eraser"></i>
+                        <span>Listeleri Temizle</span>
+                    </button>
+                </form>
                 <form action="{{ url_for('api_proje_sil', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projeyi ve tüm parça/montaj kayıtlarını silmek istediğinizden emin misiniz?');" class="inline">
                     <button type="submit" class="px-3 py-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Projeyi Sil">
                         <i class="fa-solid fa-trash"></i>
@@ -110,6 +117,13 @@
                         <i class="fa-solid fa-paste text-blue-400"></i>
                         <span>Kopyala-Yapıştır ile Yükle</span>
                     </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj (Assembly) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="assemblies">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
             </div>
@@ -189,6 +203,13 @@
                         <i class="fa-solid fa-paste text-blue-400"></i>
                         <span>Kopyala-Yapıştır ile Yükle</span>
                     </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj Parça (Assembly Parts) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="assembly_parts">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Parça Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
             </div>
@@ -248,6 +269,13 @@
                         <i class="fa-solid fa-paste text-blue-400"></i>
                         <span>Kopyala-Yapıştır ile Yükle</span>
                     </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Tek Parça (Parts) poz listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="parts">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Tek Parça Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
             </div>
