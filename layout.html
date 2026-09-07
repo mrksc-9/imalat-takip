@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi{% endblock %}</title>
+    <title>{{ system_settings.company_name or 'ORDUMAK DEMİR ÇELİK' }}</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -57,6 +57,9 @@
 </head>
 <body class="h-full text-slate-100 flex flex-col font-sans antialiased selection:bg-blue-600 selection:text-white">
 
+    <!-- CANLI KAYAR BİLDİRİM TOAST KONTEYNERİ (EKRANIN SAĞ ÜSTÜNDEN GELİR) -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-[99999] flex flex-col gap-3 pointer-events-none max-w-sm w-[92vw] sm:w-[380px]"></div>
+
     <div class="flex h-full min-h-screen">
         <!-- SIDEBAR (DESKTOP) -->
         <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0 hidden md:flex">
@@ -94,6 +97,13 @@
                     <a href="{{ url_for('toplantilar') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'toplantilar' %}bg-indigo-600/30 text-indigo-300 font-semibold border-l-2 border-indigo-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
                         <i class="fa-solid fa-handshake w-3.5 text-center text-indigo-400"></i>
                         <span>Toplantı & Kararlar</span>
+                    </a>
+                    <a href="{{ url_for('sohbet') }}" class="nav-link flex items-center justify-between px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'sohbet' %}bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/30{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <div class="flex items-center gap-2.5">
+                            <i class="fa-solid fa-comments w-3.5 text-center text-blue-400"></i>
+                            <span>Sohbet & İletişim</span>
+                        </div>
+                        <span id="navChatUnreadBadge" class="hidden px-1.5 py-0.2 text-[9px] font-black rounded-full bg-rose-600 text-white animate-pulse">0</span>
                     </a>
                 </div>
 
@@ -142,7 +152,7 @@
                     </a>
                     <a href="{{ url_for('boya_takip') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'boya_takip' %}bg-purple-600/30 text-purple-300 font-semibold border-l-2 border-purple-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
                         <i class="fa-solid fa-paint-roller w-3.5 text-center text-purple-400"></i>
-                        <span>Boya</span>
+                        <span>Boya Takip</span>
                     </a>
                 </div>
 
@@ -238,6 +248,12 @@
                     <button onclick="sendTestPushNotification()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 border border-cyan-500/30 rounded-lg transition-all shadow-sm" title="Telefon / Masaüstü Anlık Test Bildirimi Gönder">
                         <i class="fa-solid fa-paper-plane"></i>
                         <span class="hidden md:inline">Test Bildirimi</span>
+                    </button>
+
+                    <!-- Site Kapalıyken Bildirim Rehberi Butonu -->
+                    <button onclick="openModal('pwaBackgroundNotifModal')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-purple-300 bg-purple-500/10 hover:bg-purple-500 hover:text-slate-950 border border-purple-500/30 rounded-lg transition-all shadow-sm" title="Site Kapalıyken Telefondan ve Bilgisayardan Bildirim Alma Rehberi">
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                        <span class="hidden lg:inline">Kapalıyken Bildirim</span>
                     </button>
 
                     <button onclick="openModal('newAnnouncementModal')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-lg transition-all shadow-sm">
@@ -363,6 +379,12 @@
                 <a href="{{ url_for('toplantilar') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-handshake w-4 text-center text-indigo-400"></i> Toplantı & Kararlar
                 </a>
+                <a href="{{ url_for('sohbet') }}" class="flex items-center justify-between px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <span class="flex items-center gap-3">
+                        <i class="fa-solid fa-comments w-4 text-center text-blue-400"></i> Sohbet & İletişim
+                    </span>
+                    <span id="mobileNavChatUnreadBadge" class="hidden px-1.5 py-0.2 text-[9px] font-black rounded-full bg-rose-600 text-white animate-pulse">0</span>
+                </a>
 
                 <div class="pt-2 text-[10px] font-bold text-slate-500 uppercase">Ön İmalat</div>
                 <a href="{{ url_for('on_imalat_plan') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
@@ -388,7 +410,7 @@
                     <i class="fa-solid fa-clipboard-check w-4 text-center text-teal-400"></i> Kalite Kontrol
                 </a>
                 <a href="{{ url_for('boya_takip') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
-                    <i class="fa-solid fa-paint-roller w-4 text-center text-purple-400"></i> Boya
+                    <i class="fa-solid fa-paint-roller w-4 text-center text-purple-400"></i> Boya Takip
                 </a>
                 <a href="{{ url_for('sevk') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-truck-moving w-4 text-center text-emerald-400"></i> Sevkiyat & İrsaliye
@@ -470,64 +492,37 @@
             </div>
 
             <form action="{{ url_for('api_proje_ekle') }}" method="POST" class="mt-4 space-y-4 text-xs">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Proje Kodu *</label>
-                        <input type="text" name="code" required placeholder="Örn: PRJ-2026-04" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 uppercase font-mono">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Poz Prefix'i</label>
-                        <input type="text" name="pos_prefix" placeholder="Örn: IKC12- veya C-" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono">
-                    </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Proje Adı *</label>
+                    <input type="text" name="name" required placeholder="Örn: Sanayi Tesisi Çatı Karkas İmalatı" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3.5 py-2.5 text-white font-medium focus:outline-none focus:border-blue-500">
                 </div>
 
                 <div>
-                    <label class="block text-slate-400 mb-1 font-medium">Proje Adı *</label>
-                    <input type="text" name="name" required placeholder="Örn: Sanayi Tesisi Çatı Karkas İmalatı" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <label class="block text-slate-400 mb-1 font-semibold">Müşteri / İşveren</label>
+                    <input type="text" name="customer" placeholder="Firma Adı" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3.5 py-2.5 text-white focus:outline-none focus:border-blue-500">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Müşteri / İşveren</label>
-                        <input type="text" name="customer" placeholder="Firma Adı" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Şantiye / Teslim Yeri</label>
-                        <input type="text" name="site_location" placeholder="Şantiye Lokasyonu" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Başlama Tarihi</label>
+                        <label class="block text-slate-400 mb-1 font-semibold">Başlama Tarihi</label>
                         <input type="date" name="start_date" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
                     </div>
                     <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Kesim Başlama</label>
-                        <input type="date" name="cutting_start_date" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Termin Tarihi</label>
+                        <label class="block text-slate-400 mb-1 font-semibold">Termin Tarihi</label>
                         <input type="date" name="delivery_date" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Hedef Tonaj (Ton)</label>
-                        <input type="number" step="0.01" name="target_tonnage" placeholder="Örn: 120.5" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1 font-medium">Proje Rengi (Takvim)</label>
-                        <div class="flex items-center gap-2">
-                            <input type="color" name="color" value="#3b82f6" class="h-9 w-14 bg-slate-800 border border-slate-700 rounded-lg cursor-pointer p-1">
-                            <span class="text-[11px] text-slate-400">Takvim & Grafik Rengi</span>
-                        </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Proje Rengi (Takvim)</label>
+                    <div class="flex items-center gap-3">
+                        <input type="color" name="color" value="#3b82f6" class="h-9 w-14 bg-slate-800 border border-slate-700 rounded-lg cursor-pointer p-1">
+                        <span class="text-[11px] text-slate-400">Takvim ve genel grafiklerdeki renk</span>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-slate-400 mb-1 font-medium">Açıklama & Notlar</label>
+                    <label class="block text-slate-400 mb-1 font-semibold">Açıklama & Notlar</label>
                     <textarea name="notes" rows="2" placeholder="Proje ile ilgili özel teknik şartlar, boya spekti vs." class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 resize-none"></textarea>
                 </div>
 
@@ -536,18 +531,153 @@
                     <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-md shadow-blue-600/30">Projeyi Kaydet</button>
                 </div>
             </form>
-    <!-- CANLI BİLDİRİM TOAST KAPSAYICISI (YANDAN KAYAN KUTUCUKLAR) -->
-    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"></div>
+        </div>
+    </div>
+
+    <!-- BİLDİRİM İZNİ ENGELİ REHBER MODALI -->
+    <div id="notificationBlockedHelpModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-bell-slash text-rose-400"></i>
+                    <span>Tarayıcı Bildirim İzni Engellenmiş</span>
+                </h3>
+                <button onclick="closeModal('notificationBlockedHelpModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="mt-4 space-y-3.5 text-slate-300">
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Tarayıcınızda bildirimler daha önce engellendiği için otomatik izin penceresi açılamıyor. Bildirimleri aktif etmek için lütfen şu 3 adımı uygulayın:
+                </p>
+
+                <div class="p-3.5 bg-slate-950/90 rounded-xl border border-slate-800 space-y-3">
+                    <div class="flex items-start gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">1</span>
+                        <div>
+                            <p class="font-bold text-white">Adres Çubuğuna Tıklayın</p>
+                            <p class="text-[11px] text-slate-400">Tarayıcının sol üst köşesinde web adresinin yanındaki <b>Kilit (🔒)</b> veya <b>Ayar</b> simgesine tıklayın.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">2</span>
+                        <div>
+                            <p class="font-bold text-white">Bildirimlere "İzin Ver" Seçin</p>
+                            <p class="text-[11px] text-slate-400">Açılan menüde <b>"Bildirimler"</b> (Notifications) seçeneğini <b>"İzin Ver"</b> (Allow) konumuna getirin.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0">3</span>
+                        <div>
+                            <p class="font-bold text-white">Sayfayı Yenileyin</p>
+                            <p class="text-[11px] text-slate-400">Aşağıdaki butona basarak veya F5 ile sayfayı yenileyiniz.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="closeModal('notificationBlockedHelpModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">Kapat</button>
+                    <button type="button" onclick="location.reload()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/30">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>Sayfayı Yenile</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SİTE KAPALIYKEN BİLDİRİM ALMA REHBERİ (PWA & MOBİL) -->
+    <div id="pwaBackgroundNotifModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                        <i class="fa-solid fa-mobile-screen-button"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-sm text-white">Site Kapalıyken Bildirim Alma Rehberi</h3>
+                        <p class="text-[11px] text-slate-400">Bilgisayar ve Telefondan 7/24 Kesintisiz Bildirimler</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('pwaBackgroundNotifModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+
+            <div class="mt-4 space-y-4 text-slate-300">
+                <div class="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-start gap-2.5 text-purple-300">
+                    <i class="fa-solid fa-circle-info text-purple-400 mt-0.5 shrink-0"></i>
+                    <p class="text-[11px] leading-relaxed">
+                        Sistemimiz <b>PWA (Progressive Web App)</b> ve <b>Web Push</b> altyapısını destekler. Sekme veya tarayıcı kapalı olsa dahi işletim sisteminize anlık bildirim gönderebilir.
+                    </p>
+                </div>
+
+                <!-- 1. BİLGİSAYAR / MASAÜSTÜ -->
+                <div class="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-white font-bold">
+                        <i class="fa-solid fa-desktop text-blue-400"></i>
+                        <span>1. Bilgisayarda (Windows / Mac)</span>
+                    </div>
+                    <ul class="space-y-1.5 text-slate-400 text-[11px] list-disc list-inside">
+                        <li>Üst bardaki <b>"Bildirimleri Aç"</b> butonuna basıp tarayıcıdan izin verin.</li>
+                        <li>Tarayıcıyı (Chrome / Edge) kapatsanız dahi, Windows Bildirim Merkezi sayesinde ekranın <b>sağ altından kayarak</b> sistem bildirimi gelecektir.</li>
+                        <li><b>İpucu:</b> Chrome/Edge ayarlarında <i>"Tarayıcı kapatıldığında arka plan uygulamalarını çalıştırmaya devam et"</i> seçeneğinin açık olduğundan emin olun.</li>
+                    </ul>
+                </div>
+
+                <!-- 2. ANDROID TELEFON -->
+                <div class="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-white font-bold">
+                        <i class="fa-brands fa-android text-emerald-400"></i>
+                        <span>2. Android Telefonda (Samsung / Xiaomi / Huawei vb.)</span>
+                    </div>
+                    <ul class="space-y-1.5 text-slate-400 text-[11px] list-disc list-inside">
+                        <li>Telefonunuzun Chrome veya Edge tarayıcısında siteyi açın.</li>
+                        <li>Sağ üstteki <b>3 nokta (⋮)</b> menüsüne dokunun ve <b>"Ana Ekrana Ekle"</b> veya <b>"Uygulamayı Yükle"</b> seçeneğine basın.</li>
+                        <li>Uygulama telefonunuza yüklendikten sonra bildirim iznini verin. Artık telefonunuz kilitliyken veya site kapalıyken bile tıpkı WhatsApp gibi kilit ekranınıza bildirim düşecektir.</li>
+                    </ul>
+                </div>
+
+                <!-- 3. IPHONE / IOS (APPLE) -->
+                <div class="p-4 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-white font-bold">
+                        <i class="fa-brands fa-apple text-slate-200"></i>
+                        <span>3. iPhone / iOS'ta (Safari - iOS 16.4+)</span>
+                    </div>
+                    <ul class="space-y-1.5 text-slate-400 text-[11px] list-disc list-inside">
+                        <li>iPhone'unuzda <b>Safari</b> tarayıcısını açıp sisteme girin.</li>
+                        <li>Alttaki <b>Paylaş (📤 kare ve yukarı ok)</b> simgesine dokunun.</li>
+                        <li>Aşağı kaydırıp <b>"Ana Ekrana Ekle" (Add to Home Screen)</b> butonuna basın.</li>
+                        <li>Ana ekranınıza gelen <b>ORDUMAK MES</b> ikonuna dokunarak uygulamayı açın ve çıkan bildirim iznine <b>"İzin Ver"</b> deyin.</li>
+                        <li>Artık iPhone ekranınız kapalıyken bile Apple Push sistemiyle anlık bildirimler gelecektir.</li>
+                    </ul>
+                </div>
+
+                <!-- TEST BUTONU -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                    <button type="button" onclick="sendTestPushNotification()" class="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>Şimdi Test Bildirimi Gönder</span>
+                    </button>
+                    <button type="button" onclick="closeModal('pwaBackgroundNotifModal')" class="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">
+                        Kapat
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- SAĞ ALTTA YÜZEN CANLI SOHBET BUTONU -->
     <button id="btnChatToggle" onclick="toggleChatDrawer()" class="fixed bottom-5 right-5 z-40 p-3.5 bg-gradient-to-tr from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full shadow-2xl shadow-indigo-600/40 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 group" title="Canlı Personel Sohbeti">
         <i class="fa-solid fa-comments text-lg group-hover:scale-110 transition-transform"></i>
         <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse"></span>
+        <span id="floatingChatUnreadBadge" class="hidden absolute -top-1.5 -left-1.5 px-1.5 py-0.2 text-[9px] font-black rounded-full bg-rose-600 text-white border border-slate-900 animate-pulse">0</span>
     </button>
 
     <!-- CANLI SOHBET ÇEKMECESİ -->
     <div id="chatDrawer" class="fixed bottom-20 right-5 z-50 w-96 max-w-[calc(100vw-2.5rem)] h-[560px] max-h-[calc(100vh-6.5rem)] bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl flex-col hidden backdrop-blur-xl overflow-hidden animate-scale-up">
-        <!-- Başlık ve Kapatma / Temizleme -->
+        <!-- Başlık ve Kapatma / Tam Ekran / Temizleme -->
         <div class="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-md">
@@ -561,6 +691,9 @@
                 </div>
             </div>
             <div class="flex items-center gap-1">
+                <a href="{{ url_for('sohbet') }}" class="text-slate-400 hover:text-blue-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Tam Ekranda / Ayrı Sayfada Aç">
+                    <i class="fa-solid fa-up-right-from-square"></i>
+                </a>
                 <button type="button" onclick="clearCurrentChatChannel()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Bu Kanalın Mesajlarını Temizle">
                     <i class="fa-solid fa-trash-can"></i>
                 </button>
@@ -570,16 +703,16 @@
             </div>
         </div>
 
-        <!-- Kanal Sekmeleri -->
+        <!-- Kanal Sekmeleri (8 Birim Kanalı) -->
         <div class="px-3 py-2 bg-slate-900/50 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto custom-scrollbar text-[11px] font-bold">
             <button onclick="switchChatChannel('genel', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0">#genel</button>
-            <button onclick="switchChatChannel('proje', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#proje</button>
-            <button onclick="switchChatChannel('on_imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kesim</button>
+            <button onclick="switchChatChannel('kesim', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kesim</button>
             <button onclick="switchChatChannel('imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#imalat</button>
             <button onclick="switchChatChannel('kalite', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kalite</button>
+            <button onclick="switchChatChannel('boya', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#boya</button>
             <button onclick="switchChatChannel('sevkiyat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#sevkiyat</button>
             <button onclick="switchChatChannel('muhasebe', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#muhasebe</button>
-            <button onclick="switchChatChannel('toplanti', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#toplanti</button>
+            <button onclick="switchChatChannel('yonetim', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#yonetim</button>
         </div>
 
         <!-- Mesaj Akışı -->
@@ -743,6 +876,10 @@
                 alert("Tarayıcınız Web Bildirimlerini desteklemiyor.");
                 return;
             }
+            if (Notification.permission === 'denied') {
+                openModal('notificationBlockedHelpModal');
+                return;
+            }
             Notification.requestPermission().then(permission => {
                 updateNotificationButtonUI();
                 if (permission === 'granted') {
@@ -759,6 +896,8 @@
                         message: 'Bildirim sistemi başarıyla etkinleştirildi.',
                         url: '/'
                     });
+                } else if (permission === 'denied') {
+                    openModal('notificationBlockedHelpModal');
                 }
             });
         }
@@ -809,47 +948,105 @@
         }
 
         function showToastNotification(n) {
-            const container = document.getElementById('toastContainer');
-            if (!container) return;
+            let container = document.getElementById('toastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toastContainer';
+                container.className = 'fixed top-5 right-5 z-[99999] flex flex-col gap-3 pointer-events-none max-w-sm w-[92vw] sm:w-[380px]';
+                document.body.appendChild(container);
+            }
 
             const toast = document.createElement('div');
-            toast.className = 'pointer-events-auto bg-slate-950/95 border border-slate-700/80 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl flex items-start gap-3 transform translate-x-full transition-all duration-300 ease-out animate-slide-in';
-            toast.style.boxShadow = '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6)';
+            toast.className = 'pointer-events-auto bg-slate-950/95 border border-slate-700/90 text-white rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden transform translate-x-[120%] opacity-0 transition-all duration-400 ease-out cursor-pointer hover:border-slate-500 group';
+            toast.style.boxShadow = '0 20px 30px -10px rgba(0, 0, 0, 0.7), 0 0 15px 1px rgba(59, 130, 246, 0.15)';
 
             const colorMap = {
-                'emerald': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-                'amber': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-                'rose': 'bg-rose-500/10 text-rose-400 border-rose-500/30',
-                'purple': 'bg-purple-500/10 text-purple-400 border-purple-500/30',
-                'teal': 'bg-teal-500/10 text-teal-400 border-teal-500/30',
-                'blue': 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                'emerald': { badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', bar: 'bg-emerald-500' },
+                'amber': { badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30', bar: 'bg-amber-500' },
+                'rose': { badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30', bar: 'bg-rose-500' },
+                'purple': { badge: 'bg-purple-500/10 text-purple-400 border-purple-500/30', bar: 'bg-purple-500' },
+                'cyan': { badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30', bar: 'bg-cyan-500' },
+                'blue': { badge: 'bg-blue-500/10 text-blue-400 border-blue-500/30', bar: 'bg-blue-500' }
             };
-            const badgeClass = colorMap[n.color] || colorMap['blue'];
+            const cInfo = colorMap[n.color] || colorMap['blue'];
+            const targetUrl = n.link_url || n.url || '';
 
             toast.innerHTML = `
-                <div class="w-8 h-8 rounded-xl ${badgeClass} border flex items-center justify-center shrink-0 text-sm mt-0.5">
-                    <i class="fa-solid ${n.icon || 'fa-bell'}"></i>
+                <div class="p-3.5 flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl ${cInfo.badge} border flex items-center justify-center shrink-0 text-sm mt-0.5 shadow-sm">
+                        <i class="fa-solid ${n.icon || 'fa-bell'}"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 text-xs pr-1">
+                        <div class="flex items-center justify-between gap-1">
+                            <h5 class="font-black text-white tracking-wide text-[13px] truncate">${escapeHtml(n.title || 'ORDUMAK MES')}</h5>
+                            <span class="text-[9px] text-slate-500 font-mono">Şimdi</span>
+                        </div>
+                        <p class="text-slate-300 text-[11px] mt-1 leading-relaxed line-clamp-2">${escapeHtml(n.message || '')}</p>
+                        ${targetUrl ? `<div class="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-blue-400 hover:text-blue-300"><span>Aç ve İncele</span> <i class="fa-solid fa-arrow-right text-[10px]"></i></div>` : ''}
+                    </div>
+                    <button type="button" class="btn-close-toast text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors shrink-0 text-xs">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
                 </div>
-                <div class="flex-1 min-w-0 text-xs">
-                    <h5 class="font-bold text-white tracking-wide">${escapeHtml(n.title)}</h5>
-                    <p class="text-slate-300 text-[11px] mt-0.5 leading-relaxed line-clamp-2">${escapeHtml(n.message)}</p>
-                    ${n.link_url ? `<a href="${n.link_url}" class="inline-block mt-1 text-[10px] text-blue-400 font-bold hover:underline">Görüntüle →</a>` : ''}
+                <div class="h-1 w-full bg-slate-800/80 overflow-hidden">
+                    <div class="toast-progress-bar h-full ${cInfo.bar} w-full transition-all linear" style="transition-duration: 6000ms;"></div>
                 </div>
-                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white p-1 shrink-0 text-xs">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
             `;
+
+            if (targetUrl) {
+                toast.onclick = (e) => {
+                    if (e.target.closest('.btn-close-toast')) return;
+                    window.location.href = targetUrl;
+                };
+            }
+
+            const closeBtn = toast.querySelector('.btn-close-toast');
+            if (closeBtn) {
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    dismissToast(toast);
+                };
+            }
 
             container.appendChild(toast);
 
-            setTimeout(() => {
-                toast.classList.remove('translate-x-full');
-            }, 10);
+            // Trigger slide in from right
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-[120%]', 'opacity-0');
+                toast.classList.add('translate-x-0', 'opacity-100');
+                
+                const pBar = toast.querySelector('.toast-progress-bar');
+                if (pBar) {
+                    setTimeout(() => { pBar.style.width = '0%'; }, 50);
+                }
+            });
 
-            setTimeout(() => {
-                toast.classList.add('translate-x-full', 'opacity-0');
-                setTimeout(() => toast.remove(), 300);
+            let autoDismissTimer = setTimeout(() => {
+                dismissToast(toast);
             }, 6000);
+
+            // Pause on hover
+            toast.onmouseenter = () => {
+                clearTimeout(autoDismissTimer);
+                const pBar = toast.querySelector('.toast-progress-bar');
+                if (pBar) pBar.style.transitionDuration = '0ms';
+            };
+            toast.onmouseleave = () => {
+                autoDismissTimer = setTimeout(() => {
+                    dismissToast(toast);
+                }, 2500);
+            };
+        }
+
+        function dismissToast(toast) {
+            if (!toast) return;
+            toast.classList.remove('translate-x-0', 'opacity-100');
+            toast.classList.add('translate-x-[120%]', 'opacity-0');
+            setTimeout(() => {
+                if (toast && toast.parentElement) {
+                    toast.remove();
+                }
+            }, 400);
         }
 
         function triggerBrowserNotification(n) {
@@ -859,7 +1056,7 @@
             }
             const title = n.title || 'ORDUMAK MES';
             const body = n.message || '';
-            const icon = "{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}";
+            const icon = "{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}";
             const url = n.link_url || n.url || '/';
 
             if (navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -876,7 +1073,9 @@
                         body: body,
                         icon: icon,
                         badge: icon,
-                        data: { url: url }
+                        data: { url: url },
+                        tag: 'ordumak-' + Date.now(),
+                        renotify: true
                     });
                 }).catch(() => {
                     try {
@@ -928,6 +1127,50 @@
         // 6 saniyede bir bildirimleri kontrol et
         setInterval(pollLiveNotifications, 6000);
         pollLiveNotifications();
+
+        // Global Okunmamış Sohbet Mesajlarını Kontrol Et
+        function pollGlobalChatUnread() {
+            fetch('/api/chat/unread-summary')
+            .then(res => res.json())
+            .then(summary => {
+                if (!summary) return;
+                const total = summary.total_unread || 0;
+                
+                const navBadge = document.getElementById('navChatUnreadBadge');
+                if (navBadge) {
+                    if (total > 0) {
+                        navBadge.innerText = total;
+                        navBadge.classList.remove('hidden');
+                    } else {
+                        navBadge.classList.add('hidden');
+                    }
+                }
+
+                const mobBadge = document.getElementById('mobileNavChatUnreadBadge');
+                if (mobBadge) {
+                    if (total > 0) {
+                        mobBadge.innerText = total;
+                        mobBadge.classList.remove('hidden');
+                    } else {
+                        mobBadge.classList.add('hidden');
+                    }
+                }
+
+                const floatBadge = document.getElementById('floatingChatUnreadBadge');
+                if (floatBadge) {
+                    if (total > 0) {
+                        floatBadge.innerText = total;
+                        floatBadge.classList.remove('hidden');
+                    } else {
+                        floatBadge.classList.add('hidden');
+                    }
+                }
+            })
+            .catch(() => {});
+        }
+
+        setInterval(pollGlobalChatUnread, 5000);
+        pollGlobalChatUnread();
 
 
         // =========================================================================

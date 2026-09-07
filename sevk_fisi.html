@@ -46,13 +46,20 @@
         <div>
             <!-- 1. RESMİ BAŞLIK VE LOGO ALANI -->
             <div class="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
-                <div>
-                    <h1 class="text-2xl font-black tracking-wider text-slate-950 uppercase">{{ settings.company_name or 'ÇELİK KONSTRÜKSİYON SAN. VE TİC. A.Ş.' }}</h1>
-                    <p class="text-xs text-slate-600 font-semibold mt-0.5">{{ settings.company_sub_title or 'Endüstriyel Yapılar, Çelik İmalat & Montaj Tesisleri' }}</p>
-                    <p class="text-[11px] text-slate-500 mt-1">{{ settings.company_address or 'Fabrika: Dilovası Organize Sanayi Bölgesi 4. Cadde No: 12 Kocaeli' }}</p>
-                    <p class="text-[11px] text-slate-500">Tel: {{ settings.company_phone or '+90 262 555 00 00' }} | {{ settings.company_email or 'info@celikimalat.com' }}</p>
+                <div class="flex items-center gap-4">
+                    {% if settings.company_logo_url %}
+                    <img src="{{ settings.company_logo_url }}" alt="Firma Logosu" class="h-16 w-auto object-contain max-w-[130px]">
+                    {% else %}
+                    <img src="/static/img/ordumak_logo.png" alt="Firma Logosu" onerror="this.style.display='none'" class="h-16 w-auto object-contain max-w-[130px]">
+                    {% endif %}
+                    <div>
+                        <h1 class="text-xl font-black tracking-wider text-slate-950 uppercase">{{ settings.company_name or 'ÇELİK KONSTRÜKSİYON SAN. VE TİC. A.Ş.' }}</h1>
+                        <p class="text-xs text-slate-600 font-semibold mt-0.5">{{ settings.company_sub_title or 'Endüstriyel Yapılar, Çelik İmalat & Montaj Tesisleri' }}</p>
+                        <p class="text-[11px] text-slate-500 mt-1">{{ settings.company_address or 'Fabrika: Dilovası Organize Sanayi Bölgesi 4. Cadde No: 12 Kocaeli' }}</p>
+                        <p class="text-[11px] text-slate-500">Tel: {{ settings.company_phone or '+90 262 555 00 00' }} | {{ settings.company_email or 'info@celikimalat.com' }}</p>
+                    </div>
                 </div>
-                <div class="text-right">
+                <div class="text-right flex-shrink-0">
                     <div class="border-2 border-slate-900 px-4 py-2 rounded-xl text-center bg-slate-50">
                         <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-600">SEVKİYAT İRSALİYESİ</span>
                         <span class="text-lg font-black font-mono text-slate-950">{{ shipment.dispatch_no }}</span>

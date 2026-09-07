@@ -34,6 +34,38 @@
         </div>
     </div>
 
+    <!-- BOYA & YÜZEY İŞLEM KPI KARTLARI -->
+    {% set total_qa_sevk = assemblies | sum(attribute='qa_approved_qty') %}
+    {% set total_sandblast = assemblies | sum(attribute='paint_sandblast_qty') %}
+    {% set total_in_paint = assemblies | sum(attribute='paint_paint_qty') + assemblies | sum(attribute='paint_galv_qty') %}
+    {% set total_paint_done = assemblies | sum(attribute='paint_done_qty') %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-teal-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-shield-halved"></i> Kaliteden Sevk Edilen
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_qa_sevk }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-amber-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-wind"></i> Kumlamada (Sa 2.5)
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_sandblast }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-purple-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-paint-roller"></i> Boyada & Galvanizde
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_in_paint }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-emerald-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-check-double"></i> Boyası Biten / Sevke Hazır
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_paint_done }} Adet</span>
+        </div>
+    </div>
+
     <!-- BOYA VE YÜZEY İŞLEM LİSTESİ TABLOSU -->
     <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-4 overflow-hidden">
         <div class="overflow-x-auto">

@@ -1,0 +1,718 @@
+{% extends "layout.html" %}
+
+{% block page_title %}
+<div class="flex items-center gap-2.5">
+    <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/30">
+        <i class="fa-solid fa-comments text-sm"></i>
+    </div>
+    <div>
+        <span class="font-extrabold tracking-tight text-white">Sohbet & İletişim Merkezi</span>
+        <span class="hidden sm:inline-block ml-2 text-xs font-normal text-slate-400">| Birim Kanalları & Birebir Personel Mesajlaşma</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="h-[calc(100vh-8.5rem)] min-h-[580px] flex flex-col rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-2xl">
+    <div class="flex-1 flex min-h-0 overflow-hidden">
+        
+        <!-- ================================================================= -->
+        <!-- SOL PANEL: KANALLAR VE KULLANICILAR (SIDEBAR)                     -->
+        <!-- ================================================================= -->
+        <aside class="w-72 sm:w-80 md:w-88 flex-shrink-0 bg-slate-950/90 border-r border-slate-800 flex flex-col min-h-0">
+            
+            <!-- Arama Kutusu & Başlık -->
+            <div class="p-3.5 border-b border-slate-800/90 bg-slate-900/50">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                    <input type="text" id="chatSearchInput" oninput="filterChatList()" placeholder="Kanal veya personel ara..." class="w-full pl-8 pr-3 py-2 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium">
+                </div>
+            </div>
+
+            <!-- Liste Scroll Alanı -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-4 text-xs">
+                
+                <!-- BÖLÜM 1: BİRİM KANALLARI -->
+                <div>
+                    <div class="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-hashtag text-blue-400"></i> Birim Kanalları</span>
+                        <span class="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-400 font-mono">{{ chat_channels | length }}</span>
+                    </div>
+                    <div class="space-y-1 mt-1" id="channelsListContainer">
+                        {% for ch in chat_channels %}
+                        <button type="button" 
+                                onclick="selectChannel('{{ ch.id }}', '{{ ch.name }}', '{{ ch.desc }}', '{{ ch.icon }}', '{{ ch.color }}')"
+                                id="chanBtn_{{ ch.id }}"
+                                data-search="{{ ch.name | lower }} {{ ch.id | lower }} {{ ch.desc | lower }}"
+                                class="chat-target-btn w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3 group {% if loop.first and not initial_partner_id %}bg-blue-600/20 border border-blue-500/40 text-white font-semibold{% else %}text-slate-300 hover:bg-slate-900 hover:text-white border border-transparent{% endif %}">
+                            <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs shrink-0 transition-transform group-hover:scale-105 {{ ch.badge_class }}">
+                                <i class="{{ ch.icon }}"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <p class="font-bold text-xs truncate group-hover:text-blue-400 transition-colors">{{ ch.name }}</p>
+                                </div>
+                                <p class="text-[10px] text-slate-500 truncate mt-0.5">{{ ch.desc }}</p>
+                            </div>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- BÖLÜM 2: DİREKT MESAJLAR (BİREBİR KULLANICILAR) -->
+                <div>
+                    <div class="px-2.5 py-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-user-group text-emerald-400"></i> Direkt Mesajlar (DM)</span>
+                        <span class="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] text-slate-400 font-mono">{{ users | length }}</span>
+                    </div>
+                    <div class="space-y-1 mt-1" id="usersListContainer">
+                        {% for u in users %}
+                        {% if not u.is_current_user %}
+                        <button type="button" 
+                                onclick="selectUserDM({{ u.id }}, '{{ u.full_name | escape }}', '{{ u.role | escape }}', '{{ u.username | escape }}')"
+                                id="userBtn_{{ u.id }}"
+                                data-search="{{ u.full_name | lower }} {{ u.username | lower }} {{ u.role | lower }}"
+                                class="chat-target-btn w-full text-left px-3 py-2.5 rounded-xl transition-all flex items-center gap-3 group {% if initial_partner_id == u.id %}bg-emerald-600/20 border border-emerald-500/40 text-white font-semibold{% else %}text-slate-300 hover:bg-slate-900 hover:text-white border border-transparent{% endif %}">
+                            <div class="relative w-8 h-8 rounded-lg bg-slate-800 text-slate-200 border border-slate-700/80 flex items-center justify-center font-bold text-xs shrink-0 group-hover:border-emerald-500/40 group-hover:text-emerald-400 transition-colors">
+                                {{ u.full_name[0] | upper }}
+                                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-950 rounded-full"></span>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between">
+                                    <p class="font-bold text-xs truncate group-hover:text-emerald-400 transition-colors">{{ u.full_name }}</p>
+                                    <span id="unreadBadge_user_{{ u.id }}" class="user-unread-badge ml-1 px-1.5 py-0.2 text-[10px] font-black rounded-full bg-rose-600 text-white {% if not u.unread_count %}hidden{% endif %} animate-pulse">
+                                        {{ u.unread_count if u.unread_count else 0 }}
+                                    </span>
+                                </div>
+                                <div class="flex items-center justify-between mt-0.5">
+                                    <p class="text-[10px] text-slate-400 truncate uppercase font-semibold">{{ u.role }}</p>
+                                    {% if u.last_message_time %}
+                                    <span class="text-[9px] text-slate-500 shrink-0 font-mono">{{ u.last_message_time[11:16] }}</span>
+                                    {% endif %}
+                                </div>
+                                {% if u.last_message %}
+                                <p class="text-[10px] text-slate-500 truncate italic mt-0.5">{{ u.last_message }}</p>
+                                {% endif %}
+                            </div>
+                        </button>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Sol Alt Oturum Özeti -->
+            <div class="p-3 border-t border-slate-800/90 bg-slate-900/60 flex items-center justify-between">
+                <div class="flex items-center gap-2.5 overflow-hidden">
+                    <div class="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center text-xs font-bold shrink-0">
+                        {{ current_user.full_name[0] | upper }}
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-xs font-bold text-white truncate">{{ current_user.full_name }}</p>
+                        <p class="text-[10px] text-blue-400 uppercase font-semibold truncate">{{ current_user.role }}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Çevrimiçi
+                    </span>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- ================================================================= -->
+        <!-- SAĞ PANEL: SOHBET AKIŞI VE MESAJ GİRİŞİ (MAIN CHAT AREA)          -->
+        <!-- ================================================================= -->
+        <main class="flex-1 flex flex-col min-w-0 bg-slate-900/95 relative">
+            
+            <!-- Sohbet Üst Bar (Header) -->
+            <header class="px-4 py-3 bg-slate-950/70 backdrop-blur-md border-b border-slate-800 flex items-center justify-between z-10">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div id="targetIconContainer" class="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                        <i id="targetIcon" class="fa-solid fa-globe"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2">
+                            <h3 id="targetTitle" class="text-sm font-extrabold text-white truncate">Genel Fabrika & Duyurular</h3>
+                            <span id="targetBadge" class="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                                #genel
+                            </span>
+                        </div>
+                        <p id="targetDescription" class="text-[11px] text-slate-400 truncate mt-0.5">Tüm birimler ortak koordinasyon ve genel fabrika duyuruları</p>
+                    </div>
+                </div>
+
+                <!-- Üst Sağ Butonlar -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <button type="button" onclick="loadChatMessages(true)" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-all text-xs" title="Mesajları Yenile">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    
+                    {% if user_role in ('admin', 'patron') %}
+                    <button type="button" onclick="clearCurrentChat()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-rose-400 bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 rounded-lg transition-all" title="Bu sohbetin geçmişini temizle">
+                        <i class="fa-solid fa-trash-can"></i>
+                        <span class="hidden md:inline">Temizle</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </header>
+
+            <!-- Mesaj Akışı (Messages Stream) -->
+            <div id="chatMessagesStream" class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3.5 bg-gradient-to-b from-slate-950/40 to-slate-900/40">
+                <div class="flex items-center justify-center h-full text-slate-500 text-xs italic">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-base"></i>
+                        <span>Mesajlar yükleniyor...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Görsel Önizleme Şeridi (Seçilince Açılır) -->
+            <div id="photoPreviewStrip" class="hidden px-4 py-2 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs">
+                <div class="flex items-center gap-3">
+                    <img id="photoPreviewThumb" src="" alt="Önizleme" class="w-10 h-10 object-cover rounded-lg border border-slate-700">
+                    <div>
+                        <p id="photoPreviewName" class="font-bold text-white truncate max-w-xs">gorsel.jpg</p>
+                        <p class="text-[10px] text-blue-400">Görsel mesaja eklenecek</p>
+                    </div>
+                </div>
+                <button type="button" onclick="removeSelectedPhoto()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Hızlı Reaksiyon / Emoji Çubuğu & Mesaj Giriş Formu -->
+            <div class="p-3 bg-slate-950/90 border-t border-slate-800">
+                
+                <!-- Hızlı Emoji Butonları -->
+                <div class="flex items-center gap-1.5 mb-2 overflow-x-auto custom-scrollbar pb-1 text-xs">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mr-1 hidden sm:inline">Hızlı:</span>
+                    <button type="button" onclick="insertEmoji('👍')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">👍 Tamam</button>
+                    <button type="button" onclick="insertEmoji('✅')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">✅ Onay</button>
+                    <button type="button" onclick="insertEmoji('⚠️')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">⚠️ Dikkat</button>
+                    <button type="button" onclick="insertEmoji('🛠️')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">🛠️ İmalatta</button>
+                    <button type="button" onclick="insertEmoji('📦')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">📦 Hazır</button>
+                    <button type="button" onclick="insertEmoji('🚛')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">🚛 Sevk</button>
+                    <button type="button" onclick="insertEmoji('🔴')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">🔴 Durdu</button>
+                    <button type="button" onclick="insertEmoji('🏭')" class="px-2 py-0.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-md text-slate-300 hover:text-white transition-all">🏭 Fabrika</button>
+                </div>
+
+                <!-- Form -->
+                <form id="chatMessageForm" onsubmit="handleChatSubmit(event)" class="flex items-end gap-2">
+                    <input type="file" id="chatPhotoFileInput" accept="image/*" class="hidden" onchange="handlePhotoSelect(this)">
+                    
+                    <button type="button" onclick="document.getElementById('chatPhotoFileInput').click()" class="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-blue-400 border border-slate-800 rounded-xl transition-all shadow-sm" title="Fotoğraf veya Ekran Görüntüsü Ekle">
+                        <i class="fa-solid fa-image text-sm"></i>
+                    </button>
+
+                    <div class="flex-1 relative">
+                        <textarea id="chatInputMessage" 
+                                  rows="1" 
+                                  placeholder="Mesajınızı yazın... (Enter ile gönder, Shift+Enter ile yeni satır)" 
+                                  onkeydown="handleTextareaKey(event)"
+                                  class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none font-sans max-h-32 min-h-[42px] leading-relaxed"></textarea>
+                    </div>
+
+                    <button type="submit" id="btnChatSubmit" class="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl transition-all shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 h-[42px]">
+                        <span class="hidden sm:inline text-xs">Gönder</span>
+                        <i class="fa-solid fa-paper-plane text-xs"></i>
+                    </button>
+                </form>
+
+            </div>
+
+        </main>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- GÖRSEL TAM EKRAN ÖNİZLEME (LIGHTBOX MODAL)                                 -->
+<!-- ========================================================================= -->
+<div id="imageLightboxModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden items-center justify-center p-4 cursor-pointer" onclick="closeImageLightbox()">
+    <div class="relative max-w-4xl max-h-[90vh] flex flex-col items-center" onclick="event.stopPropagation()">
+        <button onclick="closeImageLightbox()" class="absolute -top-10 right-0 text-white/80 hover:text-white text-lg p-2">
+            <i class="fa-solid fa-xmark"></i> Kapat (ESC)
+        </button>
+        <img id="lightboxImg" src="" alt="Büyük Görsel" class="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-slate-700">
+        <a id="lightboxDownloadBtn" href="" download class="mt-3 inline-flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md">
+            <i class="fa-solid fa-download"></i> Orijinal Görseli İndir
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // =========================================================================
+    // SOHBET İSTEMCİ MOTORU (JAVASCRIPT)
+    // =========================================================================
+    let currentChatType = '{{ "dm" if initial_partner_id else "channel" }}';
+    let currentChannelId = '{{ initial_channel or "genel" }}';
+    let currentPartnerId = {{ initial_partner_id if initial_partner_id else 'null' }};
+    let currentTargetTitle = '{{ initial_channel or "Genel Fabrika & Duyurular" }}';
+
+    let currentSelectedFile = null;
+    let messagePollTimer = null;
+    let unreadPollTimer = null;
+    let isSubmitting = false;
+
+    const currentUsername = "{{ current_user.username if current_user else '' }}";
+    const currentUserId = {{ current_user.id if current_user else 0 }};
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (currentChatType === 'dm' && currentPartnerId) {
+            // Kullanıcı DM'i ile açıldı
+            const uBtn = document.getElementById(`userBtn_${currentPartnerId}`);
+            if (uBtn) uBtn.click();
+            else loadChatMessages(true);
+        } else {
+            // Kanal ile açıldı
+            const cBtn = document.getElementById(`chanBtn_${currentChannelId}`);
+            if (cBtn) cBtn.click();
+            else loadChatMessages(true);
+        }
+
+        // Periyodik anlık mesaj kontrolü (3 saniyede bir)
+        messagePollTimer = setInterval(() => {
+            loadChatMessages(false);
+        }, 3000);
+
+        // Periyodik okunmamış mesaj sayısı kontrolü (4 saniyede bir)
+        unreadPollTimer = setInterval(pollUnreadSummary, 4000);
+        pollUnreadSummary();
+    });
+
+    // Kanal Seçimi
+    function selectChannel(chanId, chanName, chanDesc, iconClass, colorName) {
+        currentChatType = 'channel';
+        currentChannelId = chanId;
+        currentPartnerId = null;
+        currentTargetTitle = chanName;
+
+        // UI Buton Aktifliği
+        document.querySelectorAll('.chat-target-btn').forEach(b => {
+            b.className = b.className.replace(/bg-blue-600\/20|border-blue-500\/40|bg-emerald-600\/20|border-emerald-500\/40|font-semibold/g, '');
+            if (!b.classList.contains('border-transparent')) b.classList.add('border-transparent');
+        });
+
+        const activeBtn = document.getElementById(`chanBtn_${chanId}`);
+        if (activeBtn) {
+            activeBtn.classList.remove('border-transparent');
+            activeBtn.classList.add('bg-blue-600/20', 'border-blue-500/40', 'font-semibold', 'text-white');
+        }
+
+        // Üst Bar Güncelleme
+        document.getElementById('targetTitle').innerText = chanName;
+        document.getElementById('targetDescription').innerText = chanDesc || `#${chanId} birim kanalı`;
+        document.getElementById('targetBadge').innerText = `#${chanId}`;
+        document.getElementById('targetBadge').className = 'hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/20';
+        
+        const iconEl = document.getElementById('targetIcon');
+        iconEl.className = iconClass || 'fa-solid fa-hashtag';
+        document.getElementById('targetIconContainer').className = 'w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center justify-center text-sm font-bold shrink-0 shadow-sm';
+
+        loadChatMessages(true);
+    }
+
+    // Kullanıcı DM Seçimi
+    function selectUserDM(userId, fullName, role, username) {
+        currentChatType = 'dm';
+        currentPartnerId = userId;
+        currentChannelId = null;
+        currentTargetTitle = fullName;
+
+        // UI Buton Aktifliği
+        document.querySelectorAll('.chat-target-btn').forEach(b => {
+            b.className = b.className.replace(/bg-blue-600\/20|border-blue-500\/40|bg-emerald-600\/20|border-emerald-500\/40|font-semibold/g, '');
+            if (!b.classList.contains('border-transparent')) b.classList.add('border-transparent');
+        });
+
+        const activeBtn = document.getElementById(`userBtn_${userId}`);
+        if (activeBtn) {
+            activeBtn.classList.remove('border-transparent');
+            activeBtn.classList.add('bg-emerald-600/20', 'border-emerald-500/40', 'font-semibold', 'text-white');
+        }
+
+        // Okunmamış badge'ini sıfırla
+        const badge = document.getElementById(`unreadBadge_user_${userId}`);
+        if (badge) {
+            badge.classList.add('hidden');
+            badge.innerText = '0';
+        }
+
+        // Üst Bar Güncelleme
+        document.getElementById('targetTitle').innerText = fullName;
+        document.getElementById('targetDescription').innerText = `${role} • Birebir Özel Mesajlaşma`;
+        document.getElementById('targetBadge').innerText = `@${username}`;
+        document.getElementById('targetBadge').className = 'hidden sm:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20';
+
+        const iconEl = document.getElementById('targetIcon');
+        iconEl.className = 'fa-solid fa-user-lock text-emerald-400';
+        document.getElementById('targetIconContainer').className = 'w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-sm font-bold shrink-0 shadow-sm';
+
+        loadChatMessages(true);
+    }
+
+    // Mesajları Getir
+    let lastRenderedHash = '';
+    function loadChatMessages(forceScroll = false) {
+        const stream = document.getElementById('chatMessagesStream');
+        let url = '';
+
+        if (currentChatType === 'dm' && currentPartnerId) {
+            url = `/api/chat/messages?partner_id=${currentPartnerId}`;
+        } else {
+            url = `/api/chat/messages?channel=${currentChannelId || 'genel'}`;
+        }
+
+        fetch(url)
+            .then(res => res.json())
+            .then(messages => {
+                const isNearBottom = stream.scrollHeight - stream.scrollTop <= stream.clientHeight + 100;
+                const newHash = JSON.stringify(messages.map(m => m.id + '_' + (m.message || '') + '_' + (m.photo_url || '')));
+
+                if (newHash === lastRenderedHash && !forceScroll) {
+                    return;
+                }
+                lastRenderedHash = newHash;
+
+                if (!messages || messages.length === 0) {
+                    stream.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-slate-500 py-12 text-center">
+                            <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl text-slate-600 mb-3 shadow-inner">
+                                <i class="fa-solid fa-comments"></i>
+                            </div>
+                            <p class="font-semibold text-slate-300 text-sm">Henüz mesaj bulunmuyor</p>
+                            <p class="text-xs text-slate-500 mt-1 max-w-xs">Bu konuşmayı başlatmak için aşağıdaki alandan ilk mesajınızı gönderin.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '';
+                let lastDate = '';
+
+                messages.forEach(m => {
+                    const isMe = (m.user_id === currentUserId) || (m.username === currentUsername);
+                    const msgDate = m.created_at ? m.created_at.substring(0, 10) : '';
+                    const msgTime = m.created_at ? m.created_at.substring(11, 16) : '';
+
+                    // Tarih Ayırıcı
+                    if (msgDate && msgDate !== lastDate) {
+                        lastDate = msgDate;
+                        html += `
+                            <div class="flex items-center justify-center my-3">
+                                <span class="px-3 py-1 rounded-full bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 shadow-sm">
+                                    📅 ${formatMessageDate(msgDate)}
+                                </span>
+                            </div>
+                        `;
+                    }
+
+                    const initialLetter = (m.full_name || m.username || 'P')[0].toUpperCase();
+
+                    if (isMe) {
+                        // Benim Mesajım (Sağda - Mavi/Indigo)
+                        html += `
+                            <div class="flex justify-end group mb-3 relative">
+                                <div class="max-w-[85%] sm:max-w-[75%] flex items-end gap-2">
+                                    
+                                    <div class="flex flex-col items-end">
+                                        <div class="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400">
+                                            <button type="button" onclick="deleteChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 transition-all" title="Mesajı Sil">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                            <span class="font-bold text-slate-300">Siz</span>
+                                            <span class="text-slate-500 font-mono">${msgTime}</span>
+                                        </div>
+
+                                        <div class="p-3.5 rounded-2xl rounded-br-none bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/10 text-xs leading-relaxed break-words border border-blue-400/20">
+                                            ${m.message ? `<p class="whitespace-pre-wrap">${escapeHtml(m.message)}</p>` : ''}
+                                            ${m.photo_url ? `
+                                                <div class="mt-2 relative rounded-xl overflow-hidden border border-white/20 group/photo cursor-pointer" onclick="openImageLightbox('${m.photo_url}')">
+                                                    <img src="${m.photo_url}" alt="Görsel" class="max-h-60 max-w-full rounded-xl object-cover hover:scale-105 transition-transform duration-300">
+                                                    <div class="absolute inset-0 bg-black/30 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1">
+                                                        <i class="fa-solid fa-magnifying-glass-plus"></i> Büyüt
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+
+                                    <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm mb-1">
+                                        ${initialLetter}
+                                    </div>
+
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Karşı Tarafın Mesajı (Solda - Koyu Slate)
+                        html += `
+                            <div class="flex justify-start group mb-3 relative">
+                                <div class="max-w-[85%] sm:max-w-[75%] flex items-end gap-2">
+                                    
+                                    <div class="w-7 h-7 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center text-xs font-bold shrink-0 shadow-sm mb-1">
+                                        ${initialLetter}
+                                    </div>
+
+                                    <div class="flex flex-col items-start">
+                                        <div class="flex items-center gap-1.5 mb-1 text-[10px] text-slate-400">
+                                            <span class="font-bold text-white">${escapeHtml(m.full_name || m.username)}</span>
+                                            <span class="text-slate-500 font-mono">${msgTime}</span>
+                                            {% if user_role in ('admin', 'patron') %}
+                                            <button type="button" onclick="deleteChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 transition-all" title="Mesajı Sil">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="p-3.5 rounded-2xl rounded-bl-none bg-slate-800/90 text-slate-100 shadow-md border border-slate-700/80 text-xs leading-relaxed break-words">
+                                            ${m.message ? `<p class="whitespace-pre-wrap">${escapeHtml(m.message)}</p>` : ''}
+                                            ${m.photo_url ? `
+                                                <div class="mt-2 relative rounded-xl overflow-hidden border border-slate-700 group/photo cursor-pointer" onclick="openImageLightbox('${m.photo_url}')">
+                                                    <img src="${m.photo_url}" alt="Görsel" class="max-h-60 max-w-full rounded-xl object-cover hover:scale-105 transition-transform duration-300">
+                                                    <div class="absolute inset-0 bg-black/30 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1">
+                                                        <i class="fa-solid fa-magnifying-glass-plus"></i> Büyüt
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+
+                stream.innerHTML = html;
+
+                if (forceScroll || isNearBottom) {
+                    stream.scrollTop = stream.scrollHeight;
+                }
+            })
+            .catch(err => console.error("Chat load error:", err));
+    }
+
+    // Mesaj Gönderme
+    function handleChatSubmit(e) {
+        if (e) e.preventDefault();
+        if (isSubmitting) return;
+
+        const inputEl = document.getElementById('chatInputMessage');
+        const text = inputEl.value.trim();
+
+        if (!text && !currentSelectedFile) {
+            return;
+        }
+
+        const formData = new FormData();
+        if (currentChatType === 'dm' && currentPartnerId) {
+            formData.append('receiver_id', currentPartnerId);
+        } else {
+            formData.append('channel', currentChannelId || 'genel');
+        }
+
+        formData.append('message', text);
+        if (currentSelectedFile) {
+            formData.append('photo', currentSelectedFile);
+        }
+
+        isSubmitting = true;
+        const btn = document.getElementById('btnChatSubmit');
+        btn.disabled = true;
+        btn.classList.add('opacity-70');
+
+        fetch('/api/chat/send', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            isSubmitting = false;
+            btn.disabled = false;
+            btn.classList.remove('opacity-70');
+
+            if (data.status === 'success') {
+                inputEl.value = '';
+                removeSelectedPhoto();
+                loadChatMessages(true);
+            } else {
+                alert('Mesaj gönderilemedi: ' + (data.message || ''));
+            }
+        })
+        .catch(err => {
+            isSubmitting = false;
+            btn.disabled = false;
+            btn.classList.remove('opacity-70');
+            console.error("Send error:", err);
+            alert('Mesaj gönderilirken bir hata oluştu.');
+        });
+    }
+
+    // Textarea Enter Tuşu Kontrolü
+    function handleTextareaKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleChatSubmit();
+        }
+    }
+
+    // Hızlı Emoji / Reaksiyon Ekle
+    function insertEmoji(emoji) {
+        const inputEl = document.getElementById('chatInputMessage');
+        inputEl.value = inputEl.value ? (inputEl.value + ' ' + emoji) : emoji;
+        inputEl.focus();
+    }
+
+    // Fotoğraf Seçimi & Önizleme
+    function handlePhotoSelect(input) {
+        if (input.files && input.files[0]) {
+            currentSelectedFile = input.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('photoPreviewThumb').src = e.target.result;
+                document.getElementById('photoPreviewName').innerText = currentSelectedFile.name;
+                document.getElementById('photoPreviewStrip').classList.remove('hidden');
+            };
+            reader.readAsDataURL(currentSelectedFile);
+        }
+    }
+
+    function removeSelectedPhoto() {
+        currentSelectedFile = null;
+        document.getElementById('chatPhotoFileInput').value = '';
+        document.getElementById('photoPreviewStrip').classList.add('hidden');
+    }
+
+    // Mesaj Silme
+    function deleteChatMessage(msgId) {
+        if (!confirm('Bu mesajı silmek istediğinize emin misiniz?')) return;
+
+        fetch(`/api/chat/message/${msgId}/delete`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadChatMessages(false);
+                } else {
+                    alert('Mesaj silinemedi: ' + (data.message || ''));
+                }
+            })
+            .catch(err => console.error("Delete msg error:", err));
+    }
+
+    // Sohbet Geçmişini Temizleme
+    function clearCurrentChat() {
+        let label = currentChatType === 'dm' ? `"${currentTargetTitle}" ile olan özel sohbet` : `#${currentChannelId} kanalı`;
+        if (!confirm(`${label} geçmişini tamamen silmek istediğinize emin misiniz?`)) return;
+
+        const bodyData = {};
+        if (currentChatType === 'dm') {
+            bodyData.partner_id = currentPartnerId;
+        } else {
+            bodyData.channel = currentChannelId;
+        }
+
+        fetch('/api/chat/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyData)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                loadChatMessages(true);
+            } else {
+                alert('Temizlenemedi: ' + (data.message || ''));
+            }
+        })
+        .catch(err => console.error("Clear chat error:", err));
+    }
+
+    // Okunmamış DM Sayaçlarını Periyodik Sorgula
+    function pollUnreadSummary() {
+        fetch('/api/chat/unread-summary')
+            .then(res => res.json())
+            .then(summary => {
+                if (!summary || !summary.by_user) return;
+                
+                document.querySelectorAll('.user-unread-badge').forEach(el => {
+                    const uId = el.id.replace('unreadBadge_user_', '');
+                    const count = summary.by_user[uId] || 0;
+                    if (count > 0 && !(currentChatType === 'dm' && currentPartnerId == uId)) {
+                        el.innerText = count;
+                        el.classList.remove('hidden');
+                    } else {
+                        el.classList.add('hidden');
+                    }
+                });
+
+                // Sol menü ve header sayaç rozetlerini güncelle
+                const navBadge = document.getElementById('navChatUnreadBadge');
+                if (navBadge) {
+                    if (summary.total_unread > 0) {
+                        navBadge.innerText = summary.total_unread;
+                        navBadge.classList.remove('hidden');
+                    } else {
+                        navBadge.classList.add('hidden');
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    // Sol Panel Filtreleme (Arama)
+    function filterChatList() {
+        const query = document.getElementById('chatSearchInput').value.toLowerCase().trim();
+        document.querySelectorAll('.chat-target-btn').forEach(btn => {
+            const data = btn.getAttribute('data-search') || '';
+            if (!query || data.includes(query)) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        });
+    }
+
+    // Lightbox Modal
+    function openImageLightbox(url) {
+        document.getElementById('lightboxImg').src = url;
+        document.getElementById('lightboxDownloadBtn').href = url;
+        const m = document.getElementById('imageLightboxModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+
+    function closeImageLightbox() {
+        const m = document.getElementById('imageLightboxModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeImageLightbox();
+    });
+
+    // Tarih Formatlayıcı
+    function formatMessageDate(dateStr) {
+        if (!dateStr) return '';
+        const today = new Date().toISOString().substring(0, 10);
+        const yest = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+        if (dateStr === today) return 'Bugün';
+        if (dateStr === yest) return 'Dün';
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}.${parts[1]}.${parts[0]}`;
+        }
+        return dateStr;
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+</script>
+{% endblock %}

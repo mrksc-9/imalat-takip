@@ -1,0 +1,30 @@
+{
+  "name": "ORDUMAK ÇELİK İMALAT MES",
+  "short_name": "ORDUMAK MES",
+  "description": "Çelik İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/img/ordumak_logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/img/ordumak_logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/img/ordumak_logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

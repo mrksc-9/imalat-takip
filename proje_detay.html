@@ -19,11 +19,6 @@
                     <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
                         {{ project.status }}
                     </span>
-                    {% if project.pos_prefix %}
-                    <span class="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-yellow-400 font-semibold" title="Poz Prefix">
-                        Prefix: {{ project.pos_prefix }}
-                    </span>
-                    {% endif %}
                 </div>
                 <h2 class="text-lg font-black text-white tracking-wide">{{ project.name }}</h2>
                 <p class="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -36,6 +31,10 @@
             <!-- Eylem Butonları -->
             <div class="flex flex-wrap items-center gap-2">
                 {% if can_user_edit('projeler') %}
+                <button type="button" onclick="openModal('editProjectTonnageModal')" class="px-3 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Toplam Tonajı Düzenle">
+                    <i class="fa-solid fa-weight-hanging"></i>
+                    <span>Tonajı Düzenle</span>
+                </button>
                 <form action="{{ url_for('api_proje_sil', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projeyi ve tüm parça/montaj kayıtlarını silmek istediğinizden emin misiniz?');" class="inline">
                     <button type="submit" class="px-3 py-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Projeyi Sil">
                         <i class="fa-solid fa-trash"></i>
@@ -48,9 +47,16 @@
 
         <!-- KPI Tonaj Şeridi -->
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 text-xs">
-            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
-                <span class="text-slate-400 block text-[10px] uppercase font-semibold">Toplam Tonaj</span>
-                <span class="text-base font-black text-white font-mono">{{ project.total_tonnage | format_num }} Ton</span>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl relative group">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Toplam Tonaj</span>
+                    {% if can_user_edit('projeler') %}
+                    <button type="button" onclick="openModal('editProjectTonnageModal')" class="text-blue-400 hover:text-blue-300 text-[10px] font-bold flex items-center gap-1" title="Tonajı Düzenle">
+                        <i class="fa-solid fa-pen-to-square"></i> Düzenle
+                    </button>
+                    {% endif %}
+                </div>
+                <span class="text-base font-black text-white font-mono mt-0.5 block">{{ project.total_tonnage | format_num }} Ton</span>
             </div>
             <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
                 <span class="text-yellow-400 block text-[10px] uppercase font-semibold">Kesilen Tonaj</span>
@@ -170,7 +176,10 @@
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Hangi montaj markasının hangi tekil plaka/profillerden oluştuğu listesi:</p>
                 <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="Marka veya poz ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    <div class="relative flex-1 sm:w-64">
+                        <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="🔍 Poz filtrele (Örn: D5, p1)..." class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500 font-medium placeholder-slate-500">
+                        <i class="fa-solid fa-filter absolute left-2.5 top-2 text-slate-500 text-xs"></i>
+                    </div>
                     {% if can_user_edit('projeler') %}
                     <button onclick="openModal('uploadAssemblyPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -445,6 +454,50 @@
             <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
                 <button type="button" onclick="closeModal('pastePartsModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
                 <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TONAJ DÜZENLEME MODALI -->
+<div id="editProjectTonnageModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/50">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <i class="fa-solid fa-weight-hanging"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-white">Proje Toplam Tonajını Düzenle</h3>
+                    <p class="text-[11px] text-slate-400 font-mono">{{ project.code }} - {{ project.name }}</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editProjectTonnageModal')" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_proje_tonaj_guncelle', project_id=project.id) }}" method="POST" class="p-5 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-300 font-semibold mb-1.5">Hedef / Toplam Tonaj (Ton)</label>
+                <div class="relative">
+                    <input type="number" step="0.001" name="target_tonnage" value="{{ project.target_tonnage or project.total_tonnage }}" required class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    <span class="absolute right-3.5 top-2.5 text-slate-400 font-semibold">Ton</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    <i class="fa-solid fa-circle-info text-blue-400 mr-1"></i>
+                    Tekla montaj listesi yüklendiğinde tonaj otomatik hesaplanır. İsterseniz buradan manuel revize edebilirsiniz. Otomatik hesaplamaya dönmek için 0 yazabilirsiniz.
+                </p>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editProjectTonnageModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition-colors">
+                    Vazgeç
+                </button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-check"></i>
+                    <span>Kaydet</span>
+                </button>
             </div>
         </form>
     </div>

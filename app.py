@@ -27,6 +27,7 @@ from database import (
     admin_update_user, delete_user,
     get_active_announcements, add_announcement, deactivate_announcement, delete_announcement,
     get_chat_messages, save_chat_message, clear_chat_messages, delete_chat_message,
+    mark_chat_messages_as_read, get_chat_users_with_unread, get_unread_chat_summary,
     get_meetings, get_meeting_by_id, add_meeting, update_meeting, delete_meeting,
     get_meeting_action_items, add_meeting_action_item, update_action_item_status, delete_meeting_action_item,
     add_notification, get_recent_notifications,
@@ -81,7 +82,7 @@ VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BPBRMOLSjWIA_FowmaSo7BfrX
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "6iJCT6-yECbniensUcfe2x_mxGcXfMVxvHWkK3skmBA")
 VAPID_CLAIMS = {"sub": "mailto:admin@ordumak.com.tr"}
 
-def send_web_push_notification(title, message, url="/", icon="/static/img/ordumak_logo.svg"):
+def send_web_push_notification(title, message, url="/", icon="/static/img/ordumak_logo.png"):
     """Kayıtlı tüm mobil ve masaüstü tarayıcılara arka planda Web Push bildirimi gönderir."""
     def _send_task():
         if not webpush:
@@ -123,6 +124,17 @@ def send_web_push_notification(title, message, url="/", icon="/static/img/orduma
             print(f"WebPush background thread error: {e}")
 
     threading.Thread(target=_send_task, daemon=True).start()
+
+_original_add_notification = add_notification
+
+def add_notification(category, title, message, icon='fa-bell', color='blue', link_url='', user_id=None):
+    """Hem veritabanı notification tablosuna yazar hem de kayıtlı tüm cihazlara arka plan Web Push bildirimi iletir."""
+    res = _original_add_notification(category, title, message, icon=icon, color=color, link_url=link_url, user_id=user_id)
+    try:
+        send_web_push_notification(title=title, message=message, url=link_url or '/', icon='/static/img/ordumak_logo.png')
+    except Exception as e:
+        print(f"Push dispatch note: {e}")
+    return res
 
 
 @app.errorhandler(500)
@@ -522,8 +534,8 @@ def proje_detay(project_id):
 
 @app.route('/api/projeler', methods=['POST'])
 def api_proje_ekle():
-    code = request.form.get('code', '').strip().upper()
     name = request.form.get('name', '').strip()
+    code = request.form.get('code', '').strip().upper()
     customer = request.form.get('customer', '').strip()
     site_location = request.form.get('site_location', '').strip()
     start_date = request.form.get('start_date', '')
@@ -534,9 +546,25 @@ def api_proje_ekle():
     pos_prefix = request.form.get('pos_prefix', '').strip()
     notes = request.form.get('notes', '').strip()
 
-    if not code or not name:
-        flash("Proje Kodu ve Proje Adı zorunludur!", "warning")
+    if not name:
+        flash("Proje Adı zorunludur!", "warning")
         return redirect(url_for('projeler'))
+
+    if not code:
+        import unicodedata
+        tr_map = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+        clean_name = name.translate(tr_map)
+        clean_code = re.sub(r'[^A-Za-z0-9]', '', clean_name).upper()[:10]
+        if not clean_code:
+            clean_code = f"PRJ-{int(datetime.now().timestamp()) % 10000}"
+        
+        conn_check = get_db()
+        c_check = conn_check.cursor()
+        c_check.execute("SELECT id FROM projects WHERE code = ?", (clean_code,))
+        if c_check.fetchone():
+            clean_code = f"{clean_code[:7]}-{int(datetime.now().timestamp()) % 1000}"
+        conn_check.close()
+        code = clean_code
 
     conn = get_db()
     cursor = conn.cursor()
@@ -560,12 +588,43 @@ def api_proje_ekle():
             ip_address=request.remote_addr
         )
 
-        flash(f"'{name}' projesi başarıyla oluşturuldu.", "success")
+        flash(f"'{name}' projesi başarıyla oluşturuldu (Proje Kodu: {code}).", "success")
         return redirect(url_for('proje_detay', project_id=new_id))
     except Exception as e:
         conn.close()
         flash(f"Proje eklenirken hata: {str(e)}", "danger")
         return redirect(url_for('projeler'))
+
+@app.route('/api/projeler/<int:project_id>/tonaj-guncelle', methods=['POST'])
+def api_proje_tonaj_guncelle(project_id):
+    """Proje toplam tonajını manuel olarak güncelleme/revize etme."""
+    target_tonnage = clean_float(request.form.get('target_tonnage', 0.0))
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
+    p_row = cursor.fetchone()
+    if not p_row:
+        conn.close()
+        flash("Proje bulunamadı!", "danger")
+        return redirect(url_for('projeler'))
+    
+    cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (target_tonnage, project_id))
+    conn.commit()
+    conn.close()
+    
+    u = session.get('user', {})
+    log_activity(
+        action="Proje Tonajı Güncellendi",
+        entity_type="projects",
+        entity_id=project_id,
+        details=f"'{p_row['name']}' projesinin tonajı {target_tonnage:.2f} Ton olarak güncellendi.",
+        username=u.get('username', 'Kullanıcı'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+    flash(f"Proje tonajı başarıyla güncellendi: {target_tonnage:.2f} Ton", "success")
+    return redirect(url_for('proje_detay', project_id=project_id))
 
 @app.route('/api/projeler/<int:project_id>/assembly-yukle', methods=['POST'])
 def api_assembly_yukle(project_id):
@@ -800,6 +859,10 @@ def api_proje_sil(project_id):
     cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
     p_row = cursor.fetchone()
     p_info = f"{p_row['code']} - {p_row['name']}" if p_row else f"ID: {project_id}"
+    p_name = p_row['name'] if p_row else ''
+    
+    # Kesim kayıtlarını koru: Proje silinse bile kesim tonajı ve operatör performans logları silinmesin
+    cursor.execute('UPDATE cutting_entries SET project_id = NULL, project_name = ? WHERE project_id = ?', (p_name, project_id))
     
     cursor.execute('DELETE FROM projects WHERE id = ?', (project_id,))
     conn.commit()
@@ -810,13 +873,13 @@ def api_proje_sil(project_id):
         action="Proje Silindi",
         entity_type="projects",
         entity_id=project_id,
-        details=f"'{p_info}' projesi ve bağlı tüm kayıtlar silindi.",
+        details=f"'{p_info}' projesi silindi (kesim performans kayıtları korundu).",
         username=u.get('username', 'Kullanıcı'),
         user_id=u.get('id'),
         ip_address=request.remote_addr
     )
 
-    flash("Proje ve bağlı tüm veriler silindi.", "info")
+    flash("Proje silindi (kesim performans kayıtları korundu).", "info")
     return redirect(url_for('projeler'))
 
 
@@ -1341,21 +1404,31 @@ def kesim_takip():
     cursor.execute('SELECT * FROM cutting_entries ORDER BY id DESC LIMIT 50')
     cutting_logs = [dict(r) for r in cursor.fetchall()]
 
-    # Gün Bazlı Özet
+    # Gün Bazlı Özet (Tonaj ve Adet)
     cursor.execute('''
-    SELECT cut_date, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces
+    SELECT cut_date, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
     FROM cutting_entries
-    GROUP BY cut_date ORDER BY cut_date DESC LIMIT 10
+    GROUP BY cut_date ORDER BY cut_date DESC LIMIT 15
     ''')
     daily_summary = [dict(r) for r in cursor.fetchall()]
 
-    # Makine Bazlı Özet
+    # Makine Bazlı Özet (Tonaj ve Adet)
     cursor.execute('''
-    SELECT machine, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces
+    SELECT machine, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
     FROM cutting_entries
-    GROUP BY machine ORDER BY total_pieces DESC
+    WHERE machine IS NOT NULL AND machine != ''
+    GROUP BY machine ORDER BY total_tonnage DESC, total_pieces DESC
     ''')
     machine_summary = [dict(r) for r in cursor.fetchall()]
+
+    # Operatör Bazlı Özet (Tonaj ve Adet)
+    cursor.execute('''
+    SELECT operator, COUNT(id) as entry_count, SUM(cut_quantity) as total_pieces, ROUND(COALESCE(SUM(cut_tonnage), 0), 2) as total_tonnage
+    FROM cutting_entries
+    WHERE operator IS NOT NULL AND operator != ''
+    GROUP BY operator ORDER BY total_tonnage DESC, total_pieces DESC
+    ''')
+    operator_summary = [dict(r) for r in cursor.fetchall()]
 
     conn.close()
     return render_template('kesim_takip.html',
@@ -1366,6 +1439,7 @@ def kesim_takip():
                            cutting_logs=cutting_logs,
                            daily_summary=daily_summary,
                            machine_summary=machine_summary,
+                           operator_summary=operator_summary,
                            today_str=datetime.now().strftime("%Y-%m-%d"))
 
 @app.route('/api/kesim-takip/poz-bilgisi')
@@ -1427,9 +1501,10 @@ def api_kesim_toplu_kaydet():
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT code FROM projects WHERE id = ?", (project_id,))
+    cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
     p_row = cursor.fetchone()
     p_code = p_row['code'] if p_row else ""
+    p_name = p_row['name'] if p_row else ""
 
     u = session.get('user', {})
     saved_count = 0
@@ -1451,21 +1526,25 @@ def api_kesim_toplu_kaydet():
         if not pos_no or cut_quantity <= 0:
             continue
 
-        # Parça listesini güncelle
-        cursor.execute("SELECT id, quantity, cut_quantity, profile_type FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+        # Parça listesini güncelle ve birim ağırlığı al
+        cursor.execute("SELECT id, quantity, cut_quantity, profile_type, unit_weight FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
         part_row = cursor.fetchone()
+        unit_weight = 0.0
         if part_row:
             new_cut_total = part_row['cut_quantity'] + cut_quantity
             cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
                            (new_cut_total, max(0, part_row['quantity'] - new_cut_total), part_row['id']))
             if not profile:
                 profile = part_row['profile_type']
+            unit_weight = float(part_row['unit_weight'] or 0.0)
+
+        cut_tonnage = round((cut_quantity * unit_weight) / 1000.0, 4)
 
         # Log kaydet
         cursor.execute('''
-        INSERT INTO cutting_entries (project_id, project_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, user_id, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (project_id, p_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, u.get('id'), notes))
+        INSERT INTO cutting_entries (project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, row_machine, row_operator, helper, shift, u.get('id'), notes))
         saved_count += 1
 
     conn.commit()
@@ -1506,28 +1585,35 @@ def api_kesim_kaydet():
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT code FROM projects WHERE id = ?", (project_id,))
+    cursor.execute("SELECT code, name FROM projects WHERE id = ?", (project_id,))
     p_row = cursor.fetchone()
     p_code = p_row['code'] if p_row else ""
+    p_name = p_row['name'] if p_row else ""
 
-    # Parça listesini güncelle
-    cursor.execute("SELECT id, quantity, cut_quantity FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+    # Parça listesini güncelle ve birim ağırlığı al
+    cursor.execute("SELECT id, quantity, cut_quantity, profile_type, unit_weight FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
     part_row = cursor.fetchone()
 
+    unit_weight = 0.0
     is_overcut = False
     if part_row:
         new_cut_total = part_row['cut_quantity'] + cut_quantity
         cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
                        (new_cut_total, max(0, part_row['quantity'] - new_cut_total), part_row['id']))
+        if not profile:
+            profile = part_row['profile_type']
+        unit_weight = float(part_row['unit_weight'] or 0.0)
         if new_cut_total > part_row['quantity']:
             is_overcut = True
+
+    cut_tonnage = round((cut_quantity * unit_weight) / 1000.0, 4)
 
     # Kesim logunu ekle
     u = session.get('user', {})
     cursor.execute('''
-    INSERT INTO cutting_entries (project_id, project_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, user_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (project_id, p_code, pos_no, profile, cut_quantity, cut_date, machine, operator, helper, shift, u.get('id'), notes))
+    INSERT INTO cutting_entries (project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, u.get('id'), notes))
     conn.commit()
     conn.close()
 
@@ -1535,7 +1621,7 @@ def api_kesim_kaydet():
         action="Kesim Girişi Yapıldı",
         entity_type="cutting_entries",
         entity_id=project_id,
-        details=f"{p_code} - Poz '{pos_no}' için {cut_quantity} adet kesim işlendi ({machine} - {operator}).",
+        details=f"{p_code} - Poz '{pos_no}' için {cut_quantity} adet kesim ({cut_tonnage:.3f} Ton) işlendi ({machine} - {operator}).",
         username=u.get('username', 'Kullanıcı'),
         user_id=u.get('id'),
         ip_address=request.remote_addr
@@ -1544,7 +1630,7 @@ def api_kesim_kaydet():
     if is_overcut:
         flash(f"Dikkat: '{pos_no}' pozu için girilen toplam kesim ({new_cut_total}), proje hedef miktarını ({part_row['quantity']}) aştı!", "warning")
     else:
-        flash(f"'{pos_no}' pozu için {cut_quantity} adet kesim başarıyla işlendi.", "success")
+        flash(f"'{pos_no}' pozu için {cut_quantity} adet ({cut_tonnage:.3f} Ton) kesim başarıyla işlendi.", "success")
 
     return redirect(url_for('kesim_takip'))
 
@@ -1837,6 +1923,94 @@ def api_kalite_karar():
     )
 
     flash(f"Kalite denetim kararı ({decision}) başarıyla kaydedildi.", "success")
+    return redirect(url_for('kalite_kontrol'))
+
+@app.route('/api/kalite-kontrol/boyaya-sevk', methods=['POST'])
+def api_kalite_boyaya_sevk():
+    """Kaliteden onaylanan montajları boyahaneye / yüzey korumaya sevk eder."""
+    inspection_id = request.form.get('inspection_id')
+    quantity = int(request.form.get('quantity', 1))
+    process_type = request.form.get('process_type', 'Kumlama') # 'Kumlama', 'Boya', 'Galvaniz'
+    notes = request.form.get('notes', '').strip()
+
+    u = session.get('user', {})
+    operator_name = u.get('full_name', 'Kalite & Sevk')
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM qa_inspections WHERE id = ?", (inspection_id,))
+    qa = cursor.fetchone()
+    if not qa or not qa['assembly_id']:
+        conn.close()
+        flash("Kalite kaydı veya montaj bilgisi bulunamadı.", "warning")
+        return redirect(url_for('kalite_kontrol'))
+
+    cursor.execute("SELECT * FROM assemblies WHERE id = ?", (qa['assembly_id'],))
+    ass = cursor.fetchone()
+    if not ass:
+        conn.close()
+        flash("Montaj kaydı bulunamadı.", "warning")
+        return redirect(url_for('kalite_kontrol'))
+
+    # Hedef istasyon ve durum güncellemesi
+    new_status = 'KUMLAMADA' if process_type == 'Kumlama' else ('BOYADA' if process_type == 'Boya' else 'GALVANIZDE')
+    
+    if process_type == 'Kumlama':
+        new_sandblast = ass['paint_sandblast_qty'] + quantity
+        cursor.execute('''
+        UPDATE assemblies SET
+            paint_sandblast_qty = ?,
+            paint_status = ?
+        WHERE id = ?
+        ''', (new_sandblast, new_status, qa['assembly_id']))
+    elif process_type == 'Boya':
+        new_paint = ass['paint_paint_qty'] + quantity
+        cursor.execute('''
+        UPDATE assemblies SET
+            paint_paint_qty = ?,
+            paint_status = ?
+        WHERE id = ?
+        ''', (new_paint, new_status, qa['assembly_id']))
+    else:
+        new_galv = ass['paint_galv_qty'] + quantity
+        cursor.execute('''
+        UPDATE assemblies SET
+            paint_galv_qty = ?,
+            paint_status = ?
+        WHERE id = ?
+        ''', (new_galv, new_status, qa['assembly_id']))
+
+    # Paint record kaydı ekle
+    now_str = get_istanbul_now_str()
+    cursor.execute('''
+    INSERT INTO paint_records (project_id, assembly_id, assembly_pos, process_type, quantity, completion_date, operator_name, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (ass['project_id'], qa['assembly_id'], qa['assembly_pos'], f"Boyaya Sevk ({process_type})", quantity, now_str, operator_name, notes))
+
+    conn.commit()
+    conn.close()
+
+    log_activity(
+        action="Boyaya Sevk Edildi",
+        entity_type="assemblies",
+        entity_id=qa['assembly_id'],
+        details=f"Marka '{qa['assembly_pos']}' ({quantity} Adet) -> {process_type} istasyonuna sevk edildi. Not: {notes}",
+        username=u.get('username', 'Kullanıcı'),
+        user_id=u.get('id'),
+        ip_address=request.remote_addr
+    )
+
+    add_notification(
+        category='boya_sevk',
+        title="Boyahaneye Yeni Sevk",
+        message=f"Marka '{qa['assembly_pos']}' ({quantity} Adet) kalite kontrol onayından sonra {process_type} istasyonuna sevk edildi.",
+        icon='fa-paint-roller',
+        color='purple',
+        link_url=url_for('boya_takip')
+    )
+
+    flash(f"'{qa['assembly_pos']}' ({quantity} Adet) başarıyla Boya Takip ({process_type}) istasyonuna sevk edildi.", "success")
     return redirect(url_for('kalite_kontrol'))
 
 
@@ -2892,31 +3066,151 @@ def api_toplanti_aksiyon_sil(item_id):
 
 
 # =========================================================================
-# 19. CANLI SOHBET & FOTOĞRAFLI İLETİŞİM SİSTEMİ
+# 19. CANLI SOHBET & İLETİŞİM MERKEZİ (BİRİM KANALLARI & BİREBİR DM)
 # =========================================================================
+CHAT_CHANNELS = [
+    {
+        'id': 'genel',
+        'name': 'Genel Fabrika & Duyurular',
+        'short_name': '#genel',
+        'icon': 'fa-solid fa-globe',
+        'color': 'blue',
+        'badge_class': 'bg-blue-500/10 text-blue-400 border-blue-500/30',
+        'desc': 'Tüm birimler ortak koordinasyon ve genel fabrika duyuruları'
+    },
+    {
+        'id': 'kesim',
+        'name': 'Kesim & Ön İmalat',
+        'short_name': '#kesim',
+        'icon': 'fa-solid fa-scissors',
+        'color': 'amber',
+        'badge_class': 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+        'desc': 'CNC Plazma, Sac Lazer, Profil Lazer, Testere ve Oksijen Kesim'
+    },
+    {
+        'id': 'imalat',
+        'name': 'İmalat & Çatım-Kaynak',
+        'short_name': '#imalat',
+        'icon': 'fa-solid fa-toolbox',
+        'color': 'orange',
+        'badge_class': 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+        'desc': 'Çatım holleri, kaynak istasyonları, tesviye ve montaj atölyesi'
+    },
+    {
+        'id': 'kalite',
+        'name': 'Kalite Kontrol (QA/QC)',
+        'short_name': '#kalite',
+        'icon': 'fa-solid fa-clipboard-check',
+        'color': 'teal',
+        'badge_class': 'bg-teal-500/10 text-teal-400 border-teal-500/30',
+        'desc': 'Kaynak muayenesi, boya mikron ölçümü, NDT ve kalite onayları'
+    },
+    {
+        'id': 'boya',
+        'name': 'Boya & Yüzey İşlem',
+        'short_name': '#boya',
+        'icon': 'fa-solid fa-paint-roller',
+        'color': 'purple',
+        'badge_class': 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+        'desc': 'Kumlama (SA 2.5), Astar, Son Kat Epoksi/Poliüretan ve Galvaniz'
+    },
+    {
+        'id': 'sevkiyat',
+        'name': 'Sevkiyat & Lojistik',
+        'short_name': '#sevkiyat',
+        'icon': 'fa-solid fa-truck-moving',
+        'color': 'emerald',
+        'badge_class': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+        'desc': 'Yükleme koordinasyonu, sevk irsaliyeleri ve nakliye takibi'
+    },
+    {
+        'id': 'muhasebe',
+        'name': 'Muhasebe & Satınalma',
+        'short_name': '#muhasebe',
+        'icon': 'fa-solid fa-file-invoice-dollar',
+        'color': 'indigo',
+        'badge_class': 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30',
+        'desc': 'Fatura, irsaliye kayıtları, malzeme tedarik ve satınalma'
+    },
+    {
+        'id': 'yonetim',
+        'name': 'Yönetim & Mühendislik',
+        'short_name': '#yonetim',
+        'icon': 'fa-solid fa-user-tie',
+        'color': 'rose',
+        'badge_class': 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+        'desc': 'Yöneticiler, Proje Müdürleri, İmalat Mühendisleri ve İş Hazırlama'
+    }
+]
+
+@app.route('/sohbet')
+def sohbet():
+    """Tam sayfa kurumsal sohbet ve iletişim merkezi."""
+    cur_u = session.get('user', {})
+    if not cur_u:
+        return redirect(url_for('login', next=request.path))
+
+    initial_channel = request.args.get('channel', 'genel')
+    initial_partner_id = request.args.get('partner_id')
+    if initial_partner_id and str(initial_partner_id).isdigit():
+        initial_partner_id = int(initial_partner_id)
+    else:
+        initial_partner_id = None
+
+    users = get_chat_users_with_unread(current_user_id=cur_u.get('id'))
+
+    return render_template(
+        'sohbet.html',
+        chat_channels=CHAT_CHANNELS,
+        users=users,
+        initial_channel=initial_channel,
+        initial_partner_id=initial_partner_id
+    )
+
+@app.route('/api/chat/messages')
 @app.route('/api/chat/<channel>')
-def api_chat_get(channel):
-    """Kanal bazlı sohbet mesajlarını JSON döner."""
-    msgs = get_chat_messages(channel=channel, limit=100)
+def api_chat_get(channel=None):
+    """Kanal bazlı veya birebir DM sohbet mesajlarını JSON döner."""
+    cur_u = session.get('user', {})
+    user_id = cur_u.get('id') if cur_u else None
+
+    req_channel = channel or request.args.get('channel') or 'genel'
+    partner_id = request.args.get('partner_id') or request.args.get('dm_user_id')
+
+    if partner_id and str(partner_id).isdigit() and int(partner_id) > 0 and user_id:
+        p_id = int(partner_id)
+        msgs = get_chat_messages(user_id=user_id, partner_id=p_id, limit=150)
+        # Mesajları okundu olarak işaretle
+        mark_chat_messages_as_read(current_user_id=user_id, partner_id=p_id)
+    else:
+        msgs = get_chat_messages(channel=req_channel, limit=150)
+
     return jsonify(msgs)
 
 @app.route('/api/chat/send', methods=['POST'])
 def api_chat_send():
-    """Yeni sohbet mesajı ve görsel kaydeder; AI kanalı ise anında yanıt üretir."""
+    """Yeni sohbet mesajı ve görsel kaydeder (Kanal veya Birebir DM)."""
     u = session.get('user', {})
     if not u:
         return jsonify({'status': 'error', 'message': 'Oturum açılmamış.'}), 401
 
     channel = request.form.get('channel', 'genel')
+    receiver_id = request.form.get('receiver_id')
     message = request.form.get('message', '').strip()
     photo_url = ""
+
+    if receiver_id and str(receiver_id).isdigit() and int(receiver_id) > 0:
+        receiver_id = int(receiver_id)
+    else:
+        receiver_id = None
 
     if 'photo' in request.files:
         photo = request.files['photo']
         if photo and photo.filename != '':
             ext = os.path.splitext(photo.filename)[1].lower()
             if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
-                filename = f"chat_{channel}_{int(datetime.now().timestamp())}_{photo.filename}"
+                prefix = f"dm_{receiver_id}" if receiver_id else f"chat_{channel}"
+                filename = f"{prefix}_{int(datetime.now().timestamp())}_{photo.filename}"
                 save_dir = os.path.join(BASE_DIR, 'static', 'uploads', 'chat')
                 os.makedirs(save_dir, exist_ok=True)
                 photo.save(os.path.join(save_dir, filename))
@@ -2925,41 +3219,103 @@ def api_chat_send():
     if not message and not photo_url:
         return jsonify({'status': 'error', 'message': 'Boş mesaj gönderilemez.'}), 400
 
-    save_chat_message(
+    msg_id = save_chat_message(
         channel=channel,
         user_id=u.get('id'),
         username=u.get('username'),
         full_name=u.get('full_name'),
         message=message,
-        photo_url=photo_url
+        photo_url=photo_url,
+        receiver_id=receiver_id
     )
 
-    # Arka planda Web Push bildirimi gönder
+    if receiver_id:
+        notif_title = f"💬 Özel Mesaj: {u.get('full_name', 'Personel')}"
+        notif_url = f"/sohbet?partner_id={u.get('id')}"
+    else:
+        notif_title = f"💬 #{channel} - {u.get('full_name', 'Personel')}"
+        notif_url = f"/sohbet?channel={channel}"
+
     send_web_push_notification(
-        title=f"💬 {u.get('full_name', 'Personel')} (#{channel})",
+        title=notif_title,
         message=message[:100] if message else "📷 Fotoğraf paylaştı",
-        url="/"
+        url=notif_url
     )
 
-    return jsonify({'status': 'success', 'photo_url': photo_url})
+    return jsonify({
+        'status': 'success',
+        'message_id': msg_id,
+        'photo_url': photo_url,
+        'receiver_id': receiver_id,
+        'channel': channel
+    })
+
+@app.route('/api/chat/mark-read', methods=['POST'])
+def api_chat_mark_read():
+    """Kullanıcıdan gelen mesajları okundu olarak işaretler."""
+    u = session.get('user', {})
+    if not u:
+        return jsonify({'status': 'error', 'message': 'Oturum açılmamış.'}), 401
+
+    data = request.get_json(silent=True) or {}
+    partner_id = data.get('partner_id') or request.form.get('partner_id')
+    if partner_id and str(partner_id).isdigit():
+        mark_chat_messages_as_read(current_user_id=u.get('id'), partner_id=int(partner_id))
+        return jsonify({'status': 'success'})
+    return jsonify({'status': 'error', 'message': 'partner_id gerekli'}), 400
+
+@app.route('/api/chat/unread-summary')
+def api_chat_unread_summary():
+    """Mevcut kullanıcının toplam ve kullanıcı bazlı okunmamış mesaj sayılarını döner."""
+    u = session.get('user', {})
+    if not u:
+        return jsonify({'total_unread': 0, 'by_user': {}})
+    summary = get_unread_chat_summary(current_user_id=u.get('id'))
+    return jsonify(summary)
+
+@app.route('/api/chat/users')
+def api_chat_users():
+    """Aktif kullanıcı listesini ve okunmamış DM sayılarını JSON döner."""
+    u = session.get('user', {})
+    cur_id = u.get('id') if u else None
+    users = get_chat_users_with_unread(current_user_id=cur_id)
+    return jsonify(users)
 
 @app.route('/api/chat/clear', methods=['POST'])
 def api_chat_clear():
-    """Belirli bir sohbet kanalındaki veya tüm kanallardaki mesajları temizler."""
+    """Belirli bir sohbet kanalındaki veya DM konuşmasındaki mesajları temizler."""
     u = session.get('user', {})
+    if not u:
+        return jsonify({'status': 'error', 'message': 'Oturum açılmamış.'}), 401
+
     data = request.get_json(silent=True) or {}
-    channel = data.get('channel') or request.form.get('channel') or 'genel'
-    
-    clear_chat_messages(channel=channel)
-    log_activity(
-        action="Sohbet Temizlendi",
-        entity_type="chat_messages",
-        details=f"#{channel} kanalındaki sohbet mesajları temizlendi.",
-        username=u.get('username'),
-        user_id=u.get('id'),
-        ip_address=request.remote_addr
-    )
-    return jsonify({'status': 'success', 'message': f"#{channel} kanalındaki mesajlar temizlendi."})
+    channel = data.get('channel') or request.form.get('channel')
+    partner_id = data.get('partner_id') or request.form.get('partner_id')
+
+    if partner_id and str(partner_id).isdigit() and int(partner_id) > 0:
+        p_id = int(partner_id)
+        clear_chat_messages(user_id=u.get('id'), partner_id=p_id)
+        log_activity(
+            action="DM Sohbeti Temizlendi",
+            entity_type="chat_messages",
+            details=f"Kullanıcı ID {p_id} ile olan özel sohbet mesajları temizlendi.",
+            username=u.get('username'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'message': 'Özel sohbet geçmişi temizlendi.'})
+    else:
+        chan = channel or 'genel'
+        clear_chat_messages(channel=chan)
+        log_activity(
+            action="Sohbet Temizlendi",
+            entity_type="chat_messages",
+            details=f"#{chan} kanalındaki sohbet mesajları temizlendi.",
+            username=u.get('username'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'message': f"#{chan} kanalındaki mesajlar temizlendi."})
 
 @app.route('/api/chat/message/<int:message_id>/delete', methods=['POST'])
 def api_chat_message_delete(message_id):
@@ -3180,9 +3536,17 @@ def api_push_subscribe():
     if not endpoint or not p256dh or not auth:
         return jsonify({"status": "error", "message": "Geçersiz push abonelik verisi"}), 400
         
-    u = session.get('user', {})
+    u = session.get('user')
+    user_id = None
+    if isinstance(u, dict):
+        user_id = u.get('id')
+    elif isinstance(u, int):
+        user_id = u
+    elif isinstance(u, str) and u.isdigit():
+        user_id = int(u)
+        
     save_push_subscription(
-        user_id=u.get('id'),
+        user_id=user_id,
         endpoint=endpoint,
         p256dh=p256dh,
         auth=auth

@@ -4,6 +4,49 @@
 {% block page_title %}Proje / Toplantı & Karar Takip Sistemi{% endblock %}
 
 {% block content %}
+<style>
+    .meeting-doc-content table, .word-editor-area table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+        border: 1px solid #475569;
+        font-size: 11px;
+    }
+    .meeting-doc-content th, .word-editor-area th {
+        background-color: #1e293b;
+        color: #93c5fd;
+        border: 1px solid #475569;
+        padding: 6px 10px;
+        font-weight: 700;
+        text-align: left;
+    }
+    .meeting-doc-content td, .word-editor-area td {
+        border: 1px solid #334155;
+        padding: 6px 10px;
+        color: #f1f5f9;
+        min-width: 60px;
+    }
+    .meeting-doc-content tr:nth-child(even), .word-editor-area tr:nth-child(even) {
+        background-color: rgba(30, 41, 59, 0.4);
+    }
+    .meeting-doc-content ul, .word-editor-area ul {
+        list-style-type: disc;
+        padding-left: 20px;
+        margin: 6px 0;
+    }
+    .meeting-doc-content ol, .word-editor-area ol {
+        list-style-type: decimal;
+        padding-left: 20px;
+        margin: 6px 0;
+    }
+    .meeting-doc-content h1, .word-editor-area h1 { font-size: 1.25rem; font-weight: 800; color: #ffffff; margin: 8px 0 4px; }
+    .meeting-doc-content h2, .word-editor-area h2 { font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin: 6px 0 3px; }
+    .meeting-doc-content h3, .word-editor-area h3 { font-size: 0.95rem; font-weight: 600; color: #94a3b8; margin: 4px 0 2px; }
+    .word-editor-area:focus {
+        outline: 1px solid #6366f1;
+    }
+</style>
+
 <div class="space-y-6">
 
     <!-- ÜST BAR: Proje Filtreleme & Eylemler -->
@@ -104,14 +147,17 @@
             </div>
             {% endif %}
 
-            <!-- Konuşulan Konular & Notlar -->
+            <!-- Konuşulan Konular & Notlar (Word Belge Görünümü) -->
             <div class="mt-3 pt-3 border-t border-slate-800/60 pl-2 text-xs">
                 {% if m.summary %}
-                <div class="p-3.5 bg-slate-900/60 border border-slate-800/80 rounded-xl">
-                    <span class="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1 mb-1">
-                        <i class="fa-solid fa-comments text-indigo-400"></i> Konuşulan Konular, Alınan Kararlar ve Gündem
+                <div class="p-4 bg-slate-900/90 border border-slate-800 rounded-xl shadow-inner">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1.5 mb-2.5 pb-2 border-b border-slate-800/80">
+                        <i class="fa-solid fa-file-lines text-indigo-400"></i>
+                        <span>Toplantı Notları, Tablo ve Alınan Kararlar</span>
                     </span>
-                    <p class="text-slate-200 whitespace-pre-line leading-relaxed">{{ m.summary }}</p>
+                    <div class="meeting-doc-content text-slate-200 leading-relaxed overflow-x-auto text-xs">
+                        {{ m.summary | safe }}
+                    </div>
                 </div>
                 {% endif %}
             </div>
@@ -248,8 +294,38 @@
             </div>
 
             <div>
-                <label class="block text-slate-400 mb-1 font-semibold">Konuşulan Konular, Alınan Kararlar ve Gündem</label>
-                <textarea name="summary" rows="3.5" placeholder="Toplantıda ele alınan konular, mutabakata varılan kararlar ve genel notlar..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+                <label class="block text-slate-400 mb-1.5 font-semibold flex items-center justify-between">
+                    <span><i class="fa-solid fa-file-lines text-indigo-400 mr-1"></i> Toplantı Notları, Tablo & Kararlar Belgesi</span>
+                    <span class="text-[10px] text-slate-500 font-normal">Word gibi metin biçimlendirebilir ve tablo ekleyebilirsiniz</span>
+                </label>
+                
+                <!-- Word Araç Çubuğu (Toolbar) -->
+                <div class="bg-slate-950 border border-slate-700 rounded-t-xl p-1.5 flex flex-wrap items-center gap-1 text-xs">
+                    <button type="button" onclick="formatWordDoc('bold', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold w-7 text-center" title="Kalın (Ctrl+B)"><b>B</b></button>
+                    <button type="button" onclick="formatWordDoc('italic', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded italic w-7 text-center" title="İtalik (Ctrl+I)"><i>I</i></button>
+                    <button type="button" onclick="formatWordDoc('underline', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded underline w-7 text-center" title="Altı Çizili (Ctrl+U)"><u>U</u></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'add_doc_editor', 'h2')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold text-[11px]" title="Büyük Başlık">H1</button>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'add_doc_editor', 'h3')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold text-[11px]" title="Alt Başlık">H2</button>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'add_doc_editor', 'p')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded text-[11px]" title="Normal Paragraf">P</button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('insertUnorderedList', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Madde İşaretli Liste"><i class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" onclick="formatWordDoc('insertOrderedList', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Numaralı Liste"><i class="fa-solid fa-list-ol"></i></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('justifyLeft', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Sola Hizala"><i class="fa-solid fa-align-left"></i></button>
+                    <button type="button" onclick="formatWordDoc('justifyCenter', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Ortala"><i class="fa-solid fa-align-center"></i></button>
+                    <button type="button" onclick="formatWordDoc('justifyRight', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Sağa Hizala"><i class="fa-solid fa-align-right"></i></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="insertTableToWordEditor('add_doc_editor')" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-colors" title="Tablo Ekle">
+                        <i class="fa-solid fa-table"></i>
+                        <span>+ Tablo Ekle</span>
+                    </button>
+                    <button type="button" onclick="formatWordDoc('removeFormat', 'add_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded ml-auto" title="Biçimlendirmeyi Temizle"><i class="fa-solid fa-eraser"></i></button>
+                </div>
+
+                <!-- Word Belge Düzenleme Alanı -->
+                <div id="add_doc_editor" contenteditable="true" class="word-editor-area bg-slate-900 border-x border-b border-slate-700 rounded-b-xl p-4 text-white min-h-[160px] max-h-[300px] overflow-y-auto leading-relaxed text-xs focus:outline-none focus:border-indigo-500"></div>
+                <input type="hidden" id="add_m_summary" name="summary">
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
@@ -262,7 +338,7 @@
 
 <!-- 2. MODAL: TOPLANTI DÜZENLE -->
 <div id="editMeetingModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between pb-4 border-b border-slate-800">
             <h3 class="font-bold text-base text-white flex items-center gap-2">
                 <i class="fa-solid fa-pen-to-square text-indigo-400"></i>
@@ -313,8 +389,38 @@
             </div>
 
             <div>
-                <label class="block text-slate-400 mb-1 font-semibold">Konuşulan Konular, Alınan Kararlar ve Gündem</label>
-                <textarea id="edit_m_summary" name="summary" rows="3.5" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+                <label class="block text-slate-400 mb-1.5 font-semibold flex items-center justify-between">
+                    <span><i class="fa-solid fa-file-lines text-indigo-400 mr-1"></i> Toplantı Notları, Tablo & Kararlar Belgesi</span>
+                    <span class="text-[10px] text-slate-500 font-normal">Word gibi metin biçimlendirebilir ve tablo ekleyebilirsiniz</span>
+                </label>
+                
+                <!-- Word Araç Çubuğu (Toolbar) -->
+                <div class="bg-slate-950 border border-slate-700 rounded-t-xl p-1.5 flex flex-wrap items-center gap-1 text-xs">
+                    <button type="button" onclick="formatWordDoc('bold', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold w-7 text-center" title="Kalın (Ctrl+B)"><b>B</b></button>
+                    <button type="button" onclick="formatWordDoc('italic', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded italic w-7 text-center" title="İtalik (Ctrl+I)"><i>I</i></button>
+                    <button type="button" onclick="formatWordDoc('underline', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded underline w-7 text-center" title="Altı Çizili (Ctrl+U)"><u>U</u></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'edit_doc_editor', 'h2')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold text-[11px]" title="Büyük Başlık">H1</button>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'edit_doc_editor', 'h3')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded font-bold text-[11px]" title="Alt Başlık">H2</button>
+                    <button type="button" onclick="formatWordDoc('formatBlock', 'edit_doc_editor', 'p')" class="px-2 py-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded text-[11px]" title="Normal Paragraf">P</button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('insertUnorderedList', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Madde İşaretli Liste"><i class="fa-solid fa-list-ul"></i></button>
+                    <button type="button" onclick="formatWordDoc('insertOrderedList', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Numaralı Liste"><i class="fa-solid fa-list-ol"></i></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="formatWordDoc('justifyLeft', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Sola Hizala"><i class="fa-solid fa-align-left"></i></button>
+                    <button type="button" onclick="formatWordDoc('justifyCenter', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Ortala"><i class="fa-solid fa-align-center"></i></button>
+                    <button type="button" onclick="formatWordDoc('justifyRight', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-300 hover:text-white rounded" title="Sağa Hizala"><i class="fa-solid fa-align-right"></i></button>
+                    <span class="h-4 w-px bg-slate-700 mx-1"></span>
+                    <button type="button" onclick="insertTableToWordEditor('edit_doc_editor')" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-colors" title="Tablo Ekle">
+                        <i class="fa-solid fa-table"></i>
+                        <span>+ Tablo Ekle</span>
+                    </button>
+                    <button type="button" onclick="formatWordDoc('removeFormat', 'edit_doc_editor')" class="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded ml-auto" title="Biçimlendirmeyi Temizle"><i class="fa-solid fa-eraser"></i></button>
+                </div>
+
+                <!-- Word Belge Düzenleme Alanı -->
+                <div id="edit_doc_editor" contenteditable="true" class="word-editor-area bg-slate-900 border-x border-b border-slate-700 rounded-b-xl p-4 text-white min-h-[160px] max-h-[300px] overflow-y-auto leading-relaxed text-xs focus:outline-none focus:border-indigo-500"></div>
+                <input type="hidden" id="edit_m_summary" name="summary">
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
@@ -378,6 +484,58 @@
 
 {% block extra_scripts %}
 <script>
+    function formatWordDoc(cmd, editorId, val = null) {
+        const editor = document.getElementById(editorId);
+        if (editor) editor.focus();
+        document.execCommand(cmd, false, val);
+    }
+
+    function insertTableToWordEditor(editorId) {
+        const rowsStr = prompt('Tablo Satır Sayısı:', '3');
+        if (!rowsStr) return;
+        const colsStr = prompt('Tablo Sütun Sayısı:', '3');
+        if (!colsStr) return;
+
+        const rows = parseInt(rowsStr) || 3;
+        const cols = parseInt(colsStr) || 3;
+
+        let html = '<table class="w-full my-2 border-collapse border border-slate-600"><thead><tr>';
+        for (let c = 1; c <= cols; c++) {
+            html += `<th class="border border-slate-600 bg-slate-800 p-2 text-indigo-300 font-bold">Başlık ${c}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+
+        for (let r = 1; r <= rows; r++) {
+            html += '<tr>';
+            for (let c = 1; c <= cols; c++) {
+                html += `<td class="border border-slate-700 p-2 text-slate-200">Metin ${r}-${c}</td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table><p><br></p>';
+
+        const editor = document.getElementById(editorId);
+        if (editor) {
+            editor.focus();
+            document.execCommand('insertHTML', false, html);
+        }
+    }
+
+    // Form gönderiminde editor içeriğini gizli textarea'ya aktar
+    const addForm = document.querySelector('form[action="{{ url_for("api_toplanti_ekle") }}"]');
+    if (addForm) {
+        addForm.addEventListener('submit', function() {
+            document.getElementById('add_m_summary').value = document.getElementById('add_doc_editor').innerHTML;
+        });
+    }
+
+    const editForm = document.getElementById('editMeetingForm');
+    if (editForm) {
+        editForm.addEventListener('submit', function() {
+            document.getElementById('edit_m_summary').value = document.getElementById('edit_doc_editor').innerHTML;
+        });
+    }
+
     function openEditMeetingModal(m) {
         document.getElementById('edit_m_id').value = m.id;
         document.getElementById('edit_m_project_id').value = m.project_id || '';
@@ -386,6 +544,7 @@
         document.getElementById('edit_m_time').value = m.meeting_time || '';
         document.getElementById('edit_m_location').value = m.location || '';
         document.getElementById('edit_m_attendees').value = m.attendees || '';
+        document.getElementById('edit_doc_editor').innerHTML = m.summary || '';
         document.getElementById('edit_m_summary').value = m.summary || '';
         document.getElementById('editMeetingForm').action = `/api/toplantilar/${m.id}/guncelle`;
         openModal('editMeetingModal');

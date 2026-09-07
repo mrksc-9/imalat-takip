@@ -196,8 +196,13 @@ def get_db():
         raw_conn = psycopg2.connect(db_url)
         return PostgresConnectionWrapper(raw_conn)
     else:
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=30000;")
+        except Exception:
+            pass
         return conn
 
 def ensure_column(cursor, table, column, col_type_sql, default_val=None):
@@ -256,18 +261,20 @@ def init_db():
             is_admin_patron = r in ('admin', 'patron', 'genel müdür')
             can_e = 1 if is_admin_patron else 0
             if r == 'fabrika müdürü': can_e = 1
-            elif r == 'imalat müdürü' and mod in ('projeler', 'kesim_takip', 'imalat_plan', 'imalat_takip', 'on_imalat_plan'): can_e = 1
-            elif r == 'imalat mühendisi' and mod in ('kesim_takip', 'imalat_takip', 'imalat_plan'): can_e = 1
-            elif r == 'iş hazırlama' and mod in ('projeler', 'kesim_takip', 'siparis_takip'): can_e = 1
+            elif r == 'imalat müdürü' and mod in ('projeler', 'kesim_takip', 'imalat_plan', 'imalat_takip', 'on_imalat_plan', 'boya_takip'): can_e = 1
+            elif r == 'imalat mühendisi' and mod in ('kesim_takip', 'imalat_takip', 'imalat_plan', 'boya_takip'): can_e = 1
+            elif r == 'iş hazırlama' and mod in ('projeler', 'kesim_takip', 'siparis_takip', 'boya_takip'): can_e = 1
             elif r == 'satınalma' and mod in ('siparis_takip',): can_e = 1
-            elif r == 'kalite mühendisi' and mod in ('kalite_kontrol',): can_e = 1
-            elif r == 'formen' and mod in ('kesim_takip', 'imalat_takip'): can_e = 1
-            elif r == 'usta' and mod in ('kesim_takip',): can_e = 1
+            elif r == 'kalite mühendisi' and mod in ('kalite_kontrol', 'boya_takip'): can_e = 1
+            elif r == 'formen' and mod in ('kesim_takip', 'imalat_takip', 'boya_takip'): can_e = 1
+            elif r == 'usta' and mod in ('kesim_takip', 'boya_takip'): can_e = 1
 
             cursor.execute('''
             INSERT OR IGNORE INTO role_permissions (role, module, can_view, can_edit)
             VALUES (?, ?, 1, ?)
             ''', (r, mod, can_e))
+
+    cursor.execute("UPDATE role_permissions SET can_edit = 1, can_view = 1 WHERE role IN ('admin', 'patron', 'genel müdür')")
 
     # 3. AKTİVİTE / DENETİM GÜNLÜĞÜ (AUDIT LOG) TABLOSU
     cursor.execute(f'''
@@ -523,6 +530,36 @@ def init_db():
     )
     ''')
 
+    ensure_column(cursor, "cutting_entries", "unit_weight", "REAL", "0.0")
+    ensure_column(cursor, "cutting_entries", "cut_tonnage", "REAL", "0.0")
+    ensure_column(cursor, "cutting_entries", "project_name", "TEXT", "''")
+
+    # Backfill cutting_entries unit_weight and cut_tonnage from parts if missing
+    try:
+        cursor.execute('''
+        UPDATE cutting_entries
+        SET unit_weight = (
+            SELECT p.unit_weight FROM parts p
+            WHERE p.project_id = cutting_entries.project_id AND p.pos_no = cutting_entries.pos_no
+            LIMIT 1
+        )
+        WHERE (unit_weight IS NULL OR unit_weight = 0.0) AND project_id IS NOT NULL
+        ''')
+        cursor.execute('''
+        UPDATE cutting_entries
+        SET cut_tonnage = ROUND((cut_quantity * unit_weight) / 1000.0, 4)
+        WHERE (cut_tonnage IS NULL OR cut_tonnage = 0.0) AND unit_weight > 0
+        ''')
+        cursor.execute('''
+        UPDATE cutting_entries
+        SET project_name = (
+            SELECT pr.name FROM projects pr WHERE pr.id = cutting_entries.project_id LIMIT 1
+        )
+        WHERE (project_name IS NULL OR project_name = '') AND project_id IS NOT NULL
+        ''')
+    except Exception:
+        pass
+
     # 13. KALİTE KONTROL HAVUZU (QA INSPECTIONS)
     cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS qa_inspections (
@@ -685,9 +722,18 @@ def init_db():
         full_name TEXT NOT NULL,
         message TEXT,
         photo_url TEXT DEFAULT '',
+        receiver_id INTEGER,
+        receiver_username TEXT DEFAULT '',
+        receiver_name TEXT DEFAULT '',
+        is_read INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    ensure_column(cursor, "chat_messages", "receiver_id", "INTEGER", "NULL")
+    ensure_column(cursor, "chat_messages", "receiver_username", "TEXT", "''")
+    ensure_column(cursor, "chat_messages", "receiver_name", "TEXT", "''")
+    ensure_column(cursor, "chat_messages", "is_read", "INTEGER", "0")
 
     # 21. TOPLANTILAR VE KARARLAR TABLOSU
     cursor.execute(f'''
@@ -773,6 +819,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mat_ord_proj ON material_orders_ordered(project_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mat_rec_proj ON material_orders_received(project_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_channel ON chat_messages(channel)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_dm ON chat_messages(user_id, receiver_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_receiver ON chat_messages(receiver_id, is_read)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_id ON notifications(id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at)")
 
@@ -1062,7 +1110,11 @@ def get_project_summary(project_id):
 
     conn.close()
 
-    total_ton = a_stats['total_assembly_tonnage'] if a_stats['total_assembly_tonnage'] > 0 else (p_stats['total_parts_tonnage'] if p_stats['total_parts_tonnage'] > 0 else proj_dict.get('target_tonnage', 0.0))
+    target_ton = float(proj_dict.get('target_tonnage', 0.0) or 0.0)
+    if target_ton > 0:
+        total_ton = target_ton
+    else:
+        total_ton = a_stats['total_assembly_tonnage'] if a_stats['total_assembly_tonnage'] > 0 else (p_stats['total_parts_tonnage'] if p_stats['total_parts_tonnage'] > 0 else 0.0)
     tot = total_ton or 0.0001
 
     cut_ton = p_stats['total_cut_tonnage']
@@ -1155,13 +1207,17 @@ def get_all_role_permissions():
     cursor.execute("SELECT role, module, can_view, can_edit FROM role_permissions ORDER BY role, module")
     rows = cursor.fetchall()
     conn.close()
-    # Organize as dict: {role: {module: can_edit}}
     perms = {}
     for r in rows:
         role = r['role']
+        mod = r['module']
+        can_e = r['can_edit']
+        # Hem (role, mod) tuple anahtarı hem de perms[role][mod] hiyerarşisi sağla
+        perms[(role, mod)] = can_e
         if role not in perms:
             perms[role] = {}
-        perms[role][r['module']] = r['can_edit']
+        if isinstance(perms[role], dict):
+            perms[role][mod] = can_e
     return perms
 
 def update_role_permission(role, module, can_edit):
@@ -1511,42 +1567,170 @@ def delete_announcement(announcement_id):
 
 
 # =========================================================================
-# CANLI SOHBET & İLETİŞİM SİSTEMİ
+# CANLI SOHBET & İLETİŞİM SİSTEMİ (BİRİM KANALLARI & BİREBİR DM)
 # =========================================================================
-def get_chat_messages(channel='genel', limit=100):
-    """Belirtilen kanal veya modüle ait son sohbet mesajlarını döner."""
+def get_chat_messages(channel='genel', user_id=None, partner_id=None, limit=100):
+    """Kanal bazlı veya iki kullanıcı arasındaki (DM) sohbet mesajlarını döner."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT * FROM (
-            SELECT * FROM chat_messages
-            WHERE channel = ?
-            ORDER BY id DESC
-            LIMIT ?
-        ) ORDER BY id ASC
-    """, (channel, limit))
+    if partner_id is not None and user_id is not None and str(partner_id).isdigit() and int(partner_id) > 0:
+        p_id = int(partner_id)
+        u_id = int(user_id)
+        cursor.execute("""
+            SELECT * FROM (
+                SELECT * FROM chat_messages
+                WHERE (user_id = ? AND receiver_id = ?)
+                   OR (user_id = ? AND receiver_id = ?)
+                ORDER BY id DESC
+                LIMIT ?
+            ) ORDER BY id ASC
+        """, (u_id, p_id, p_id, u_id, limit))
+    else:
+        cursor.execute("""
+            SELECT * FROM (
+                SELECT * FROM chat_messages
+                WHERE channel = ? AND (receiver_id IS NULL OR receiver_id = 0)
+                ORDER BY id DESC
+                LIMIT ?
+            ) ORDER BY id ASC
+        """, (channel or 'genel', limit))
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows
 
-def save_chat_message(channel, user_id, username, full_name, message, photo_url=''):
-    """Yeni sohbet mesajı ve isteğe bağlı fotoğraf ekler."""
+def save_chat_message(channel, user_id, username, full_name, message, photo_url='', receiver_id=None, receiver_username='', receiver_name=''):
+    """Yeni sohbet mesajı (kanal veya birebir DM) ve isteğe bağlı fotoğraf ekler."""
     conn = get_db()
     cursor = conn.cursor()
     now_ts = get_istanbul_now_str()
+    rec_id = int(receiver_id) if receiver_id and str(receiver_id).isdigit() and int(receiver_id) > 0 else None
+
+    if rec_id and (not receiver_username or not receiver_name):
+        cursor.execute("SELECT username, full_name FROM users WHERE id = ?", (rec_id,))
+        ru = cursor.fetchone()
+        if ru:
+            receiver_username = ru['username']
+            receiver_name = ru['full_name']
+
     cursor.execute("""
-        INSERT INTO chat_messages (channel, user_id, username, full_name, message, photo_url, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (channel or 'genel', user_id, username, full_name, message.strip() if message else '', photo_url or '', now_ts))
+        INSERT INTO chat_messages (channel, user_id, username, full_name, message, photo_url, receiver_id, receiver_username, receiver_name, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    """, (
+        channel or 'genel',
+        user_id,
+        username,
+        full_name,
+        message.strip() if message else '',
+        photo_url or '',
+        rec_id,
+        receiver_username or '',
+        receiver_name or '',
+        now_ts
+    ))
+    msg_id = cursor.lastrowid
     conn.commit()
     conn.close()
+    return msg_id
 
-def clear_chat_messages(channel=None):
-    """Belirli bir kanaldaki veya tüm sohbetlerdeki mesajları temizler."""
+def mark_chat_messages_as_read(current_user_id, partner_id):
+    """Karşı taraftan gelen DM mesajlarını okundu (is_read = 1) olarak işaretler."""
+    if not current_user_id or not partner_id:
+        return
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE chat_messages
+            SET is_read = 1
+            WHERE receiver_id = ? AND user_id = ? AND is_read = 0
+        """, (int(current_user_id), int(partner_id)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"mark_chat_messages_as_read error: {e}")
+
+def get_chat_users_with_unread(current_user_id=None):
+    """Sistemdeki tüm aktif kullanıcıları, son mesajları ve okunmamış mesaj sayılarıyla döner."""
     conn = get_db()
     cursor = conn.cursor()
-    if channel and channel != 'tumunu_temizle':
-        cursor.execute("DELETE FROM chat_messages WHERE channel = ?", (channel,))
+    cursor.execute("SELECT id, username, full_name, role FROM users WHERE is_active = 1 ORDER BY full_name ASC")
+    users = [dict(r) for r in cursor.fetchall()]
+    
+    cur_id = int(current_user_id) if current_user_id and str(current_user_id).isdigit() else None
+    
+    for u in users:
+        u_id = u['id']
+        u['unread_count'] = 0
+        u['last_message'] = ''
+        u['last_message_time'] = ''
+        u['is_current_user'] = (u_id == cur_id)
+        
+        if cur_id and u_id != cur_id:
+            # Okunmamış DM mesajı sayısı
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM chat_messages
+                WHERE receiver_id = ? AND user_id = ? AND is_read = 0
+            """, (cur_id, u_id))
+            row = cursor.fetchone()
+            u['unread_count'] = row['count'] if row else 0
+            
+            # Son mesaj
+            cursor.execute("""
+                SELECT message, photo_url, created_at, user_id FROM chat_messages
+                WHERE (user_id = ? AND receiver_id = ?)
+                   OR (user_id = ? AND receiver_id = ?)
+                ORDER BY id DESC LIMIT 1
+            """, (cur_id, u_id, u_id, cur_id))
+            last_msg = cursor.fetchone()
+            if last_msg:
+                if last_msg['message']:
+                    prefix = "Siz: " if last_msg['user_id'] == cur_id else ""
+                    u['last_message'] = prefix + last_msg['message']
+                elif last_msg['photo_url']:
+                    u['last_message'] = "📷 [Fotoğraf]"
+                u['last_message_time'] = last_msg['created_at'] or ''
+                
+    conn.close()
+    return users
+
+def get_unread_chat_summary(current_user_id):
+    """Kullanıcının toplam okunmamış DM mesajlarını ve kişi bazlı sayaçları döner."""
+    if not current_user_id:
+        return {'total_unread': 0, 'by_user': {}}
+    conn = get_db()
+    cursor = conn.cursor()
+    cur_id = int(current_user_id)
+    cursor.execute("""
+        SELECT user_id, COUNT(*) as count
+        FROM chat_messages
+        WHERE receiver_id = ? AND is_read = 0
+        GROUP BY user_id
+    """, (cur_id,))
+    rows = cursor.fetchall()
+    by_user = {}
+    total = 0
+    for r in rows:
+        uid = str(r['user_id'])
+        c = r['count']
+        by_user[uid] = c
+        total += c
+    conn.close()
+    return {'total_unread': total, 'by_user': by_user}
+
+def clear_chat_messages(channel=None, user_id=None, partner_id=None):
+    """Belirli bir kanaldaki, iki kullanıcı arasındaki veya tüm sohbetlerdeki mesajları temizler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if partner_id is not None and user_id is not None and str(partner_id).isdigit() and int(partner_id) > 0:
+        p_id = int(partner_id)
+        u_id = int(user_id)
+        cursor.execute("""
+            DELETE FROM chat_messages
+            WHERE (user_id = ? AND receiver_id = ?)
+               OR (user_id = ? AND receiver_id = ?)
+        """, (u_id, p_id, p_id, u_id))
+    elif channel and channel != 'tumunu_temizle':
+        cursor.execute("DELETE FROM chat_messages WHERE channel = ? AND (receiver_id IS NULL OR receiver_id = 0)", (channel,))
     else:
         cursor.execute("DELETE FROM chat_messages")
     conn.commit()
@@ -1805,11 +1989,14 @@ def save_push_subscription(user_id, endpoint, p256dh, auth):
     conn.commit()
     conn.close()
 
-def get_push_subscriptions():
-    """Tüm aktif Web Push aboneliklerini döner."""
+def get_push_subscriptions(user_id=None):
+    """Tüm aktif Web Push aboneliklerini döner veya belirli kullanıcıya ait olanları döner."""
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM push_subscriptions")
+    if user_id is not None:
+        cursor.execute("SELECT * FROM push_subscriptions WHERE user_id = ?", (user_id,))
+    else:
+        cursor.execute("SELECT * FROM push_subscriptions")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
     return rows

@@ -4,11 +4,68 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 # =========================================================================
-# 1. AKILLI TEKLA STRUCTURES EXCEL OKUYUCU
+# 1. AKILLI SAYI VE FORMAT AYRIŞTIRICI (PARSE_NUMBER)
+# =========================================================================
+def parse_number(val, default=0.0):
+    """
+    Sayısal değerleri (nokta/virgül karmaşası '105.1' vs '105,1', binlik ayracı '1.250,50' vs '1,250.50',
+    birim ekleri 'kg', 'ton', 'mm', 'm2' vb.) güvenli ve standart bir float sayıya dönüştürür.
+    """
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    s = str(val).strip()
+    if not s or s.lower() in ('-', 'none', 'null', 'nan', 'n/a', ''):
+        return default
+        
+    # Birim eklerini ve gereksiz karakterleri temizle
+    for unit in ['kg', 'ton', 'm2', 'mm', 'mt', 'm', 'adet', 'pcs', 'tl', '$', '€']:
+        if s.lower().endswith(unit):
+            s = s[:len(s)-len(unit)].strip()
+            
+    s = s.replace(' ', '')
+    if not s:
+        return default
+
+    # Hem nokta hem virgül içeriyorsa binlik ayracı tespit et
+    if '.' in s and ',' in s:
+        if s.rfind(',') > s.rfind('.'):
+            # Avrupa / Türkiye formatı: 1.250,50 -> 1250.50
+            s = s.replace('.', '').replace(',', '.')
+        else:
+            # Amerikan / Standart format: 1,250.50 -> 1250.50
+            s = s.replace(',', '')
+    elif ',' in s:
+        # Tek virgül varsa ondalık ayracıdır: 105,1 -> 105.1
+        s = s.replace(',', '.')
+        
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return default
+
+def safe_int(val, default=1):
+    """Sayısal değeri güvenli bir pozitif tamsayıya (int) dönüştürür."""
+    try:
+        num = parse_number(val, float(default))
+        res = int(round(num))
+        return res if res > 0 else default
+    except Exception:
+        return default
+
+def safe_float(val, default=0.0):
+    """Geriye dönük uyumluluk takma adı (alias)"""
+    return parse_number(val, default)
+
+# =========================================================================
+# 2. AKILLI TEKLA STRUCTURES EXCEL OKUYUCU
 # =========================================================================
 def parse_tekla_excel(file_stream):
     """
-    Tekla Structures Excel raporlarını ve standart poz listelerini otomatik ayrıştırır.
+    Tekla Structures Excel raporlarını (Sarı başlıklı Montajlar ve altındaki Beyaz satırlı Parçalar dahil)
+    ve standart poz listelerini otomatik ayrıştırır.
     Montaj Listesi (Assemblies), Montaj Parça Listesi (Assembly Parts) ve Tek Parça Listesi (Parts) üretir.
     """
     wb = openpyxl.load_workbook(file_stream, data_only=True)
@@ -34,9 +91,10 @@ def parse_tekla_excel(file_stream):
         # İlk dolu satırı başlık olarak tespit et
         header_row_idx = 1
         headers = []
-        for r in range(1, min(10, ws.max_row + 1)):
+        for r in range(1, min(15, ws.max_row + 1)):
             row_vals = [str(c.value or '').strip().lower() for c in ws[r]]
-            if any(k in ' '.join(row_vals) for k in ['poz', 'pos', 'mark', 'profil', 'adet', 'qty', 'montaj', 'assembly']):
+            joined = ' '.join(row_vals)
+            if any(k in joined for k in ['assembly', 'montaj', 'poz', 'pos', 'mark', 'profil', 'adet', 'qty']):
                 header_row_idx = r
                 headers = row_vals
                 break
@@ -46,12 +104,11 @@ def parse_tekla_excel(file_stream):
             header_row_idx = 1
 
         # Sütun indekslerini tespit et
-        ass_pos_idx = match_col(headers, ['montaj no', 'montaj markası', 'assembly mark', 'assembly pos', 'main part', 'marka', 'ana poz'])
-        part_pos_idx = match_col(headers, ['tek parça', 'parça no', 'part mark', 'part pos', 'pos no', 'poz no', 'poz', 'pos'])
+        ass_pos_idx = match_col(headers, ['assembly adı', 'assembly mark', 'assembly pos', 'montaj no', 'montaj markası', 'montaj adı', 'montaj', 'main part', 'marka', 'ana poz'])
+        part_pos_idx = match_col(headers, ['tek parça', 'parça no', 'parça poz', 'part mark', 'part pos', 'pos no', 'poz no', 'poz', 'pos', 'mark'])
         desc_idx = match_col(headers, ['tanım', 'açıklama', 'description', 'parça adı', 'eleman adı', 'name', 'ad'])
         prof_idx = match_col(headers, ['profil', 'kesit', 'section', 'profile', 'malzeme cinsi', 'tip', 'material type'])
         qty_idx = match_col(headers, ['adet', 'miktar', 'sayı', 'qty', 'quantity', 'count', 'adet/sayı'])
-        qty_ass_idx = match_col(headers, ['montajdaki adet', 'qty/ass', 'adet/montaj', 'qty / ass'])
         len_idx = match_col(headers, ['uzunluk', 'boy', 'length', 'len', 'uzunluk (mm)', 'boy (mm)'])
         unit_wt_idx = match_col(headers, ['birim ağırlık', 'birim kg', 'unit weight', 'weight', 'tek ağırlık', 'kg/m'])
         tot_wt_idx = match_col(headers, ['toplam ağırlık', 'toplam kg', 'toplam tonaj', 'total weight', 'toplam'])
@@ -60,91 +117,150 @@ def parse_tekla_excel(file_stream):
         # Varsayılanlar
         if ass_pos_idx is None and part_pos_idx is None:
             ass_pos_idx = 0
-            part_pos_idx = 0
+            part_pos_idx = 1 if len(headers) > 1 else 0
+        elif ass_pos_idx is None:
+            ass_pos_idx = part_pos_idx
+        elif part_pos_idx is None:
+            part_pos_idx = ass_pos_idx
+
+        current_assembly = None
+        current_assembly_qty = 1
+        current_assembly_desc = 'İmalat Elemanı'
+        current_assembly_profile = '-'
+        current_assembly_grade = 'S275JR'
 
         # Sayfa içeriğini satır satır oku
         for row in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
             if not row or not any(row):
                 continue
 
-            ass_pos = str(row[ass_pos_idx] or '').strip() if ass_pos_idx is not None and ass_pos_idx < len(row) and row[ass_pos_idx] is not None else ''
-            part_pos = str(row[part_pos_idx] or '').strip() if part_pos_idx is not None and part_pos_idx < len(row) and row[part_pos_idx] is not None else ''
-            
-            # Eğer ass_pos yoksa part_pos'u kullan, part_pos yoksa ass_pos'u kullan
-            if not ass_pos and part_pos:
-                ass_pos = part_pos
-            if not part_pos and ass_pos:
-                part_pos = ass_pos
+            raw_ass = str(row[ass_pos_idx] or '').strip() if ass_pos_idx is not None and ass_pos_idx < len(row) and row[ass_pos_idx] is not None else ''
+            raw_part = str(row[part_pos_idx] or '').strip() if part_pos_idx is not None and part_pos_idx < len(row) and row[part_pos_idx] is not None else ''
+            raw_desc = str(row[desc_idx] or '').strip() if desc_idx is not None and desc_idx < len(row) and row[desc_idx] is not None else ''
+            raw_prof = str(row[prof_idx] or '').strip() if prof_idx is not None and prof_idx < len(row) and row[prof_idx] is not None else '-'
+            raw_qty = row[qty_idx] if qty_idx is not None and qty_idx < len(row) else 1
+            raw_len = row[len_idx] if len_idx is not None and len_idx < len(row) else 0.0
+            raw_uwt = row[unit_wt_idx] if unit_wt_idx is not None and unit_wt_idx < len(row) else 0.0
+            raw_twt = row[tot_wt_idx] if tot_wt_idx is not None and tot_wt_idx < len(row) else 0.0
+            raw_grade = str(row[grade_idx] or 'S275JR').strip() if grade_idx is not None and grade_idx < len(row) and row[grade_idx] is not None else 'S275JR'
 
-            if not ass_pos and not part_pos:
-                continue
+            parsed_qty = safe_int(raw_qty, 1)
+            parsed_len = parse_number(raw_len, 0.0)
+            parsed_uwt = parse_number(raw_uwt, 0.0)
+            parsed_twt = parse_number(raw_twt, 0.0)
 
-            desc = str(row[desc_idx] or 'İmalat Elemanı').strip() if desc_idx is not None and desc_idx < len(row) and row[desc_idx] is not None else 'İmalat Elemanı'
-            profile = str(row[prof_idx] or '-').strip() if prof_idx is not None and prof_idx < len(row) and row[prof_idx] is not None else '-'
-            
-            try:
-                qty = int(float(row[qty_idx])) if qty_idx is not None and qty_idx < len(row) and row[qty_idx] is not None else 1
-                if qty <= 0: qty = 1
-            except:
-                qty = 1
+            # Toplam ağırlık 0 ise ve birim ağırlık varsa hesapla
+            if parsed_twt == 0.0 and parsed_uwt > 0:
+                parsed_twt = round(parsed_qty * parsed_uwt, 2)
 
-            try:
-                length = float(row[len_idx]) if len_idx is not None and len_idx < len(row) and row[len_idx] is not None else 0.0
-            except:
-                length = 0.0
+            # --- DURUM 1: Tekla Hiyerarşik Yapı ---
+            # Kolon A dolu -> Yeni Montaj Başlığı (Sarı Satır)
+            if raw_ass and (not raw_part or raw_part == raw_ass or ass_pos_idx != part_pos_idx):
+                current_assembly = raw_ass
+                current_assembly_qty = parsed_qty
+                current_assembly_desc = raw_desc or (raw_part if raw_part != raw_ass else 'İmalat Elemanı') or 'İmalat Elemanı'
+                current_assembly_profile = raw_prof if raw_prof != '-' else '-'
+                current_assembly_grade = raw_grade or 'S275JR'
 
-            try:
-                unit_wt = float(row[unit_wt_idx]) if unit_wt_idx is not None and unit_wt_idx < len(row) and row[unit_wt_idx] is not None else 0.0
-            except:
-                unit_wt = 0.0
-
-            try:
-                tot_wt = float(row[tot_wt_idx]) if tot_wt_idx is not None and tot_wt_idx < len(row) and row[tot_wt_idx] is not None else (qty * unit_wt)
-                if tot_wt == 0.0 and unit_wt > 0:
-                    tot_wt = qty * unit_wt
-            except:
-                tot_wt = qty * unit_wt
-
-            grade = str(row[grade_idx] or 'S275JR').strip() if grade_idx is not None and grade_idx < len(row) and row[grade_idx] is not None else 'S275JR'
-
-            # 1. Assembly (Montaj Listesi) Kaydı
-            if ass_pos:
                 parsed_assemblies.append({
-                    'assembly_pos': ass_pos,
-                    'description': desc,
-                    'profile_type': profile,
-                    'quantity': qty,
-                    'unit_weight': round(unit_wt, 2),
-                    'total_weight': round(tot_wt, 2),
-                    'material_grade': grade
+                    'assembly_pos': current_assembly,
+                    'description': current_assembly_desc,
+                    'profile_type': current_assembly_profile,
+                    'quantity': current_assembly_qty,
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(parsed_twt if parsed_twt > 0 else (current_assembly_qty * parsed_uwt), 2),
+                    'material_grade': current_assembly_grade
                 })
 
-            # 2. Tek Parça Listesi (Parts) Kaydı
-            if part_pos:
-                parsed_parts.append({
-                    'pos_no': part_pos,
-                    'name': desc,
-                    'profile_type': profile,
-                    'quantity': qty,
-                    'length': round(length, 1),
-                    'unit_weight': round(unit_wt, 2),
-                    'total_weight': round(tot_wt, 2),
-                    'material_grade': grade
-                })
+                # Eğer aynı satırda Poz ve Profil de farklı bir parça olarak verilmişse
+                if raw_part and raw_part != raw_ass and raw_prof != '-':
+                    tot_q = parsed_qty
+                    parsed_assembly_parts.append({
+                        'assembly_pos': current_assembly,
+                        'part_pos': raw_part,
+                        'description': raw_desc or current_assembly_desc,
+                        'profile_type': raw_prof,
+                        'quantity_per_assembly': 1,
+                        'total_quantity': tot_q,
+                        'length': round(parsed_len, 1),
+                        'unit_weight': round(parsed_uwt, 2),
+                        'total_weight': round(parsed_twt, 2),
+                        'material_grade': raw_grade
+                    })
+                    parsed_parts.append({
+                        'pos_no': raw_part,
+                        'name': raw_desc or current_assembly_desc,
+                        'profile_type': raw_prof,
+                        'quantity': tot_q,
+                        'length': round(parsed_len, 1),
+                        'unit_weight': round(parsed_uwt, 2),
+                        'total_weight': round(parsed_twt, 2),
+                        'material_grade': raw_grade
+                    })
 
-            # 3. Assembly Part İlişkisi
-            if ass_pos and part_pos:
+            # Kolon A boş AMA Kolon B (Poz) dolu -> current_assembly'nin Alt Parçası (Beyaz Satır)
+            elif not raw_ass and raw_part:
+                parent_ass = current_assembly or raw_part
+                qty_per_ass = parsed_qty
+                tot_qty = qty_per_ass * (current_assembly_qty if current_assembly else 1)
+                calc_tot_wt = round(tot_qty * parsed_uwt, 2) if parsed_uwt > 0 else parsed_twt
+
                 parsed_assembly_parts.append({
-                    'assembly_pos': ass_pos,
-                    'part_pos': part_pos,
-                    'description': desc,
-                    'profile_type': profile,
+                    'assembly_pos': parent_ass,
+                    'part_pos': raw_part,
+                    'description': raw_desc or 'Montaj Parçası',
+                    'profile_type': raw_prof,
+                    'quantity_per_assembly': qty_per_ass,
+                    'total_quantity': tot_qty,
+                    'length': round(parsed_len, 1),
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(calc_tot_wt, 2),
+                    'material_grade': raw_grade
+                })
+
+                parsed_parts.append({
+                    'pos_no': raw_part,
+                    'name': raw_desc or 'Montaj Parçası',
+                    'profile_type': raw_prof,
+                    'quantity': tot_qty,
+                    'length': round(parsed_len, 1),
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(calc_tot_wt, 2),
+                    'material_grade': raw_grade
+                })
+
+            # Düz satır (Hem ass hem part dolu ve aynı sütun veya tekil)
+            elif raw_ass and raw_part and ass_pos_idx == part_pos_idx:
+                parsed_assemblies.append({
+                    'assembly_pos': raw_ass,
+                    'description': raw_desc or 'İmalat Elemanı',
+                    'profile_type': raw_prof,
+                    'quantity': parsed_qty,
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(parsed_twt, 2),
+                    'material_grade': raw_grade
+                })
+                parsed_parts.append({
+                    'pos_no': raw_part,
+                    'name': raw_desc or 'İmalat Elemanı',
+                    'profile_type': raw_prof,
+                    'quantity': parsed_qty,
+                    'length': round(parsed_len, 1),
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(parsed_twt, 2),
+                    'material_grade': raw_grade
+                })
+                parsed_assembly_parts.append({
+                    'assembly_pos': raw_ass,
+                    'part_pos': raw_part,
+                    'description': raw_desc or 'İmalat Elemanı',
+                    'profile_type': raw_prof,
                     'quantity_per_assembly': 1,
-                    'total_quantity': qty,
-                    'length': round(length, 1),
-                    'unit_weight': round(unit_wt, 2),
-                    'total_weight': round(tot_wt, 2),
-                    'material_grade': grade
+                    'total_quantity': parsed_qty,
+                    'length': round(parsed_len, 1),
+                    'unit_weight': round(parsed_uwt, 2),
+                    'total_weight': round(parsed_twt, 2),
+                    'material_grade': raw_grade
                 })
 
     # Tekil liste oluşturma (Aynı assembly_pos veya pos_no olanları birleştir/özetle)
@@ -152,19 +268,19 @@ def parse_tekla_excel(file_stream):
     for a in parsed_assemblies:
         k = a['assembly_pos']
         if k not in unique_assemblies:
-            unique_assemblies[k] = a
+            unique_assemblies[k] = dict(a)
         else:
             unique_assemblies[k]['quantity'] += a['quantity']
-            unique_assemblies[k]['total_weight'] += a['total_weight']
+            unique_assemblies[k]['total_weight'] = round(unique_assemblies[k]['total_weight'] + a['total_weight'], 2)
 
     unique_parts = {}
     for p in parsed_parts:
         k = p['pos_no']
         if k not in unique_parts:
-            unique_parts[k] = p
+            unique_parts[k] = dict(p)
         else:
             unique_parts[k]['quantity'] += p['quantity']
-            unique_parts[k]['total_weight'] += p['total_weight']
+            unique_parts[k]['total_weight'] = round(unique_parts[k]['total_weight'] + p['total_weight'], 2)
 
     return {
         'assemblies': list(unique_assemblies.values()),
@@ -241,19 +357,6 @@ def parse_clipboard_table(text, target_type='assemblies'):
     
     data_rows = rows[1:] if has_header else rows
 
-    def safe_float(v, default=0.0):
-        try:
-            return float(str(v).replace(',', '.').replace(' ', ''))
-        except:
-            return default
-
-    def safe_int(v, default=1):
-        try:
-            val = int(safe_float(v, default))
-            return val if val > 0 else default
-        except:
-            return default
-
     results = []
 
     if target_type == 'assemblies':
@@ -265,10 +368,10 @@ def parse_clipboard_table(text, target_type='assemblies'):
             desc = r[1] if len(r) > 1 and r[1] else 'İmalat Elemanı'
             prof = r[2] if len(r) > 2 and r[2] else '-'
             qty = safe_int(r[3] if len(r) > 3 else 1, 1)
-            u_wt = safe_float(r[4] if len(r) > 4 else 0.0)
-            t_wt = safe_float(r[5] if len(r) > 5 else 0.0)
+            u_wt = parse_number(r[4] if len(r) > 4 else 0.0)
+            t_wt = parse_number(r[5] if len(r) > 5 else 0.0)
             if t_wt == 0.0 and u_wt > 0:
-                t_wt = qty * u_wt
+                t_wt = round(qty * u_wt, 2)
             grade = r[6] if len(r) > 6 and r[6] else 'S275JR'
 
             results.append({
@@ -295,11 +398,11 @@ def parse_clipboard_table(text, target_type='assemblies'):
             prof = r[3] if len(r) > 3 and r[3] else '-'
             q_ass = safe_int(r[4] if len(r) > 4 else 1, 1)
             tot_q = safe_int(r[5] if len(r) > 5 else q_ass, q_ass)
-            length = safe_float(r[6] if len(r) > 6 else 0.0)
-            u_wt = safe_float(r[7] if len(r) > 7 else 0.0)
-            t_wt = safe_float(r[8] if len(r) > 8 else 0.0)
+            length = parse_number(r[6] if len(r) > 6 else 0.0)
+            u_wt = parse_number(r[7] if len(r) > 7 else 0.0)
+            t_wt = parse_number(r[8] if len(r) > 8 else 0.0)
             if t_wt == 0.0 and u_wt > 0:
-                t_wt = tot_q * u_wt
+                t_wt = round(tot_q * u_wt, 2)
             grade = r[9] if len(r) > 9 and r[9] else 'S275JR'
 
             results.append({
@@ -324,11 +427,11 @@ def parse_clipboard_table(text, target_type='assemblies'):
             name = r[1] if len(r) > 1 and r[1] else 'Poz Parçası'
             prof = r[2] if len(r) > 2 and r[2] else '-'
             qty = safe_int(r[3] if len(r) > 3 else 1, 1)
-            length = safe_float(r[4] if len(r) > 4 else 0.0)
-            u_wt = safe_float(r[5] if len(r) > 5 else 0.0)
-            t_wt = safe_float(r[6] if len(r) > 6 else 0.0)
+            length = parse_number(r[4] if len(r) > 4 else 0.0)
+            u_wt = parse_number(r[5] if len(r) > 5 else 0.0)
+            t_wt = parse_number(r[6] if len(r) > 6 else 0.0)
             if t_wt == 0.0 and u_wt > 0:
-                t_wt = qty * u_wt
+                t_wt = round(qty * u_wt, 2)
             grade = r[7] if len(r) > 7 and r[7] else 'S275JR'
 
             results.append({
