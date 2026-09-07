@@ -30,7 +30,7 @@
 <body class="h-full flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white relative">
 
     <!-- GİRİŞ YAPARKEN EKRANA DOĞRU GENİŞLEYEREK BÜYÜYEN LOGO EFEKTİ OVERLAY -->
-    <div id="loginZoomOverlay" class="fixed inset-0 bg-slate-950/95 z-50 hidden flex-col items-center justify-center backdrop-blur-xl transition-all">
+    <div id="loginZoomOverlay" class="fixed inset-0 bg-slate-950/95 z-50 hidden-col items-center justify-center backdrop-blur-xl transition-all">
         <div class="relative flex flex-col items-center animate-expand-logo">
             <div class="absolute -inset-10 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 rounded-full blur-3xl opacity-60"></div>
             <div class="relative z-10 w-36 h-36 rounded-3xl bg-slate-900/90 border border-slate-700/80 p-5 shadow-2xl flex items-center justify-center">
@@ -103,13 +103,6 @@
                 <span>Güvenli Giriş Yap</span>
             </button>
         </form>
-
-        <div class="mt-4 p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl text-center">
-            <p class="text-[11px] text-slate-400">
-                <i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i>
-                Varsayılan Yönetici: <span class="font-mono text-slate-200 font-bold">admin</span> &bull; Şifre: <span class="font-mono text-emerald-400 font-bold">Ordumak.2026!</span>
-            </p>
-        </div>
 
         <div class="mt-6 pt-4 border-t border-slate-800/80 text-center">
             <p class="text-[11px] text-slate-500">© {{ now.year }} {{ system_settings.company_name or 'ORDUMAK ÇELİK SANAYİ' }}</p>

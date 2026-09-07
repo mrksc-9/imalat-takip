@@ -333,7 +333,7 @@
     </div>
 
     <!-- MOBİL MENÜ MODAL -->
-    <div id="mobileMenu" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden md:hidden flex">
+    <div id="mobileMenu" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden md:hidden">
         <div class="w-72 bg-slate-950 h-full p-4 flex flex-col border-r border-slate-800 overflow-y-auto">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800">
                 <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" class="flex items-center gap-2">
@@ -412,7 +412,7 @@
     </div>
 
     <!-- YENİ DUYURU PAYLAŞ MODAL -->
-    <div id="newAnnouncementModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div id="newAnnouncementModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800">
                 <h3 class="font-bold text-base text-white flex items-center gap-2">
@@ -453,7 +453,7 @@
     </div>
 
     <!-- YENİ PROJE EKLE MODAL -->
-    <div id="newProjectModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div id="newProjectModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800">
                 <h3 class="font-bold text-base text-white flex items-center gap-2">
@@ -607,15 +607,31 @@
     <script>
         function openModal(id) {
             const m = document.getElementById(id);
-            if (m) m.classList.remove('hidden');
+            if (m) {
+                m.classList.remove('hidden');
+                m.classList.add('flex');
+                document.body.style.overflow = 'hidden';
+            }
         }
         function closeModal(id) {
             const m = document.getElementById(id);
-            if (m) m.classList.add('hidden');
+            if (m) {
+                m.classList.add('hidden');
+                m.classList.remove('flex');
+                document.body.style.overflow = '';
+            }
         }
         function toggleMobileMenu() {
             const menu = document.getElementById('mobileMenu');
-            if (menu) menu.classList.toggle('hidden');
+            if (menu) {
+                if (menu.classList.contains('hidden')) {
+                    menu.classList.remove('hidden');
+                    menu.classList.add('flex');
+                } else {
+                    menu.classList.add('hidden');
+                    menu.classList.remove('flex');
+                }
+            }
         }
 
         // =========================================================================
@@ -764,23 +780,28 @@
             });
         }
 
+        let sharedAudioCtx = null;
         function playNotificationSound() {
             try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (AudioContext) {
-                    const ctx = new AudioContext();
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-                    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
-                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.start();
-                    osc.stop(ctx.currentTime + 0.35);
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) return;
+                if (!sharedAudioCtx) {
+                    sharedAudioCtx = new AudioContextClass();
                 }
+                if (sharedAudioCtx.state === 'suspended') {
+                    sharedAudioCtx.resume();
+                }
+                const osc = sharedAudioCtx.createOscillator();
+                const gain = sharedAudioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(587.33, sharedAudioCtx.currentTime); // D5
+                osc.frequency.exponentialRampToValueAtTime(880, sharedAudioCtx.currentTime + 0.12); // A5
+                gain.gain.setValueAtTime(0.12, sharedAudioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, sharedAudioCtx.currentTime + 0.35);
+                osc.connect(gain);
+                gain.connect(sharedAudioCtx.destination);
+                osc.start();
+                osc.stop(sharedAudioCtx.currentTime + 0.35);
             } catch(e) {}
         }
 
@@ -866,7 +887,25 @@
             }
         }
 
+        let lastNotificationId = null;
+
         function pollLiveNotifications() {
+            if (lastNotificationId === null) {
+                fetch('/api/notifications/recent?limit=1')
+                .then(res => res.json())
+                .then(notifs => {
+                    if (notifs && notifs.length > 0) {
+                        lastNotificationId = notifs[0].id;
+                    } else {
+                        lastNotificationId = 0;
+                    }
+                })
+                .catch(() => {
+                    lastNotificationId = 0;
+                });
+                return;
+            }
+
             fetch(`/api/notifications/recent?since_id=${lastNotificationId}`)
             .then(res => res.json())
             .then(notifs => {
@@ -883,8 +922,9 @@
             .catch(err => console.error(err));
         }
 
-        // 3.5 saniyede bir bildirimleri kontrol et
-        setInterval(pollLiveNotifications, 3500);
+        // 6 saniyede bir bildirimleri kontrol et
+        setInterval(pollLiveNotifications, 6000);
+        pollLiveNotifications();
 
 
         // =========================================================================

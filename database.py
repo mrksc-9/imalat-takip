@@ -752,6 +752,19 @@ def init_db():
     )
     ''')
 
+    # 26. HIZLANDIRMA İNDEKSLERİ (PERFORMANCE INDEXES)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_parts_project_id ON parts(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_parts_pos_no ON parts(pos_no)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_assemblies_project_id ON assemblies(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_assemblies_pos ON assemblies(assembly_pos)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_assembly_parts_proj ON assembly_parts(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_shipments_project_id ON shipments(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mat_ord_proj ON material_orders_ordered(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mat_rec_proj ON material_orders_received(project_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_channel ON chat_messages(channel)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_notif_id ON notifications(id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at)")
+
     conn.commit()
     conn.close()
 
