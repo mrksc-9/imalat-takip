@@ -858,7 +858,6 @@ def set_project_status(project_id, status):
 
 def get_global_metrics(customer=None):
     """Tüm projelerin (veya seçilen müşterinin) toplam metriklerini hesaplar."""
-    init_db()
     conn = get_db()
     cursor = conn.cursor()
 
