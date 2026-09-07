@@ -93,6 +93,11 @@
                                     {{ 'Pasif Yap' if u.is_active == 1 else 'Aktif Et' }}
                                 </button>
                             </form>
+                            <form action="{{ url_for('api_kullanici_sil', user_id=u.id) }}" method="POST" class="inline ml-1" onsubmit="return confirm('{{ u.full_name }} ({{ u.username }}) kullanıcısını kalıcı olarak silmek istediğinize emin misiniz?');">
+                                <button type="submit" class="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all" title="Kullanıcıyı Tamamen Sil">
+                                    <i class="fa-solid fa-trash-can mr-1"></i>Sil
+                                </button>
+                            </form>
                             {% else %}
                             <span class="text-[11px] text-slate-500 ml-1">Sabit</span>
                             {% endif %}

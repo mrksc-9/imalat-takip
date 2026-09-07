@@ -6,6 +6,14 @@
     <title>Giriş Yap - Çelik İmalat & Montaj MES</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <link rel="icon" type="image/svg+xml" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <meta name="msapplication-TileImage" content="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <meta name="msapplication-TileColor" content="#020617">
+    <meta name="theme-color" content="#020617">
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
         @keyframes expandLogo {
@@ -30,11 +38,11 @@
 <body class="h-full flex items-center justify-center p-4 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white relative">
 
     <!-- GİRİŞ YAPARKEN EKRANA DOĞRU GENİŞLEYEREK BÜYÜYEN LOGO EFEKTİ OVERLAY -->
-    <div id="loginZoomOverlay" class="fixed inset-0 bg-slate-950/95 z-50 hidden-col items-center justify-center backdrop-blur-xl transition-all">
+    <div id="loginZoomOverlay" class="fixed inset-0 bg-slate-950/95 z-50 hidden items-center justify-center backdrop-blur-xl transition-all">
         <div class="relative flex flex-col items-center animate-expand-logo">
             <div class="absolute -inset-10 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 rounded-full blur-3xl opacity-60"></div>
             <div class="relative z-10 w-36 h-36 rounded-3xl bg-slate-900/90 border border-slate-700/80 p-5 shadow-2xl flex items-center justify-center">
-                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Logo" class="max-h-full max-w-full object-contain filter drop-shadow-2xl" onerror="this.src='/static/img/ordumak_logo.svg'">
+                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}" alt="Logo" class="max-h-full max-w-full object-contain filter drop-shadow-2xl" onerror="this.src='/static/img/ordumak_logo.svg'">
             </div>
             <h2 class="relative z-10 mt-6 text-xl font-black tracking-wider text-white">
                 {{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}
@@ -53,7 +61,7 @@
         <!-- Logo & Başlık -->
         <div class="text-center mb-8 relative">
             <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" class="inline-block mb-3 hover:opacity-90 transition-opacity">
-                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Logo" class="h-14 w-auto mx-auto object-contain" onerror="this.src='/static/img/ordumak_logo.svg'">
+                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}" alt="Logo" class="h-14 w-auto mx-auto object-contain" onerror="this.src='/static/img/ordumak_logo.svg'">
             </a>
             <h1 class="text-xl font-bold text-white tracking-wide">{{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}</h1>
             <p class="text-xs text-slate-400 mt-1 font-medium">{{ system_settings.app_subtitle or 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı' }}</p>
@@ -96,6 +104,15 @@
                     <input type="password" name="password" required placeholder="••••••••" autocomplete="current-password"
                            class="w-full bg-slate-950/70 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all">
                 </div>
+            </div>
+
+            <!-- Beni Hatırla Seçeneği -->
+            <div class="flex items-center justify-between text-xs py-1">
+                <label class="flex items-center gap-2 text-slate-300 hover:text-white cursor-pointer select-none">
+                    <input type="checkbox" name="remember_me" value="1" checked
+                           class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 transition-all cursor-pointer">
+                    <span class="font-medium text-slate-300">Beni Hatırla (15 Gün Açık Kalsın)</span>
+                </label>
             </div>
 
             <button type="submit" id="btnLoginSubmit" class="w-full mt-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-blue-600/30 text-sm transition-all flex items-center justify-center gap-2">

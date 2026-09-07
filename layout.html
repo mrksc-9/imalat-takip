@@ -39,8 +39,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- PWA & Mobile Web App Meta Tags -->
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/png" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}">
-    <link rel="apple-touch-icon" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <link rel="icon" type="image/svg+xml" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <meta name="msapplication-TileImage" content="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <meta name="msapplication-TileColor" content="#020617">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

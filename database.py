@@ -2,7 +2,18 @@ import sqlite3
 import os
 import re
 import hashlib
-from datetime import datetime
+import functools
+from datetime import datetime, timezone, timedelta
+
+ISTANBUL_TZ = timezone(timedelta(hours=3))
+
+def get_istanbul_now():
+    """Türkiye / İstanbul saat dilimine (UTC+3) göre güncel datetime nesnesini döner."""
+    return datetime.now(timezone.utc).astimezone(ISTANBUL_TZ)
+
+def get_istanbul_now_str(format_str='%Y-%m-%d %H:%M:%S'):
+    """Türkiye / İstanbul saat dilimine göre formatlanmış string döner."""
+    return get_istanbul_now().strftime(format_str)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'imalat_takip.db')
 DATABASE_URL = os.environ.get('DATABASE_URL')
@@ -798,29 +809,34 @@ def log_activity(action, entity_type=None, entity_id=None, details="", username=
     try:
         conn = get_db()
         cursor = conn.cursor()
+        now_ts = get_istanbul_now_str()
         cursor.execute('''
-        INSERT INTO activity_logs (user_id, username, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, username, action, entity_type, entity_id, details, ip_address))
+        INSERT INTO activity_logs (user_id, username, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, username, action, entity_type, entity_id, details, ip_address, now_ts))
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"Log error: {e}")
 
+@functools.lru_cache(maxsize=256)
 def can_user_edit(user_role, module_name):
-    """Kullanıcının belirtilen modülde düzenleme yetkisi var mı kontrol eder."""
+    """Kullanıcının belirtilen modülde düzenleme yetkisi var mı kontrol eder (LRU önbellekli yüksek performans)."""
     if not user_role:
         return False
     role_lower = str(user_role).lower().strip()
     if role_lower in ('admin', 'patron'):
         return True
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT can_edit FROM role_permissions WHERE role = ? AND module = ?", (role_lower, module_name))
-    row = cursor.fetchone()
-    conn.close()
-    if row and row['can_edit'] == 1:
-        return True
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT can_edit FROM role_permissions WHERE role = ? AND module = ?", (role_lower, module_name))
+        row = cursor.fetchone()
+        conn.close()
+        if row and row['can_edit'] == 1:
+            return True
+    except Exception:
+        pass
     return False
 
 def get_customers():
@@ -1159,6 +1175,10 @@ def update_role_permission(role, module, can_edit):
     ''', (role, module, can_edit))
     conn.commit()
     conn.close()
+    try:
+        can_user_edit.cache_clear()
+    except Exception:
+        pass
 
 def update_system_settings(app_title, app_subtitle, company_name=None, company_logo_url=None, company_website_url=None):
     conn = get_db()
@@ -1395,10 +1415,11 @@ def add_notification(category, title, message, icon='fa-bell', color='blue', lin
     try:
         conn = get_db()
         cursor = conn.cursor()
+        now_ts = get_istanbul_now_str()
         cursor.execute("""
-            INSERT INTO notifications (category, title, message, icon, color, link_url, user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (category, title.strip(), message.strip(), icon, color, link_url or '', user_id))
+            INSERT INTO notifications (category, title, message, icon, color, link_url, user_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (category, title.strip(), message.strip(), icon, color, link_url or '', user_id, now_ts))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -1440,6 +1461,14 @@ def admin_update_user(user_id, username, full_name, role, is_active, new_passwor
     conn.commit()
     conn.close()
 
+def delete_user(user_id):
+    """Kullanıcıyı sistemden kalıcı olarak siler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
 
 # =========================================================================
 # DUYURU VE UYARI SİSTEMİ
@@ -1457,10 +1486,11 @@ def add_announcement(user_id, username, full_name, title, content, priority='Ön
     """Yeni bir sistem/şantiye duyurusu ekler."""
     conn = get_db()
     cursor = conn.cursor()
+    now_ts = get_istanbul_now_str()
     cursor.execute("""
-        INSERT INTO announcements (user_id, username, full_name, title, content, priority, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, 1)
-    """, (user_id, username, full_name, title.strip(), content.strip(), priority))
+        INSERT INTO announcements (user_id, username, full_name, title, content, priority, is_active, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+    """, (user_id, username, full_name, title.strip(), content.strip(), priority, now_ts))
     conn.commit()
     conn.close()
 
@@ -1504,10 +1534,11 @@ def save_chat_message(channel, user_id, username, full_name, message, photo_url=
     """Yeni sohbet mesajı ve isteğe bağlı fotoğraf ekler."""
     conn = get_db()
     cursor = conn.cursor()
+    now_ts = get_istanbul_now_str()
     cursor.execute("""
-        INSERT INTO chat_messages (channel, user_id, username, full_name, message, photo_url)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (channel or 'genel', user_id, username, full_name, message.strip() if message else '', photo_url or ''))
+        INSERT INTO chat_messages (channel, user_id, username, full_name, message, photo_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (channel or 'genel', user_id, username, full_name, message.strip() if message else '', photo_url or '', now_ts))
     conn.commit()
     conn.close()
 

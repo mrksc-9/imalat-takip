@@ -24,7 +24,7 @@ from database import (
     get_user_by_id, update_user_profile,
     approve_material_order, reject_material_order,
     get_cutting_progress_analysis,
-    admin_update_user,
+    admin_update_user, delete_user,
     get_active_announcements, add_announcement, deactivate_announcement, delete_announcement,
     get_chat_messages, save_chat_message, clear_chat_messages, delete_chat_message,
     get_meetings, get_meeting_by_id, add_meeting, update_meeting, delete_meeting,
@@ -32,6 +32,7 @@ from database import (
     add_notification, get_recent_notifications,
     save_push_subscription, get_push_subscriptions, delete_push_subscription,
     get_shipments_with_accounting, update_shipment_accounting, get_accounting_summary_stats,
+    get_istanbul_now, get_istanbul_now_str,
     ROLES_LIST, MODULES_LIST
 )
 from excel_handler import (
@@ -43,6 +44,9 @@ from seed_data import seed_demo_data
 
 import jinja2
 
+# =========================================================================
+# FLASK UYGULAMA YAPILANDIRMASI
+# =========================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(
@@ -62,6 +66,7 @@ app.jinja_loader = jinja2.ChoiceLoader([
 ])
 
 app.secret_key = os.environ.get('SECRET_KEY', 'celik_imalat_takip_gizli_anahtar_2026_super_secure')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=15)
 
 # =========================================================================
 # WEB PUSH (VAPID) BİLDİRİM MOTORU
@@ -234,7 +239,7 @@ def inject_global_vars():
         'system_settings': settings,
         'can_user_edit': user_can_edit,
         'active_announcements': active_announcements,
-        'now': datetime.now()
+        'now': get_istanbul_now()
     }
 
 _db_initialized = False
@@ -286,6 +291,13 @@ def login():
             user_data = dict(user_row)
             del user_data['password_hash']
             session['user'] = user_data
+            
+            # Beni Hatırla Seçeneği (15 Günlük Oturum)
+            remember_me = request.form.get('remember_me')
+            if remember_me:
+                session.permanent = True
+            else:
+                session.permanent = False
             
             log_activity(
                 action="Giriş Yapıldı",
@@ -1901,26 +1913,8 @@ def api_boya_kaydet():
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (ass['project_id'], assembly_id, ass['assembly_pos'], process_type, quantity, ral_code, dft_micron, lot_no, completion_date, u.get('full_name'), notes))
 
-    if process_type in ('Tamamlandı', 'Boya'):
-        new_done = ass['paint_done_qty'] + quantity
-        cursor.execute("UPDATE assemblies SET paint_done_qty = ? WHERE id = ?", (new_done, assembly_id))
-        add_notification(
-            category='boya_tamam',
-            title='Boya Tamamlandı & Sevke Hazır',
-            message=f"Marka '{ass['assembly_pos']}' ({quantity} Adet) boyandı ve sevkiyat havuzuna hazırlandı.",
-            icon='fa-truck-ramp-box',
-            color='purple',
-            link_url=url_for('sevk')
-        )
-
-    conn.commit()
-    conn.close()
-
-    flash(f"'{ass['assembly_pos']}' için boya/yüzey işlem kaydı işlendi.", "success")
-    return redirect(request.referrer or url_for('boya_takip'))
-
     # Assemblies adetlerini güncelle
-    if process_type == 'Tamamlandı' or process_type == 'Boya':
+    if process_type in ('Tamamlandı', 'Boya'):
         new_done = ass['paint_done_qty'] + quantity
         cursor.execute('''
         UPDATE assemblies SET
@@ -1930,6 +1924,14 @@ def api_boya_kaydet():
             paint_dft = COALESCE(?, paint_dft)
         WHERE id = ?
         ''', (new_done, ral_code or None, dft_micron or None, assembly_id))
+        add_notification(
+            category='boya_tamam',
+            title='Boya Tamamlandı & Sevke Hazır',
+            message=f"Marka '{ass['assembly_pos']}' ({quantity} Adet) boyandı ve sevkiyat havuzuna hazırlandı.",
+            icon='fa-truck-ramp-box',
+            color='purple',
+            link_url=url_for('sevk')
+        )
     elif process_type == 'Kumlama':
         cursor.execute("UPDATE assemblies SET paint_sandblast_qty = paint_sandblast_qty + ?, paint_status = 'KUMLAMADA' WHERE id = ?", (quantity, assembly_id))
     elif process_type == 'Galvaniz':
@@ -1949,7 +1951,7 @@ def api_boya_kaydet():
     )
 
     flash(f"'{ass['assembly_pos']}' için {process_type} işlemi ({quantity} Adet) başarıyla kaydedildi.", "success")
-    return redirect(url_for('boya_takip'))
+    return redirect(request.referrer or url_for('boya_takip'))
 
 
 # =========================================================================
@@ -2369,6 +2371,46 @@ def api_kullanici_durum(user_id):
     conn.commit()
     conn.close()
     flash("Kullanıcı durumu güncellendi.", "info")
+    return redirect(url_for('kullanicilar'))
+
+@app.route('/api/kullanici/<int:user_id>/sil', methods=['POST'])
+@app.route('/api/kullanicilar/<int:user_id>/sil', methods=['POST'])
+def api_kullanici_sil(user_id):
+    """Admin veya Patronun kullanıcıyı kalıcı olarak silmesini sağlar."""
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem! Yalnızca Yönetici veya Patron kullanıcı silebilir.", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    if cur_user.get('id') == user_id:
+        flash("Kendi oturum açtığınız hesabı silemezsiniz!", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, full_name FROM users WHERE id = ?", (user_id,))
+    target_user = cursor.fetchone()
+    conn.close()
+
+    if not target_user:
+        flash("Kullanıcı bulunamadı!", "warning")
+        return redirect(url_for('kullanicilar'))
+
+    if target_user['username'] == 'admin':
+        flash("Ana 'admin' hesabı sistem güvenliği için silinemez!", "danger")
+        return redirect(url_for('kullanicilar'))
+
+    delete_user(user_id)
+    log_activity(
+        action="Kullanıcı Silindi",
+        entity_type="users",
+        entity_id=user_id,
+        details=f"'{target_user['full_name']}' ({target_user['username']}) kullanıcısı sistemden kalıcı olarak silindi.",
+        username=cur_user.get('username'),
+        user_id=cur_user.get('id'),
+        ip_address=request.remote_addr
+    )
+    flash(f"'{target_user['full_name']}' kullanıcısı başarıyla silindi.", "success")
     return redirect(url_for('kullanicilar'))
 
 @app.route('/aktivite-loglari')
@@ -3030,23 +3072,37 @@ def service_worker():
 
 @app.route('/manifest.json')
 def pwa_manifest():
-    """PWA mobil ana ekrana ekleme manifest verisi döner."""
+    """PWA mobil ana ekrana ekleme ve masaüstü görev çubuğu kısayol manifest verisi döner."""
     settings = get_system_settings()
-    logo_url = settings.get('company_logo_url') or '/static/img/ordumak_logo.svg'
+    custom_logo = settings.get('company_logo_url')
+    png_logo = custom_logo if (custom_logo and custom_logo.endswith('.png')) else '/static/img/ordumak_logo.png'
+    svg_logo = custom_logo if (custom_logo and custom_logo.endswith('.svg')) else '/static/img/ordumak_logo.svg'
     manifest = {
         "name": settings.get('app_title', 'ORDUMAK ÇELİK İMALAT MES'),
-        "short_name": "İmalat MES",
+        "short_name": "ORDUMAK MES",
         "description": settings.get('app_subtitle', 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı'),
         "start_url": "/",
+        "scope": "/",
         "display": "standalone",
         "background_color": "#020617",
         "theme_color": "#020617",
         "icons": [
             {
-                "src": logo_url,
-                "sizes": "192x192 512x512",
-                "type": "image/png" if logo_url.endswith('.png') else "image/svg+xml",
+                "src": png_logo,
+                "sizes": "192x192",
+                "type": "image/png",
                 "purpose": "any maskable"
+            },
+            {
+                "src": png_logo,
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": svg_logo,
+                "sizes": "any",
+                "type": "image/svg+xml"
             }
         ]
     }
