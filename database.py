@@ -250,11 +250,12 @@ def get_db():
         conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.execute("PRAGMA busy_timeout=30000;")
+            conn.execute("PRAGMA journal_mode = WAL;")
+            conn.execute("PRAGMA busy_timeout = 30000;")
             conn.execute("PRAGMA synchronous = NORMAL;")
-            conn.execute("PRAGMA cache_size = -64000;")
+            conn.execute("PRAGMA cache_size = -128000;")
             conn.execute("PRAGMA temp_store = MEMORY;")
+            conn.execute("PRAGMA mmap_size = 268435456;")
         except Exception:
             pass
         return conn
@@ -373,12 +374,25 @@ def run_schema_migrations():
             "CREATE INDEX IF NOT EXISTS idx_cutting_machine ON cutting_entries(machine)",
             "CREATE INDEX IF NOT EXISTS idx_cutting_op ON cutting_entries(operator)",
             "CREATE INDEX IF NOT EXISTS idx_cutting_proj ON cutting_entries(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_cutting_proj_pos ON cutting_entries(project_id, pos_no)",
             "CREATE INDEX IF NOT EXISTS idx_parts_proj ON parts(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_parts_proj_pos ON parts(project_id, pos_no)",
             "CREATE INDEX IF NOT EXISTS idx_assemblies_proj ON assemblies(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_assemblies_proj_pos ON assemblies(project_id, assembly_pos)",
+            "CREATE INDEX IF NOT EXISTS idx_ass_parts_proj ON assembly_parts(project_id)",
             "CREATE INDEX IF NOT EXISTS idx_design_proj ON project_design_tasks(project_id)",
             "CREATE INDEX IF NOT EXISTS idx_design_stage ON project_design_tasks(stage_type)",
+            "CREATE INDEX IF NOT EXISTS idx_design_status ON project_design_tasks(status)",
             "CREATE INDEX IF NOT EXISTS idx_chat_rec_read ON chat_messages(receiver_id, is_read)",
-            "CREATE INDEX IF NOT EXISTS idx_act_logs_desc ON activity_logs(id DESC)"
+            "CREATE INDEX IF NOT EXISTS idx_chat_channel ON chat_messages(channel, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_act_logs_desc ON activity_logs(id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_paint_proj ON paint_entries(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mat_ord_proj ON material_orders_ordered(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mat_rec_proj ON material_orders_received(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_shipments_proj ON shipments(project_id)",
+            "CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read)",
+            "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
+            "CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name)"
         ]
         for idx_sql in indexes:
             try:
@@ -998,6 +1012,7 @@ def init_db():
     conn.close()
 
 
+@functools.lru_cache(maxsize=1)
 def get_system_settings():
     conn = get_db()
     cursor = conn.cursor()
@@ -1322,6 +1337,157 @@ def get_project_summary(project_id):
 
     return proj_dict
 
+def get_all_projects_summary(customer=None, status_filter=None, exclude_status=('Arşiv',)):
+    """Tüm projelerin özet metriklerini N+1 sorgu problemi olmadan tek seferde toplu olarak hesaplar (Ultra Hızlı)."""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM projects WHERE 1=1"
+    params = []
+    if exclude_status:
+        placeholders = ','.join(['?'] * len(exclude_status))
+        query += f" AND status NOT IN ({placeholders})"
+        params.extend(exclude_status)
+    if status_filter:
+        query += " AND status = ?"
+        params.append(status_filter)
+    if customer and customer.strip():
+        query += " AND customer = ?"
+        params.append(customer.strip())
+
+    query += " ORDER BY id DESC"
+    cursor.execute(query, tuple(params))
+    projects_raw = [dict(r) for r in cursor.fetchall()]
+
+    if not projects_raw:
+        conn.close()
+        return []
+
+    project_ids = [p['id'] for p in projects_raw]
+    p_placeholders = ','.join(['?'] * len(project_ids))
+
+    # 1. Toplu Parça İstatistikleri (Tek SQL)
+    cursor.execute(f'''
+    SELECT 
+        project_id,
+        COUNT(id) as total_parts_count,
+        COALESCE(SUM(quantity), 0) as total_parts_qty,
+        COALESCE(SUM(cut_quantity), 0) as total_parts_cut_qty,
+        COALESCE(SUM(total_weight), 0) / 1000.0 as total_parts_tonnage,
+        COALESCE(SUM((unit_weight * cut_quantity)), 0) / 1000.0 as total_cut_tonnage
+    FROM parts
+    WHERE project_id IN ({p_placeholders})
+    GROUP BY project_id
+    ''', project_ids)
+    parts_by_proj = {r['project_id']: dict(r) for r in cursor.fetchall()}
+
+    # 2. Toplu Assembly İstatistikleri (Tek SQL)
+    cursor.execute(f'''
+    SELECT
+        project_id,
+        COUNT(id) as total_assemblies_count,
+        COALESCE(SUM(quantity), 0) as total_assemblies_qty,
+        COALESCE(SUM(total_weight), 0) / 1000.0 as total_assembly_tonnage,
+        COALESCE(SUM((unit_weight * fab_fitup_qty)), 0) / 1000.0 as fitup_tonnage,
+        COALESCE(SUM((unit_weight * fab_welding_qty)), 0) / 1000.0 as welding_tonnage,
+        COALESCE(SUM((unit_weight * fab_cleaning_qty)), 0) / 1000.0 as cleaning_tonnage,
+        COALESCE(SUM((unit_weight * fab_done_qty)), 0) / 1000.0 as fab_completed_tonnage,
+        COALESCE(SUM((unit_weight * qa_pending_qty)), 0) / 1000.0 as qa_pending_tonnage,
+        COALESCE(SUM((unit_weight * qa_approved_qty)), 0) / 1000.0 as qa_approved_tonnage,
+        COALESCE(SUM((unit_weight * qa_rejected_qty)), 0) / 1000.0 as qa_rejected_tonnage,
+        COALESCE(SUM((unit_weight * (paint_sandblast_qty + paint_paint_qty + paint_galv_qty))), 0) / 1000.0 as paint_in_progress_tonnage,
+        COALESCE(SUM((unit_weight * paint_done_qty)), 0) / 1000.0 as paint_completed_tonnage,
+        COALESCE(SUM((unit_weight * shipped_qty)), 0) / 1000.0 as shipped_tonnage
+    FROM assemblies
+    WHERE project_id IN ({p_placeholders})
+    GROUP BY project_id
+    ''', project_ids)
+    assemblies_by_proj = {r['project_id']: dict(r) for r in cursor.fetchall()}
+
+    # 3. Toplu Sipariş İstatistikleri (Tek SQL)
+    cursor.execute(f'''
+    SELECT project_id, COALESCE(SUM(weight), 0) / 1000.0 as ordered_tonnage
+    FROM material_orders_ordered
+    WHERE project_id IN ({p_placeholders})
+    GROUP BY project_id
+    ''', project_ids)
+    ordered_by_proj = {r['project_id']: (r['ordered_tonnage'] or 0.0) for r in cursor.fetchall()}
+
+    cursor.execute(f'''
+    SELECT project_id, COALESCE(SUM(weight), 0) / 1000.0 as received_tonnage
+    FROM material_orders_received
+    WHERE project_id IN ({p_placeholders})
+    GROUP BY project_id
+    ''', project_ids)
+    received_by_proj = {r['project_id']: (r['received_tonnage'] or 0.0) for r in cursor.fetchall()}
+
+    conn.close()
+
+    # Birleştirme
+    summaries = []
+    for proj in projects_raw:
+        pid = proj['id']
+        p_stats = parts_by_proj.get(pid, {
+            'total_parts_count': 0, 'total_parts_qty': 0, 'total_parts_cut_qty': 0,
+            'total_parts_tonnage': 0.0, 'total_cut_tonnage': 0.0
+        })
+        a_stats = assemblies_by_proj.get(pid, {
+            'total_assemblies_count': 0, 'total_assemblies_qty': 0, 'total_assembly_tonnage': 0.0,
+            'fitup_tonnage': 0.0, 'welding_tonnage': 0.0, 'cleaning_tonnage': 0.0, 'fab_completed_tonnage': 0.0,
+            'qa_pending_tonnage': 0.0, 'qa_approved_tonnage': 0.0, 'qa_rejected_tonnage': 0.0,
+            'paint_in_progress_tonnage': 0.0, 'paint_completed_tonnage': 0.0, 'shipped_tonnage': 0.0
+        })
+        sip_ver = ordered_by_proj.get(pid, 0.0)
+        sip_gel = received_by_proj.get(pid, 0.0)
+
+        manual_ton = float(proj.get('manual_tonnage') or 0.0) if proj.get('manual_tonnage') is not None else 0.0
+        target_ton = float(proj.get('target_tonnage') or 0.0)
+        
+        if manual_ton > 0:
+            total_ton = manual_ton
+        elif target_ton > 0:
+            total_ton = target_ton
+        else:
+            total_ton = a_stats['total_assembly_tonnage'] if a_stats['total_assembly_tonnage'] > 0 else (p_stats['total_parts_tonnage'] if p_stats['total_parts_tonnage'] > 0 else 0.0)
+            
+        tot = total_ton or 0.0001
+        cut_ton = p_stats['total_cut_tonnage']
+        fab_ton = a_stats['fab_completed_tonnage']
+        paint_ton = a_stats['paint_completed_tonnage']
+        ship_ton = a_stats['shipped_tonnage']
+        stock_ton = max(0.0, fab_ton - ship_ton)
+
+        proj_copy = dict(proj)
+        proj_copy.update({
+            'total_tonnage': round(total_ton, 2),
+            'cut_tonnage': round(cut_ton, 2),
+            'fab_completed_tonnage': round(fab_ton, 2),
+            'paint_completed_tonnage': round(paint_ton, 2),
+            'shipped_tonnage': round(ship_ton, 2),
+            'factory_stock_tonnage': round(stock_ton, 2),
+            'pending_fab_tonnage': round(max(0.0, total_ton - fab_ton), 2),
+            'cut_pct': round(min((cut_ton / tot) * 100, 100.0), 1),
+            'fab_pct': round(min((fab_ton / tot) * 100, 100.0), 1),
+            'paint_pct': round(min((paint_ton / tot) * 100, 100.0), 1),
+            'ship_pct': round(min((ship_ton / tot) * 100, 100.0), 1),
+            'ordered_tonnage': round(sip_ver, 2),
+            'received_tonnage': round(sip_gel, 2),
+            'material_pct': round(min((sip_gel / (sip_ver or 0.0001)) * 100, 100.0), 1) if sip_ver > 0 else 0.0,
+            'total_parts_count': p_stats['total_parts_count'],
+            'total_parts_qty': p_stats['total_parts_qty'],
+            'total_parts_cut_qty': p_stats['total_parts_cut_qty'],
+            'total_assemblies_count': a_stats['total_assemblies_count'],
+            'total_assemblies_qty': a_stats['total_assemblies_qty'],
+            'fitup_tonnage': round(a_stats['fitup_tonnage'], 2),
+            'welding_tonnage': round(a_stats['welding_tonnage'], 2),
+            'cleaning_tonnage': round(a_stats['cleaning_tonnage'], 2),
+            'qa_pending_tonnage': round(a_stats['qa_pending_tonnage'], 2),
+            'qa_approved_tonnage': round(a_stats['qa_approved_tonnage'], 2)
+        })
+        summaries.append(proj_copy)
+
+    return summaries
+
 def get_machines(active_only=False):
     conn = get_db()
     cursor = conn.cursor()
@@ -1422,6 +1588,10 @@ def update_system_settings(app_title, app_subtitle, company_name=None, company_l
         ''', (app_title, app_subtitle, company_name, company_logo_url, company_website_url, row['id']))
     conn.commit()
     conn.close()
+    try:
+        get_system_settings.cache_clear()
+    except Exception:
+        pass
 
 def get_user_by_id(user_id):
     """Kullanıcı bilgilerini ID ile getirir."""
@@ -1475,24 +1645,45 @@ def reject_material_order(order_id, user_name="Satınalma"):
     conn.close()
 
 def get_cutting_progress_analysis(project_id=None):
-    """Projelerin Plaka ve Profil bazında kesim tamamlama oranlarını hesaplar."""
+    """Projelerin Plaka ve Profil bazında kesim tamamlama oranlarını toplu sorgularla anında hesaplar (Ultra Hızlı)."""
     conn = get_db()
     cursor = conn.cursor()
 
     if project_id:
         cursor.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
-        projects = cursor.fetchall()
+        projects = [dict(r) for r in cursor.fetchall()]
     else:
         cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY created_at DESC")
-        projects = cursor.fetchall()
+        projects = [dict(r) for r in cursor.fetchall()]
+
+    if not projects:
+        conn.close()
+        return []
+
+    p_ids = [p['id'] for p in projects]
+    placeholders = ','.join(['?'] * len(p_ids))
+
+    # Toplu Parçalar
+    cursor.execute(f"SELECT * FROM parts WHERE project_id IN ({placeholders})", p_ids)
+    all_parts = [dict(r) for r in cursor.fetchall()]
+    parts_by_proj = {}
+    for pt in all_parts:
+        parts_by_proj.setdefault(pt['project_id'], []).append(pt)
+
+    # Toplu Kesim Logları
+    cursor.execute(f"SELECT project_id, pos_no, cut_quantity, machine FROM cutting_entries WHERE project_id IN ({placeholders})", p_ids)
+    all_cut_logs = [dict(r) for r in cursor.fetchall()]
+    cut_logs_by_proj = {}
+    for clog in all_cut_logs:
+        cut_logs_by_proj.setdefault(clog['project_id'], []).append(clog)
+
+    conn.close()
 
     analysis_data = []
 
     for p in projects:
         pid = p['id']
-        cursor.execute("SELECT * FROM parts WHERE project_id = ?", (pid,))
-        parts = [dict(r) for r in cursor.fetchall()]
-
+        parts = parts_by_proj.get(pid, [])
         total_parts_count = len(parts)
         total_tonnage = 0.0
         total_cut_tonnage = 0.0
@@ -1507,13 +1698,8 @@ def get_cutting_progress_analysis(project_id=None):
         profile_total_kg = 0.0
         profile_cut_kg = 0.0
 
-        # Poz sözlüğü (hızlı erişim için)
         parts_map = {pt['pos_no']: pt for pt in parts}
-
-        # Makine loglarından gelen kesimleri analiz et
-        cursor.execute("SELECT pos_no, cut_quantity, machine FROM cutting_entries WHERE project_id = ?", (pid,))
-        cut_logs = [dict(r) for r in cursor.fetchall()]
-
+        cut_logs = cut_logs_by_proj.get(pid, [])
         has_cutting_logs = len(cut_logs) > 0
         plate_log_cut_qty = 0
         plate_log_cut_kg = 0.0
@@ -1625,10 +1811,9 @@ def get_cutting_progress_analysis(project_id=None):
                 'cut_ton': round(profile_cut_kg / 1000.0, 2),
                 'cut_pct': min(100.0, profile_pct)
             },
-            'parts_breakdown': parts_breakdown
+            'parts': parts_breakdown
         })
 
-    conn.close()
     return analysis_data
 
 
@@ -2197,6 +2382,7 @@ def get_all_roles():
     conn.close()
     return rows
 
+@functools.lru_cache(maxsize=1)
 def get_roles_list():
     """Tüm aktif rol isimlerini liste olarak döner (dinamik)."""
     conn = get_db()
@@ -2232,6 +2418,10 @@ def add_custom_role(name, description=''):
             
         conn.commit()
         conn.close()
+        try:
+            get_roles_list.cache_clear()
+        except Exception:
+            pass
         return True, f"'{name_clean}' rolü başarıyla oluşturuldu."
     except Exception as e:
         conn.close()
@@ -2262,6 +2452,10 @@ def delete_custom_role(role_name):
         cursor.execute("DELETE FROM roles WHERE LOWER(name) = ?", (name_clean,))
         conn.commit()
         conn.close()
+        try:
+            get_roles_list.cache_clear()
+        except Exception:
+            pass
         return True, f"'{name_clean}' rolü başarıyla silindi. Bu roldeki kullanıcılar 'izleyici' yapıldı."
     except Exception as e:
         conn.close()

@@ -5,6 +5,7 @@ import socket
 import json
 import threading
 import traceback
+import functools
 from datetime import datetime, timedelta
 import calendar
 from functools import wraps
@@ -16,7 +17,7 @@ from flask import (
 
 from database import (
     get_db, init_db, run_schema_migrations, ensure_column, log_activity, hash_password,
-    get_global_metrics, get_project_summary, get_customers, set_project_status,
+    get_global_metrics, get_project_summary, get_all_projects_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings,
     get_machines, get_machine_by_id, add_machine, update_machine, delete_machine,
     get_all_role_permissions, update_role_permission,
@@ -155,6 +156,7 @@ def internal_error(error):
 
 
 # Otomatik IP Tespiti
+@functools.lru_cache(maxsize=1)
 def get_local_ip():
     """Bilgisayarın yerel ağdaki (Wi-Fi / Ethernet) IP adresini otomatik bulur."""
     try:
@@ -280,6 +282,13 @@ def ensure_db_and_auth():
     if 'user' not in session:
         return redirect(url_for('login'))
 
+@app.after_request
+def add_cache_headers(response):
+    """Statik dosyalar için tarayıcı önbelleklemesini etkinleştirir (Ultra Hızlı Yükleme)."""
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+    return response
+
 
 # Baslangicta da calistir
 with app.app_context():
@@ -367,20 +376,14 @@ def index():
     customers = get_customers()
     metrics = get_global_metrics(customer=selected_customer if selected_customer else None)
     
+    # Projelerin aşama durumlarıyla listesi (Aktif olanlar - Tek toplu sorgu ile ultra hızlı)
+    projects = get_all_projects_summary(
+        customer=selected_customer if selected_customer else None,
+        exclude_status=('Arşiv', 'Tamamlandı')
+    )
+    
     conn = get_db()
     cursor = conn.cursor()
-    
-    # Projelerin aşama durumlarıyla listesi (Aktif olanlar)
-    if selected_customer:
-        cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' AND customer = ? ORDER BY id DESC", (selected_customer,))
-    else:
-        cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' ORDER BY id DESC")
-    projects_raw = cursor.fetchall()
-    projects = []
-    for p in projects_raw:
-        summary = get_project_summary(p['id'])
-        if summary:
-            projects.append(summary)
 
     # Son Sevkiyatlar
     if selected_customer:
@@ -420,26 +423,11 @@ def index():
 @app.route('/projeler')
 def projeler():
     tab = request.args.get('tab', 'aktif')
-    conn = get_db()
-    cursor = conn.cursor()
     
-    # Aktif Projeler
-    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' AND status != 'Tamamlandı' ORDER BY id DESC")
-    active_raw = cursor.fetchall()
-    active_projects = []
-    for p in active_raw:
-        summary = get_project_summary(p['id'])
-        if summary: active_projects.append(summary)
-        
-    # Biten Projeler
-    cursor.execute("SELECT * FROM projects WHERE status = 'Tamamlandı' ORDER BY id DESC")
-    finished_raw = cursor.fetchall()
-    finished_projects = []
-    for p in finished_raw:
-        summary = get_project_summary(p['id'])
-        if summary: finished_projects.append(summary)
+    # Aktif ve Biten Projeleri N+1 sorgu yapmadan tek seferde toplu getir
+    active_projects = get_all_projects_summary(exclude_status=('Arşiv', 'Tamamlandı'))
+    finished_projects = get_all_projects_summary(status_filter='Tamamlandı')
 
-    conn.close()
     metrics = get_global_metrics()
     return render_template('projeler.html',
                            active_projects=active_projects,
@@ -1982,15 +1970,7 @@ def api_kesim_kaydet():
 # =========================================================================
 @app.route('/imalat-plan')
 def imalat_plan():
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY delivery_date ASC")
-    projects_raw = cursor.fetchall()
-    projects = []
-    for p in projects_raw:
-        summary = get_project_summary(p['id'])
-        if summary: projects.append(summary)
-    conn.close()
+    projects = get_all_projects_summary(exclude_status=('Arşiv',))
     return render_template('imalat_plan.html', projects=projects, today_str=datetime.now().strftime("%Y-%m-%d"))
 
 @app.route('/api/imalat-plan/guncelle', methods=['POST'])
@@ -4025,4 +4005,4 @@ if __name__ == '__main__':
     print(" Bilgi: Evde, işyerinde veya sahada telefonunuzun tarayıcısına")
     print(f" 'http://{local_ip}:5000' yazarak anlık işlem yapabilirsiniz.")
     print("=" * 70)
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
