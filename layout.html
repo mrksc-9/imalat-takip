@@ -227,7 +227,7 @@
                         <i class="fa-solid fa-bars"></i>
                     </button>
                     <div>
-                        <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                        <h2 id="pageHeaderTitle" class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                             {% block page_title %}İmalat, Montaj & Sevkiyat Sistemi{% endblock %}
                         </h2>
                     </div>
@@ -343,7 +343,7 @@
             </div>
 
             <!-- SAYFA ÖZEL İÇERİĞİ -->
-            <main class="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar pb-20">
+            <main id="mainContentArea" class="flex-1 overflow-y-auto px-4 sm:px-6 py-4 custom-scrollbar pb-20">
                 {% block content %}{% endblock %}
             </main>
         </div>
@@ -688,7 +688,7 @@
                 <a href="{{ url_for('sohbet') }}" class="text-slate-400 hover:text-blue-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Tam Ekranda / Ayrı Sayfada Aç">
                     <i class="fa-solid fa-up-right-from-square"></i>
                 </a>
-                <button type="button" onclick="clearCurrentChatChannel()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Bu Kanalın Mesajlarını Temizle">
+                <button type="button" onclick="clearDrawerChatChannel()" class="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-slate-800 transition-colors text-xs" title="Bu Kanalın Mesajlarını Temizle">
                     <i class="fa-solid fa-trash-can"></i>
                 </button>
                 <button type="button" onclick="toggleChatDrawer()" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition-colors">
@@ -699,14 +699,14 @@
 
         <!-- Kanal Sekmeleri (8 Birim Kanalı) -->
         <div class="px-3 py-2 bg-slate-900/50 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto custom-scrollbar text-[11px] font-bold">
-            <button onclick="switchChatChannel('genel', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0">#genel</button>
-            <button onclick="switchChatChannel('kesim', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kesim</button>
-            <button onclick="switchChatChannel('imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#imalat</button>
-            <button onclick="switchChatChannel('kalite', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kalite</button>
-            <button onclick="switchChatChannel('boya', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#boya</button>
-            <button onclick="switchChatChannel('sevkiyat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#sevkiyat</button>
-            <button onclick="switchChatChannel('muhasebe', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#muhasebe</button>
-            <button onclick="switchChatChannel('yonetim', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#yonetim</button>
+            <button onclick="switchDrawerChatChannel('genel', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0">#genel</button>
+            <button onclick="switchDrawerChatChannel('kesim', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kesim</button>
+            <button onclick="switchDrawerChatChannel('imalat', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#imalat</button>
+            <button onclick="switchDrawerChatChannel('kalite', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kalite</button>
+            <button onclick="switchDrawerChatChannel('boya', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#boya</button>
+            <button onclick="switchDrawerChatChannel('sevkiyat', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#sevkiyat</button>
+            <button onclick="switchDrawerChatChannel('muhasebe', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#muhasebe</button>
+            <button onclick="switchDrawerChatChannel('yonetim', this)" class="drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#yonetim</button>
         </div>
 
         <!-- Mesaj Akışı -->
@@ -717,12 +717,12 @@
         <!-- Görsel Önizleme Kutusu -->
         <div id="chatPhotoPreviewBox" class="hidden px-3 py-1.5 bg-blue-950/60 border-t border-blue-800/60 flex items-center justify-between text-[11px] text-blue-300 font-mono">
             <span id="chatPhotoName" class="truncate max-w-[240px]">📎 Görsel seçildi</span>
-            <button type="button" onclick="clearChatPhoto()" class="text-rose-400 hover:text-rose-300"><i class="fa-solid fa-xmark"></i></button>
+            <button type="button" onclick="clearDrawerChatPhoto()" class="text-rose-400 hover:text-rose-300"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
         <!-- Mesaj Gönderme Formu -->
-        <form onsubmit="sendChatMessage(event)" class="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
-            <input type="file" id="chatPhotoInput" accept="image/*" class="hidden" onchange="onChatPhotoSelected(this)">
+        <form onsubmit="sendDrawerChatMessage(event)" class="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+            <input type="file" id="chatPhotoInput" accept="image/*" class="hidden" onchange="onDrawerChatPhotoSelected(this)">
             <button type="button" onclick="document.getElementById('chatPhotoInput').click()" class="p-2 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-slate-800 transition-colors" title="Fotoğraf Ekle">
                 <i class="fa-solid fa-image"></i>
             </button>
@@ -1158,43 +1158,53 @@
 
 
         // =========================================================================
-        // 2. CANLI SOHBET & AI DANIŞMAN MOTORU
+        // 2. CANLI SOHBET & AI DANIŞMAN MOTORU (ÇEKMECE / DRAWER)
         // =========================================================================
-        let currentChatChannel = 'genel';
-        let chatPollInterval = null;
-        let selectedChatPhoto = null;
+        let currentDrawerChatChannel = 'genel';
+        let drawerChatPollInterval = null;
+        let selectedDrawerChatPhoto = null;
+
+        function escapeDrawerHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
 
         function toggleChatDrawer() {
             const drawer = document.getElementById('chatDrawer');
+            if (!drawer) return;
             if (drawer.classList.contains('hidden')) {
                 drawer.classList.remove('hidden');
                 drawer.classList.add('flex');
-                loadChatMessages();
-                if (!chatPollInterval) {
-                    chatPollInterval = setInterval(loadChatMessages, 4000);
+                loadDrawerChatMessages();
+                if (!drawerChatPollInterval) {
+                    drawerChatPollInterval = setInterval(loadDrawerChatMessages, 5000);
                 }
             } else {
                 drawer.classList.add('hidden');
                 drawer.classList.remove('flex');
-                if (chatPollInterval) {
-                    clearInterval(chatPollInterval);
-                    chatPollInterval = null;
+                if (drawerChatPollInterval) {
+                    clearInterval(drawerChatPollInterval);
+                    drawerChatPollInterval = null;
                 }
             }
         }
 
-        function switchChatChannel(chan, btn) {
-            currentChatChannel = chan;
-            document.querySelectorAll('.chat-chan-btn').forEach(b => {
-                b.className = 'chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0';
+        function switchDrawerChatChannel(chan, btn) {
+            currentDrawerChatChannel = chan;
+            document.querySelectorAll('.drawer-chat-chan-btn').forEach(b => {
+                b.className = 'drawer-chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0';
             });
-            btn.className = 'chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0';
-            loadChatMessages();
+            if (btn) {
+                btn.className = 'drawer-chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0';
+            }
+            loadDrawerChatMessages();
         }
 
-        function loadChatMessages() {
+        function loadDrawerChatMessages() {
             const container = document.getElementById('chatMessagesContainer');
-            fetch(`/api/chat/${currentChatChannel}`)
+            if (!container) return;
+
+            fetch(`/api/chat/${currentDrawerChatChannel}`)
             .then(res => res.json())
             .then(messages => {
                 if (!messages || messages.length === 0) {
@@ -1203,32 +1213,36 @@
                 }
                 const isNearBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 80;
                 let html = '';
+                const myUsername = "{{ current_user.username if current_user else '' }}";
+                
                 messages.forEach(m => {
-                    const isMe = m.username === "{{ current_user.username if current_user else '' }}";
-                    
+                    const isMe = (m.username === myUsername);
                     let bubbleClass = 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700/60';
                     if (isMe) {
                         bubbleClass = 'bg-blue-600 text-white rounded-br-none';
                     }
 
+                    const timeStr = m.created_at ? m.created_at.substring(11, 16) : '';
+                    const senderName = escapeDrawerHtml(m.full_name || m.username || 'Kullanıcı');
+
                     html += `
-                        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative">
+                        <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative mb-2">
                             <div class="flex items-center gap-1.5 mb-0.5 text-[10px] text-slate-400 font-mono">
                                 ${isMe ? `
-                                    <button onclick="deleteSingleChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
+                                    <button onclick="deleteDrawerChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
                                         <i class="fa-solid fa-trash-can"></i>
                                     </button>
                                 ` : ''}
-                                <span>${m.full_name || m.username}</span>
-                                <span class="text-slate-600">${m.created_at ? m.created_at.substring(11, 16) : ''}</span>
+                                <span>${senderName}</span>
+                                <span class="text-slate-600">${timeStr}</span>
                                 ${!isMe ? `
-                                    <button onclick="deleteSingleChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
+                                    <button onclick="deleteDrawerChatMessage(${m.id})" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 p-0.5 rounded transition-all text-[10px]" title="Mesajı Sil">
                                         <i class="fa-solid fa-trash-can"></i>
                                     </button>
                                 ` : ''}
                             </div>
                             <div class="max-w-[88%] p-2.5 rounded-2xl ${bubbleClass} shadow-md">
-                                ${m.message ? `<p class="whitespace-pre-line break-words text-xs leading-relaxed">${escapeHtml(m.message)}</p>` : ''}
+                                ${m.message ? `<p class="whitespace-pre-line break-words text-xs leading-relaxed">${escapeDrawerHtml(m.message)}</p>` : ''}
                                 ${m.photo_url ? `<a href="${m.photo_url}" target="_blank" class="block mt-1.5"><img src="${m.photo_url}" class="rounded-lg max-h-36 max-w-full object-cover border border-white/10 hover:opacity-90 transition-opacity"></a>` : ''}
                             </div>
                         </div>
@@ -1239,11 +1253,24 @@
                     container.scrollTop = container.scrollHeight;
                 }
             })
-            .catch(err => console.error(err));
+            .catch(err => {
+                console.error("Drawer chat load error:", err);
+                if (container && (!container.children || container.children.length === 0 || container.innerText.includes('yükleniyor'))) {
+                    container.innerHTML = `
+                        <div class="text-center text-rose-400 py-6 text-xs flex flex-col items-center gap-2">
+                            <i class="fa-solid fa-triangle-exclamation text-base"></i>
+                            <span>Mesajlar yüklenemedi.</span>
+                            <button type="button" onclick="loadDrawerChatMessages()" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold transition-all shadow">
+                                <i class="fa-solid fa-rotate-right mr-1"></i> Tekrar Dene
+                            </button>
+                        </div>
+                    `;
+                }
+            });
         }
 
-        function clearCurrentChatChannel() {
-            let chanLabel = '#' + currentChatChannel;
+        function clearDrawerChatChannel() {
+            let chanLabel = '#' + currentDrawerChatChannel;
 
             if (!confirm(`${chanLabel} kanalındaki tüm sohbet mesajlarını temizlemek istediğinize emin misiniz?`)) {
                 return;
@@ -1252,12 +1279,12 @@
             fetch('/api/chat/clear', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel: currentChatChannel })
+                body: JSON.stringify({ channel: currentDrawerChatChannel })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    loadChatMessages();
+                    loadDrawerChatMessages();
                     showToastNotification({
                         title: 'Sohbet Temizlendi',
                         message: `${chanLabel} kanalındaki mesaj geçmişi silindi.`,
@@ -1274,7 +1301,7 @@
             });
         }
 
-        function deleteSingleChatMessage(msgId) {
+        function deleteDrawerChatMessage(msgId) {
             if (!confirm('Bu mesajı silmek istediğinize emin misiniz?')) {
                 return;
             }
@@ -1285,7 +1312,7 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    loadChatMessages();
+                    loadDrawerChatMessages();
                 } else {
                     alert('Mesaj silinemedi: ' + (data.message || ''));
                 }
@@ -1295,35 +1322,37 @@
             });
         }
 
-        function onChatPhotoSelected(input) {
+        function onDrawerChatPhotoSelected(input) {
             if (input.files && input.files[0]) {
-                selectedChatPhoto = input.files[0];
-                document.getElementById('chatPhotoName').innerText = `📎 Fotoğraf: ${selectedChatPhoto.name}`;
+                selectedDrawerChatPhoto = input.files[0];
+                document.getElementById('chatPhotoName').innerText = `📎 Fotoğraf: ${selectedDrawerChatPhoto.name}`;
                 document.getElementById('chatPhotoPreviewBox').classList.remove('hidden');
             }
         }
 
-        function clearChatPhoto() {
-            selectedChatPhoto = null;
-            document.getElementById('chatPhotoInput').value = '';
-            document.getElementById('chatPhotoPreviewBox').classList.add('hidden');
+        function clearDrawerChatPhoto() {
+            selectedDrawerChatPhoto = null;
+            const input = document.getElementById('chatPhotoInput');
+            if (input) input.value = '';
+            const box = document.getElementById('chatPhotoPreviewBox');
+            if (box) box.classList.add('hidden');
         }
 
-        function sendChatMessage(e) {
-            e.preventDefault();
+        function sendDrawerChatMessage(e) {
+            if (e) e.preventDefault();
             const textInput = document.getElementById('chatTextInput');
-            const msg = textInput.value.trim();
-            if (!msg && !selectedChatPhoto) return;
+            const msg = textInput ? textInput.value.trim() : '';
+            if (!msg && !selectedDrawerChatPhoto) return;
 
             const formData = new FormData();
-            formData.append('channel', currentChatChannel);
+            formData.append('channel', currentDrawerChatChannel);
             formData.append('message', msg);
-            if (selectedChatPhoto) {
-                formData.append('photo', selectedChatPhoto);
+            if (selectedDrawerChatPhoto) {
+                formData.append('photo', selectedDrawerChatPhoto);
             }
 
             const btn = document.getElementById('btnChatSend');
-            btn.disabled = true;
+            if (btn) btn.disabled = true;
 
             fetch('/api/chat/send', {
                 method: 'POST',
@@ -1331,23 +1360,20 @@
             })
             .then(res => res.json())
             .then(data => {
-                btn.disabled = false;
+                if (btn) btn.disabled = false;
                 if (data.status === 'success') {
-                    textInput.value = '';
-                    clearChatPhoto();
-                    loadChatMessages();
+                    if (textInput) textInput.value = '';
+                    clearDrawerChatPhoto();
+                    loadDrawerChatMessages();
                 } else {
                     alert('Mesaj gönderilemedi: ' + (data.message || ''));
                 }
             })
             .catch(err => {
-                btn.disabled = false;
-                console.error(err);
+                if (btn) btn.disabled = false;
+                console.error("Drawer send chat error:", err);
+                alert('Mesaj gönderilirken bir hata oluştu.');
             });
-        }
-
-        function escapeHtml(str) {
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
     </script>
     {% block extra_scripts %}{% endblock %}
