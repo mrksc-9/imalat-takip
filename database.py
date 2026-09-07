@@ -34,8 +34,7 @@ MODULES_LIST = [
     ('sevk', 'Sevkiyat & İrsaliye'),
     ('muhasebe_irsaliye', 'Muhasebe & İrsaliye Takip'),
     ('kullanicilar', 'Kullanıcılar & Roller'),
-    ('ayarlar', 'Firma Başlığı & Sistem Ayarları'),
-    ('ai_muhendis', 'ORDUMAK AI Mühendisi')
+    ('ayarlar', 'Firma Başlığı & Sistem Ayarları')
 ]
 
 def hash_password(password):

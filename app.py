@@ -2852,161 +2852,6 @@ def api_toplanti_aksiyon_sil(item_id):
 # =========================================================================
 # 19. CANLI SOHBET & FOTOĞRAFLI İLETİŞİM SİSTEMİ
 # =========================================================================
-def generate_steel_ai_response(msg, user_name='Değerli Personel'):
-    """ORDUMAK Akıllı Çelik İmalat & MES Yapay Zeka Danışmanı"""
-    text = (msg or '').strip().lower()
-    
-    # 1. Canlı Fabrika ve Proje Durumu Analizi
-    if any(k in text for k in ['fabrika', 'durum', 'özet', 'rapor', 'tonaj durumu', 'üretim durumu', 'neredeyiz', 'canlı']):
-        try:
-            m = get_global_metrics()
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT code, name, customer, target_tonnage, status FROM projects WHERE status != 'Tamamlandı' ORDER BY target_tonnage DESC LIMIT 5")
-            active_projs = c.fetchall()
-            conn.close()
-            
-            proj_txt = ""
-            for p in active_projs:
-                p_dict = dict(p) if hasattr(p, 'keys') else {'code': p[0], 'name': p[1], 'customer': p[2], 'target_tonnage': p[3]}
-                proj_txt += f"  • **{p_dict.get('code')}** ({p_dict.get('name')}): `{p_dict.get('target_tonnage', 0):.1f} Ton`\n"
-            
-            return (
-                f"🏭 **ORDUMAK Fabrika Canlı Üretim & Tonaj Brifingi:**\n\n"
-                f"📊 **Genel İcmal:**\n"
-                f"- **Toplam Taahhüt Edilen Tonaj:** `{m.get('total_tonnage', 0):.2f} Ton`\n"
-                f"- **⚡ Kesilen Malzeme:** `{m.get('cut_tonnage', 0):.2f} Ton` (%{m.get('cut_pct', 0)})\n"
-                f"- **🔨 İmalatı (Montaj/Kaynak) Biten:** `{m.get('fab_completed_tonnage', 0):.2f} Ton` (%{m.get('fab_pct', 0)})\n"
-                f"- **🎨 Boyanan İmalat:** `{m.get('paint_completed_tonnage', 0):.2f} Ton` (%{m.get('paint_pct', 0)})\n"
-                f"- **🚛 Sevk Edilen:** `{m.get('shipped_tonnage', 0):.2f} Ton` (%{m.get('ship_pct', 0)})\n"
-                f"- **📦 Fabrika / Atölye İçi Stok:** `{m.get('factory_stock_tonnage', 0):.2f} Ton`\n\n"
-                f"🏗️ **Öne Çıkan Aktif Projeler:**\n{proj_txt if proj_txt else '  • Aktif proje bulunmuyor.'}\n\n"
-                f"💡 *Tavsiye:* Kesimden çıkan parçaların montaj holüne hızlı aktarımı için atölye içi vinç lojistiğini ve kalite kontrol onaylarını takip ediniz."
-            )
-        except Exception as e:
-            print(f"AI metrics error: {e}")
-
-    # 2. Ağırlık ve Geometri Formülleri
-    if any(k in text for k in ['ağırlık', 'hesapla', 'tonaj', 'kg', 'formül', 'sac ağırlık', 'profil ağırlık']):
-        return (
-            f"📐 **Mühendislik Ağırlık Hesaplama Formülleri:**\n\n"
-            f"• **Sac & Plaka:**\n"
-            f"  `Ağırlık (kg) = Kalınlık (mm) × Genişlik (mm) × Boy (mm) × 0.00000785`\n"
-            f"  *Örnek:* 12 mm × 1500 mm × 6000 mm = `12 × 1500 × 6000 × 7.85 / 10^6 = 847.8 kg`\n\n"
-            f"• **Dairesel Boru:**\n"
-            f"  `Ağırlık (kg/m) = (Dış Çap - Et Kalınlığı) × Et Kalınlığı × 0.02466`\n\n"
-            f"• **Kutu Profil:**\n"
-            f"  `Ağırlık (kg/m) = (Genişlik + Yükseklik - 2 × Et Kalınlığı) × 2 × Et Kalınlığı × 0.00785`\n\n"
-            f"Profil ağırlıklarında ise standart çelik cetvelindeki metre ağırlığı (kg/m) boy ile çarpılır."
-        )
-
-    # 3. Cıvata ve Tork Değerleri
-    if any(k in text for k in ['cıvata', 'civata', 'tork', 'nm', 'en 14399', '10.9', '8.8', 'hv', 'hr', 'öngerilme', 'sıkma']):
-        return (
-            f"🔩 **EN 14399 / ISO 898-1 Yapısal Cıvata Sıkma & Tork Standartları:**\n\n"
-            f"| Çap | Kalite 8.8 Tork (Nm) | Kalite 10.9 Tork (Nm) | Min. Ön Germe (kN) |\n"
-            f"| :--- | :---: | :---: | :---: |\n"
-            f"| **M16** | 170 - 190 Nm | 240 - 260 Nm | ~90 kN |\n"
-            f"| **M20** | 330 - 360 Nm | 470 - 510 Nm | ~140 kN |\n"
-            f"| **M24** | 570 - 620 Nm | 810 - 870 Nm | ~205 kN |\n"
-            f"| **M27** | 830 - 900 Nm | 1180 - 1280 Nm | ~265 kN |\n"
-            f"| **M30** | 1130 - 1230 Nm | 1600 - 1750 Nm | ~325 kN |\n\n"
-            f"⚠️ **Kritik Kurallar:**\n"
-            f"1. Sürtünmeli birleşimlerde (Slip-Critical) temas yüzeyleri boyasız veya özel sürtünme katsayılı astar ile kaplanmalıdır.\n"
-            f"2. Tork anahtarlarının kalibrasyon sertifikaları güncel olmalı, sıkma işlemi merkezden dışa doğru kademeli (%50 -> %100) yapılmalıdır."
-        )
-
-    # 4. Kaynak Standartları ve EN 1090
-    if any(k in text for k in ['kaynak', 'en 1090', 'iso 5817', 'wps', 'pqr', 'wpqr', 'exc2', 'exc3', 'ön ısıtma', 'preheat', 'tav', 'elektrod', 'tel', 'sg2', 'gazaltı']):
-        return (
-            f"🛡️ **EN 1090-2 & EN ISO 5817 Kaynak Mühendisliği Şartları:**\n\n"
-            f"1. **Uygulama Sınıfları (Execution Class):**\n"
-            f"   • **EXC2:** Standart binalar, depolar. NDT oranı alın kaynaklarında min. %10, köşe kaynaklarında %5.\n"
-            f"   • **EXC3:** Vinçli sanayi yapıları, köprüler, dinamik yükler. Kaynakçılar EN ISO 9606-1 onaylı, WPS/WPQR zorunludur. Alın kaynaklarında %100 VT + %20-%50 UT/MT.\n"
-            f"2. **Ön Isıtma (Preheat - EN 1011-2):**\n"
-            f"   • S355 kalite ve et kalınlığı `t > 20 mm` olan birleşimlerde çatlak riskini önlemek için min. **100°C - 150°C** ön ısıtma tavsiye edilir.\n"
-            f"3. **Sarf Malzeme Seçimi:**\n"
-            f"   • S235 / S275 için: `ER70S-6 (SG2)` veya `E7018 / E42 2 B`.\n"
-            f"   • S355 için: `SG3` gazaltı teli veya `E7018-1` düşük hidrojenli bazik elektrot."
-        )
-
-    # 5. Boya, Kumlama ve Korozyon (ISO 12944)
-    if any(k in text for k in ['boya', 'kumlama', 'sa 2.5', 'mikron', 'dft', 'iso 12944', 'c3', 'c4', 'c5', 'astar', 'epoksi', 'poliüretan', 'dew point', 'çiğ']):
-        return (
-            f"🎨 **ISO 12944 & ISO 8501 Çelik Yüzey Koruma Kılavuzu:**\n\n"
-            f"1. **Yüzey Hazırlığı:**\n"
-            f"   • Kumlama Derecesi: Min. **Sa 2.5** (Neredeyse beyaz metal - ISO 8501-1).\n"
-            f"   • Yüzey Pürüzlülüğü: Orta (Medium G - Grit 40-75 µm).\n"
-            f"2. **İklimsel Uygulama Şartları:**\n"
-            f"   • Yüzey sıcaklığı, havanın Çiğ Noktası (Dew Point) sıcaklığından **en az 3°C yüksek** olmalıdır.\n"
-            f"   • Bağıl nem (RH) **<%85** olmalıdır.\n"
-            f"3. **Örnek C3 / C4 Dayanım Boya Katmanları:**\n"
-            f"   • *1. Kat (Astar):* Çinko Fosfatlı / Epoksi Astar (`60-80 µm DFT`)\n"
-            f"   • *2. Kat (Ara Kat):* Epoksi MIO (Micaceous Iron Oxide) (`80-100 µm DFT`)\n"
-            f"   • *3. Kat (Son Kat):* Alifatik Poliüretan (`50-60 µm DFT`) -> Toplam `~200-240 µm DFT`."
-        )
-
-    # 6. Kesim, Fire ve Yerleşim (Nesting)
-    if any(k in text for k in ['kesim', 'fire', 'lazer', 'plazma', 'nesting', 'testere', 'yerleşim', 'optimizasyon']):
-        return (
-            f"⚡ **Ön İmalat Kesim & Yerleşim (Nesting) Verimlilik Taktikleri:**\n\n"
-            f"1. **Ortak Kenar Kesimi (Common Line Cutting):**\n"
-            f"   • Dikdörtgen/kare flanş ve bayrak plakalarında ortak kenar kesimi yaparak delme (pierce) sayısını %40, kesim süresini %25 düşürebilirsiniz.\n"
-            f"2. **Plazma / Lazer Boşlukları (Kerf & Margin):**\n"
-            f"   • Plakalar arası mesafe sac kalınlığı `t` kadar (min. 5-8 mm), plaka kenarından ise min. 10 mm boşluk bırakılmalıdır.\n"
-            f"3. **Profil Kesim Fire Önleme:**\n"
-            f"   • 12 metre ve 6 metre standart boyları kombine ederek sipariş öncesi kesim simülasyonu yapın. Testere bıçak kalınlığı (3.5 mm) ve açı payı (10-15 mm) fire hesabına katılmalıdır."
-        )
-
-    # 7. Çelik Kaliteleri
-    if any(k in text for k in ['s235', 's275', 's355', 'kalite', 'st37', 'st52', 'malzeme', 'akma']):
-        return (
-            f"🔩 **Yapısal Çelik Kaliteleri ve Mukavemet Değerleri (EN 10025-2):**\n\n"
-            f"• **S235JR (Eski St37-2):** Akma Dayanımı fy = 235 MPa, Çekme fu = 360-510 MPa. Tali çelikler, aşık, kuşak, rüzgar gerdirmeleri.\n"
-            f"• **S275JR (Eski St44-2):** Akma Dayanımı fy = 275 MPa, Çekme fu = 430-580 MPa. Standart ara kat kirişleri ve sundurmalar.\n"
-            f"• **S355JR / J2 (Eski St52-3):** Akma Dayanımı fy = 355 MPa, Çekme fu = 470-630 MPa. Ağır yük taşıyan ana kolonlar, vinç kirişleri, kafes makaslar, flanş plakaları.\n"
-            f"• *Darbe Enerjisi Notu:* `JR` = +20°C 27J, `J0` = 0°C 27J, `J2` = -20°C 27J darbe tokluğuna sahiptir."
-        )
-
-    # 8. Tekla ve İmalat Pozlama
-    if any(k in text for k in ['tekla', 'poz', 'marka', 'assembly', 'part']):
-        return (
-            f"🏗️ **Tekla Structures & İmalat Entegrasyonu:**\n\n"
-            f"• **Montaj Markası (Assembly / Marka):** Atölyede çatılıp kaynaklanan ve şantiyeye bağımsız giden komple elemandır (Örn: `K-101`, `KOL-1`, `MAKAS-3`).\n"
-            f"• **Tekil Poz (Single Part / Poz):** CNC plazma/lazer veya testerede kesilen bağımsız parçadır (Örn: `p1`, `PL-12`, `flans-1`).\n"
-            f"• *İpucu:* Kesim girişinde parça kodu yerine ana montaj markasını girerseniz, sistem otomatik olarak o markanın Tekla parça ağacını çözümler ve ağırlıkları otomatik doldurur."
-        )
-
-    return (
-        f"🤖 Merhaba {user_name}! Ben **ORDUMAK AI Mühendisi & MES Asistanı**.\n\n"
-        f"Aşağıdaki alanlarda teknik analiz ve hesaplama yapabilirim:\n"
-        f"1. 🏭 **Canlı Fabrika Tonajı & Proje Durumu** (Kesim, imalat, boya ve sevk ilerlemeleri)\n"
-        f"2. 🛡️ **EN 1090-2 EXC2/EXC3 & ISO 5817 Kaynak Şartları** (WPS, NDT, ön ısıtma)\n"
-        f"3. 🔩 **EN 14399 8.8 / 10.9 Ön Germeli Cıvata Tork Değerleri** (Nm ve kN hesapları)\n"
-        f"4. 🎨 **ISO 12944 Korozyon ve Boya Sistemleri** (Sa 2.5 kumlama, çiğ noktası, DFT mikron)\n"
-        f"5. ⚡ **Kesim & Yerleşim (Nesting) Optimizasyonu** (Ortak kenar, plazma/lazer boşlukları)\n"
-        f"6. 📐 **Çelik Ağırlık ve Mukavemet Formülleri** (Plaka, profil, boru tonajları)\n\n"
-        f"Bana doğrudan bir soru sorabilir veya hesaplama yaptırabilirsiniz!"
-    )
-
-@app.route('/api/ai/sor', methods=['POST'])
-def api_ai_sor():
-    """ORDUMAK AI Mühendisi - Bağımsız Soru-Cevap API'si"""
-    data = request.get_json() or {}
-    question = data.get('question', '').strip()
-    u = session.get('user', {})
-    user_name = u.get('full_name', 'Mühendis')
-    if not question:
-        return jsonify({'status': 'error', 'message': 'Soru metni boş olamaz.'}), 400
-    
-    reply = generate_steel_ai_response(question, user_name)
-    return jsonify({
-        'status': 'success',
-        'question': question,
-        'answer': reply,
-        'timestamp': datetime.now().strftime('%H:%M:%S')
-    })
-
 @app.route('/api/chat/<channel>')
 def api_chat_get(channel):
     """Kanal bazlı sohbet mesajlarını JSON döner."""
@@ -3053,18 +2898,6 @@ def api_chat_send():
         message=message[:100] if message else "📷 Fotoğraf paylaştı",
         url="/"
     )
-
-    # Yapay Zeka Kanalı Yanıtı
-    if channel in ('ai_ortak', 'ai_muhendis') or channel.startswith('ai_ozel') or '@ai' in message.lower():
-        ai_reply = generate_steel_ai_response(message, u.get('full_name', 'Personel'))
-        save_chat_message(
-            channel=channel,
-            user_id=0,
-            username='ai_asistan',
-            full_name='🤖 ORDUMAK AI Danışmanı',
-            message=ai_reply,
-            photo_url=""
-        )
 
     return jsonify({'status': 'success', 'photo_url': photo_url})
 
@@ -3318,33 +3151,9 @@ def api_push_test():
     )
     return jsonify({"status": "success", "message": "Test bildirimi gönderildi"})
 
-# =========================================================================
-# 22. ORDUMAK AI MÜHENDİSİ DANIŞMANLIK SAYFASI VE MOTORU
-# =========================================================================
 @app.route('/ai-muhendis')
 def ai_muhendis():
-    """ORDUMAK AI Mühendis danışmanlık ve analiz sayfası."""
-    conn = get_db()
-    cursor = conn.cursor()
-    metrics = get_global_metrics()
-    cursor.execute("SELECT * FROM projects WHERE status != 'Arşiv' ORDER BY id DESC")
-    projects = [dict(r) for r in cursor.fetchall()]
-    conn.close()
-    return render_template('ai_muhendis.html', metrics=metrics, projects=projects)
-
-def generate_ai_engineer_response(prompt):
-    return generate_steel_ai_response(prompt, session.get('user', {}).get('full_name', 'Mühendis'))
-
-@app.route('/api/ai/ask', methods=['POST'])
-def api_ai_ask():
-    """AI Mühendis API uç noktası."""
-    data = request.get_json(silent=True) or {}
-    prompt = data.get('prompt', '').strip()
-    if not prompt:
-        return jsonify({"status": "error", "message": "Soru metni boş olamaz."}), 400
-    u = session.get('user', {})
-    answer = generate_steel_ai_response(prompt, u.get('full_name', 'Mühendis'))
-    return jsonify({"status": "success", "answer": answer})
+    return redirect(url_for('index'))
 
 
 

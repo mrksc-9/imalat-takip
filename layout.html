@@ -74,15 +74,6 @@
                     <span>Kontrol Paneli</span>
                 </a>
 
-                <!-- ORDUMAK AI MÜHENDİSİ -->
-                <a href="{{ url_for('ai_muhendis') }}" class="nav-link flex items-center gap-2.5 px-3 py-2 rounded-xl font-bold transition-all {% if request.endpoint == 'ai_muhendis' %}bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white shadow-lg shadow-indigo-600/40 border border-indigo-400/40{% else %}bg-indigo-950/40 text-indigo-300 hover:text-white hover:bg-indigo-900/60 border border-indigo-800/40{% endif %} my-1.5 group">
-                    <div class="w-5 h-5 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs group-hover:scale-110 transition-transform">
-                        <i class="fa-solid fa-robot"></i>
-                    </div>
-                    <span class="truncate flex-1">🤖 AI Mühendisi</span>
-                    <span class="px-1.5 py-0.2 text-[9px] font-black uppercase rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">AI</span>
-                </a>
-
                 <!-- 1. PROJE -->
                 <div class="pt-2 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                     <i class="fa-solid fa-folder text-blue-400"></i> Proje
@@ -358,10 +349,6 @@
                     <i class="fa-solid fa-chart-pie w-4 text-center"></i> Kontrol Paneli
                 </a>
 
-                <a href="{{ url_for('ai_muhendis') }}" class="flex items-center gap-3 px-3 py-2 rounded-xl bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 font-bold hover:bg-indigo-900/60 my-1">
-                    <i class="fa-solid fa-robot w-4 text-center text-indigo-400"></i> 🤖 AI Mühendisi
-                </a>
-
                 <div class="pt-2 text-[10px] font-bold text-slate-500 uppercase">Proje</div>
                 <a href="{{ url_for('projeler') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-folder-tree w-4 text-center text-blue-400"></i> Proje Takip
@@ -548,22 +535,22 @@
     <!-- CANLI BİLDİRİM TOAST KAPSAYICISI (YANDAN KAYAN KUTUCUKLAR) -->
     <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"></div>
 
-    <!-- SAĞ ALTTA YÜZEN CANLI SOHBET & AI BUTONU -->
-    <button id="btnChatToggle" onclick="toggleChatDrawer()" class="fixed bottom-5 right-5 z-40 p-3.5 bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-full shadow-2xl shadow-indigo-600/40 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 group" title="ORDUMAK AI Mühendisi & Canlı Sohbet">
-        <i class="fa-solid fa-robot text-lg group-hover:scale-110 transition-transform"></i>
+    <!-- SAĞ ALTTA YÜZEN CANLI SOHBET BUTONU -->
+    <button id="btnChatToggle" onclick="toggleChatDrawer()" class="fixed bottom-5 right-5 z-40 p-3.5 bg-gradient-to-tr from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-full shadow-2xl shadow-indigo-600/40 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 group" title="Canlı Personel Sohbeti">
+        <i class="fa-solid fa-comments text-lg group-hover:scale-110 transition-transform"></i>
         <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse"></span>
     </button>
 
-    <!-- CANLI SOHBET VE YAPAY ZEKA ÇEKMECESİ -->
+    <!-- CANLI SOHBET ÇEKMECESİ -->
     <div id="chatDrawer" class="fixed bottom-20 right-5 z-50 w-96 max-w-[calc(100vw-2.5rem)] h-[560px] max-h-[calc(100vh-6.5rem)] bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl flex-col hidden backdrop-blur-xl overflow-hidden animate-scale-up">
         <!-- Başlık ve Kapatma / Temizleme -->
         <div class="px-4 py-3 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between">
             <div class="flex items-center gap-2">
                 <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-md">
-                    <i class="fa-solid fa-robot"></i>
+                    <i class="fa-solid fa-comments"></i>
                 </div>
                 <div>
-                    <h4 class="text-xs font-bold text-white">ORDUMAK AI Mühendisi & Sohbet</h4>
+                    <h4 class="text-xs font-bold text-white">Canlı Personel Sohbeti</h4>
                     <p class="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Çevrimiçi & Aktif
                     </p>
@@ -579,15 +566,9 @@
             </div>
         </div>
 
-        <!-- Kanal & AI Sekmeleri -->
+        <!-- Kanal Sekmeleri -->
         <div class="px-3 py-2 bg-slate-900/50 border-b border-slate-800/80 flex items-center gap-1.5 overflow-x-auto custom-scrollbar text-[11px] font-bold">
             <button onclick="switchChatChannel('genel', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg bg-blue-600 text-white shrink-0">#genel</button>
-            <button onclick="switchChatChannel('ai_ortak', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-amber-300 hover:bg-slate-800 shrink-0 flex items-center gap-1">
-                <i class="fa-solid fa-robot text-amber-400"></i> Ortak AI
-            </button>
-            <button onclick="switchChatChannel('ai_ozel_{{ current_user.id if current_user else 0 }}', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-indigo-300 hover:bg-slate-800 shrink-0 flex items-center gap-1">
-                <i class="fa-solid fa-user-astronaut text-indigo-400"></i> Özel AI
-            </button>
             <button onclick="switchChatChannel('proje', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#proje</button>
             <button onclick="switchChatChannel('on_imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#kesim</button>
             <button onclick="switchChatChannel('imalat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#imalat</button>
@@ -595,25 +576,6 @@
             <button onclick="switchChatChannel('sevkiyat', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#sevkiyat</button>
             <button onclick="switchChatChannel('muhasebe', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#muhasebe</button>
             <button onclick="switchChatChannel('toplanti', this)" class="chat-chan-btn px-2.5 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0">#toplanti</button>
-        </div>
-
-        <!-- AI Hızlı Soru Hapları (Quick Chips) -->
-        <div class="px-3 py-1.5 bg-slate-900/40 border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto custom-scrollbar text-[10px]">
-            <button type="button" onclick="askAiQuick('Canlı fabrika ve aktif proje tonaj durum özeti ver')" class="px-2 py-0.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 shrink-0 font-medium transition-colors">
-                ⚡ Canlı Durum
-            </button>
-            <button type="button" onclick="askAiQuick('EN 1090-2 EXC3 kaynak, WPS ve NDT şartları nelerdir?')" class="px-2 py-0.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 shrink-0 font-medium transition-colors">
-                🛡️ EN 1090 Kaynak
-            </button>
-            <button type="button" onclick="askAiQuick('EN 14399 10.9 ve 8.8 cıvata sıkma tork değerleri nedir?')" class="px-2 py-0.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 shrink-0 font-medium transition-colors">
-                🔩 10.9 Cıvata Torku
-            </button>
-            <button type="button" onclick="askAiQuick('ISO 12944 Sa 2.5 ve C3/C4 boya katmanları ve mikron DFT hesabı')" class="px-2 py-0.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 shrink-0 font-medium transition-colors">
-                🎨 ISO 12944 Boya
-            </button>
-            <button type="button" onclick="askAiQuick('Çelik plaka, sac ve profil ağırlık hesaplama formülleri')" class="px-2 py-0.5 rounded-full bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 shrink-0 font-medium transition-colors">
-                📐 Ağırlık Formülü
-            </button>
         </div>
 
         <!-- Mesaj Akışı -->
@@ -633,7 +595,7 @@
             <button type="button" onclick="document.getElementById('chatPhotoInput').click()" class="p-2 text-slate-400 hover:text-blue-400 rounded-lg hover:bg-slate-800 transition-colors" title="Fotoğraf Ekle">
                 <i class="fa-solid fa-image"></i>
             </button>
-            <input type="text" id="chatTextInput" placeholder="Mesajınızı yazın veya AI Mühendise soru sorun..." class="flex-1 bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans">
+            <input type="text" id="chatTextInput" placeholder="Mesajınızı yazın..." class="flex-1 bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans">
             <button type="submit" id="btnChatSend" class="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition-all shadow-md">
                 <i class="fa-solid fa-paper-plane text-xs"></i>
             </button>
@@ -960,38 +922,23 @@
             loadChatMessages();
         }
 
-        function askAiQuick(promptText) {
-            const textInput = document.getElementById('chatTextInput');
-            if (textInput) {
-                textInput.value = promptText;
-                if (currentChatChannel !== 'ai_ortak' && !currentChatChannel.startsWith('ai_ozel')) {
-                    const aiBtn = document.querySelector("button[onclick*='ai_ortak']");
-                    if (aiBtn) switchChatChannel('ai_ortak', aiBtn);
-                }
-                document.getElementById('btnChatSend').click();
-            }
-        }
-
         function loadChatMessages() {
             const container = document.getElementById('chatMessagesContainer');
             fetch(`/api/chat/${currentChatChannel}`)
             .then(res => res.json())
             .then(messages => {
                 if (!messages || messages.length === 0) {
-                    container.innerHTML = '<div class="text-center text-slate-500 py-8 italic">Bu kanalda henüz mesaj yok. İlk mesajı siz yazın veya AI\'a soru sorun!</div>';
+                    container.innerHTML = '<div class="text-center text-slate-500 py-8 italic">Bu kanalda henüz mesaj yok. İlk mesajı siz yazın!</div>';
                     return;
                 }
                 const isNearBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 80;
                 let html = '';
                 messages.forEach(m => {
                     const isMe = m.username === "{{ current_user.username if current_user else '' }}";
-                    const isAi = m.username === "ai_asistan";
                     
                     let bubbleClass = 'bg-slate-800 text-slate-100 rounded-bl-none border border-slate-700/60';
                     if (isMe) {
                         bubbleClass = 'bg-blue-600 text-white rounded-br-none';
-                    } else if (isAi) {
-                        bubbleClass = 'bg-gradient-to-br from-indigo-950/90 via-slate-900 to-purple-950/80 text-indigo-100 border border-indigo-600/50 rounded-bl-none shadow-indigo-500/10';
                     }
 
                     html += `
@@ -1027,8 +974,6 @@
 
         function clearCurrentChatChannel() {
             let chanLabel = '#' + currentChatChannel;
-            if (currentChatChannel === 'ai_ortak') chanLabel = 'Ortak AI';
-            else if (currentChatChannel.startsWith('ai_ozel')) chanLabel = 'Özel AI';
 
             if (!confirm(`${chanLabel} kanalındaki tüm sohbet mesajlarını temizlemek istediğinize emin misiniz?`)) {
                 return;
