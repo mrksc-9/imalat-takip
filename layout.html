@@ -4,6 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ system_settings.company_name or 'ORDUMAK DEMİR ÇELİK' }}</title>
+
+    <!-- DNS Prefetch & Preconnect for High Speed -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+
+    <!-- Native Browser Instant Prerender & Prefetch (Speculation Rules API) -->
+    <script type="speculationrules">
+    {
+      "prerender": [
+        {
+          "source": "list",
+          "urls": [
+            "/",
+            "/projeler",
+            "/dizayn-modelleme",
+            "/siparis-takip",
+            "/on-imalat-plan",
+            "/kesim-takip",
+            "/imalat-plan",
+            "/imalat-takip",
+            "/kalite-kontrol",
+            "/boya-takip",
+            "/sevk",
+            "/muhasebe-irsaliye",
+            "/sohbet",
+            "/kullanicilar",
+            "/raporlar"
+          ],
+          "eagerness": "moderate"
+        }
+      ],
+      "prefetch": [
+        {
+          "source": "document",
+          "where": {
+            "and": [
+              { "href_matches": "/*" },
+              { "not": { "href_matches": "/api/*" } },
+              { "not": { "href_matches": "/logout" } },
+              { "not": { "href_matches": "/static/*" } }
+            ]
+          },
+          "eagerness": "immediate"
+        }
+      ]
+    }
+    </script>
+
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>

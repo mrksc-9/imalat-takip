@@ -60,10 +60,11 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
 
 
 // =========================================================================
-// 🚀 TURBO INSTANT PAGE NAVIGATION & IN-MEMORY PREFETCH ENGINE (0-15ms GEÇİŞ)
+// 🚀 TURBO ULTRA-FAST NAVIGATION & IN-MEMORY PREFETCH ENGINE (0-15ms GEÇİŞ)
 // =========================================================================
 (function () {
     const pageCache = new Map();
+    const prefetchedLinks = new Set();
     let isNavigating = false;
 
     function isEligibleLink(anchor) {
@@ -85,6 +86,19 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
 
     function prefetchUrl(urlStr) {
         if (!urlStr || pageCache.has(urlStr) || isNavigating) return;
+        
+        // 1. Tarayıcı native prefetch linki ekle
+        if (!prefetchedLinks.has(urlStr)) {
+            prefetchedLinks.add(urlStr);
+            try {
+                const linkEl = document.createElement('link');
+                linkEl.rel = 'prefetch';
+                linkEl.href = urlStr;
+                document.head.appendChild(linkEl);
+            } catch (e) {}
+        }
+
+        // 2. RAM önbelleğe al
         fetch(urlStr, { headers: { 'X-Requested-With': 'Turbo-Prefetch' } })
             .then(res => {
                 if (res.ok && (res.headers.get('content-type') || '').includes('text/html')) {
@@ -95,7 +109,7 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
             .then(html => {
                 if (html) {
                     pageCache.set(urlStr, html);
-                    if (pageCache.size > 25) {
+                    if (pageCache.size > 30) {
                         const firstKey = pageCache.keys().next().value;
                         pageCache.delete(firstKey);
                     }
@@ -104,7 +118,7 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
             .catch(() => {});
     }
 
-    // Fare üzerine geldiğinde veya mobilde dokunulduğunda 65ms önceden RAM'e önbelleğe al
+    // Fare üzerine geldiğinde veya mobilde dokunulduğunda anında RAM'e önbelleğe al
     document.addEventListener('mouseover', function (e) {
         const a = e.target.closest('a');
         if (isEligibleLink(a)) {
@@ -138,8 +152,8 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
             document.body.appendChild(bar);
         }
         bar.style.opacity = '1';
-        bar.style.width = '35%';
-        setTimeout(() => { if (bar) bar.style.width = '75%'; }, 30);
+        bar.style.width = '45%';
+        setTimeout(() => { if (bar) bar.style.width = '85%'; }, 20);
     }
 
     function hideProgressBar() {
@@ -149,8 +163,40 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
             setTimeout(() => {
                 bar.style.opacity = '0';
                 setTimeout(() => { if (bar) bar.style.width = '0%'; }, 150);
-            }, 80);
+            }, 60);
         }
+    }
+
+    function executeDynamicScripts(container) {
+        if (!container) return;
+        const scripts = container.querySelectorAll('script');
+        scripts.forEach(s => {
+            if (s.src) {
+                const newScript = document.createElement('script');
+                newScript.src = s.src;
+                document.head.appendChild(newScript);
+                return;
+            }
+
+            let code = s.textContent.trim();
+            if (!code) return;
+
+            // Çoklu sayfa geçişlerinde let/const Identifier already declared hatasını önle
+            const sanitizedCode = code.replace(/(?:^|\n)\s*(?:let|const)\s+([a-zA-Z0-9_$]+)\s*=/g, '\nvar $1 =');
+
+            try {
+                const runner = document.createElement('script');
+                runner.textContent = `(function(){\n${sanitizedCode}\n})();`;
+                document.body.appendChild(runner);
+                setTimeout(() => runner.remove(), 50);
+            } catch (err) {
+                try {
+                    (0, eval)(sanitizedCode);
+                } catch (evalErr) {
+                    console.warn('Script execution fallback note:', evalErr);
+                }
+            }
+        });
     }
 
     async function navigateTo(urlStr, pushState = true) {
@@ -209,15 +255,8 @@ document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
                 window.history.pushState({ url: urlStr }, '', urlStr);
             }
 
-            // 6. Sayfa İçi Dinamik Scriptleri Çalıştır
-            const scripts = newMain.querySelectorAll('script');
-            scripts.forEach(s => {
-                const newScript = document.createElement('script');
-                if (s.src) newScript.src = s.src;
-                else newScript.textContent = s.textContent;
-                document.body.appendChild(newScript);
-                setTimeout(() => newScript.remove(), 100);
-            });
+            // 6. Sayfa İçi Dinamik Scriptleri Güvenle Çalıştır
+            executeDynamicScripts(curMain);
 
             // 7. Sayfa Başına Kaydır & Uyarıları Başlat
             window.scrollTo({ top: 0, behavior: 'instant' });
