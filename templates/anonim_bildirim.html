@@ -1,0 +1,148 @@
+{% extends "layout.html" %}
+
+{% block title %}Anonim Saha & İşyeri Bildirim Kutusu - ORDUMAK MES{% endblock %}
+{% block page_title %}🛡️ %100 Anonim Saha & İşyeri Bildirim Kutusu{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- %100 ANONİMLİK VE GİZLİLİK GÜVENCESİ BANNERI (KULLANICI İSTEĞİ) -->
+    <div class="bg-gradient-to-r from-emerald-950/80 via-slate-950 to-indigo-950/80 border-2 border-emerald-500/50 rounded-2xl p-6 shadow-2xl space-y-3 relative overflow-hidden">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 text-2xl shrink-0">
+                <i class="fa-solid fa-user-secret"></i>
+            </div>
+            <div class="space-y-1">
+                <h3 class="text-base font-black text-white tracking-wide flex items-center gap-2">
+                    <span>%100 Uçtan Uca Anonim ve Şifreli Bildirim Alanı</span>
+                    <span class="text-[10px] bg-emerald-500 text-slate-950 font-black px-2 py-0.5 rounded-full uppercase">Tam Gizlilik</span>
+                </h3>
+                <p class="text-xs text-emerald-200/90 leading-relaxed">
+                    Burada paylaşılan işyeri duyumları, kaytarmalar, disiplinsiz davranışlar ve uygunsuz durumlar <b>tamamen kimliksiz</b> olarak kaydedilir.
+                </p>
+                <div class="flex flex-wrap items-center gap-4 text-[11px] text-slate-400 pt-2 font-medium">
+                    <span class="flex items-center gap-1.5 text-emerald-400"><i class="fa-solid fa-lock"></i> Kullanıcı Adı / ID Kaydedilmez</span>
+                    <span class="flex items-center gap-1.5 text-emerald-400"><i class="fa-solid fa-network-wired"></i> IP Adresi ve Cihaz Bilgisi Tutulmaz</span>
+                    <span class="flex items-center gap-1.5 text-emerald-400"><i class="fa-solid fa-eye-slash"></i> Admin Dahil Kimse Göndereni Göremez</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BİLDİRİM GÖNDERME FORMU -->
+    <div class="bg-slate-950/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-paper-plane text-emerald-400"></i>
+                <span>Yeni Anonim Bildirim Oluştur</span>
+            </h4>
+            <span class="text-[11px] text-slate-500 italic">Kimliğiniz gizli kalacaktır</span>
+        </div>
+
+        <form action="{{ url_for('api_anonim_bildirim_gonder') }}" method="POST" enctype="multipart/form-data" class="space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Bildirim Konusu / Başlığı *</label>
+                <input type="text" name="title" required placeholder="Örn: 2. Holde Gece Vardiyasında İzinsiz Ayrılma ve Kaytarma" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-medium focus:outline-none focus:border-emerald-500">
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Bildirim Kategorisi</label>
+                    <select name="category" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-semibold focus:outline-none focus:border-emerald-500">
+                        <option value="Kaytarma & Görevi Kötüye Kullanma">⚡ Kaytarma & İşi Aksatma</option>
+                        <option value="İşçiler Arası Dolaşan Duyumlar">🗣️ Şantiye / Atölye Duyumları</option>
+                        <option value="Uygunsuz Davranış / Disiplin">⚠️ Uygunsuz Davranış & Disiplinsizlik</option>
+                        <option value="Güvenlik & Hırsızlık Şüphesi">🛑 Güvenlik & Malzeme Kaybı</option>
+                        <option value="Genel Görüş & Şikayet">📋 Genel İşyeri Görüşü / Şikayet</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Fotoğraf veya Video Ekle (Opsiyonel)</label>
+                    <input type="file" name="media_file" accept="image/*,video/*" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none focus:border-emerald-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:bg-slate-800 file:text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Olay / Durum Detaylı Açıklaması *</label>
+                <textarea name="description" required rows="4" placeholder="Olayı, zamanı, yeri ve detayları açıkça yazınız. Kimliğinizi ele verecek özel bilgiler yazmamaya özen gösteriniz..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-white focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+                <span class="text-[11px] text-slate-500 flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-emerald-400"></i>
+                    <span>Tüm veriler anonim olarak şifrelenir.</span>
+                </span>
+                <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs transition-all shadow-xl shadow-emerald-600/30 flex items-center gap-2">
+                    <i class="fa-solid fa-lock text-sm"></i>
+                    <span>%100 Anonim Olarak Gönder</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- GEÇMİŞ BİLDİRİMLER PİYASASI / LİSTESİ -->
+    <div class="space-y-4">
+        <h4 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <i class="fa-solid fa-list text-indigo-400"></i>
+            <span>Paylaşılan Anonim Bildirimler ({{ reports|length }})</span>
+        </h4>
+
+        {% for rep in reports %}
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl transition-all hover:border-slate-700 space-y-3">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <span class="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        {{ rep.category }}
+                    </span>
+                    <h5 class="text-sm font-bold text-white mt-1.5">{{ rep.title }}</h5>
+                </div>
+                <span class="text-[11px] font-mono text-slate-500">{{ rep.created_at }}</span>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-3.5 rounded-xl border border-slate-800/60 whitespace-pre-line">
+                {{ rep.description }}
+            </p>
+
+            {% if rep.media_url %}
+            <div class="mt-2 rounded-xl overflow-hidden border border-slate-800 max-w-md bg-slate-900">
+                {% if rep.media_type == 'video' %}
+                <video src="{{ rep.media_url }}" controls class="w-full max-h-60 rounded-xl"></video>
+                {% else %}
+                <a href="{{ rep.media_url }}" target="_blank">
+                    <img src="{{ rep.media_url }}" alt="Eklenen Medya" class="w-full max-h-60 object-cover hover:scale-105 transition-transform">
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if session.get('user', {}).get('role') in ('admin', 'patron') %}
+            <div class="pt-2 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-semibold">Yönetici İşlemleri:</span>
+                <div class="flex items-center gap-2">
+                    <form action="{{ url_for('api_anonim_bildirim_durum', report_id=rep.id) }}" method="POST" class="inline">
+                        <select name="status" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-white font-bold">
+                            <option value="İletildi" {% if rep.status == 'İletildi' %}selected{% endif %}>📬 İletildi</option>
+                            <option value="İncelendi" {% if rep.status == 'İncelendi' %}selected{% endif %}>🔍 İncelendi</option>
+                            <option value="Arşiv" {% if rep.status == 'Arşiv' %}selected{% endif %}>📁 Arşiv</option>
+                        </select>
+                    </form>
+                    <form action="{{ url_for('api_anonim_bildirim_sil', report_id=rep.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu bildirimi silmek istediğinizden emin misiniz?');">
+                        <button type="submit" class="p-1 bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 rounded-lg" title="Sil">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="py-10 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            <i class="fa-solid fa-user-secret text-3xl mb-2 text-emerald-500/40 block"></i>
+            Henüz anonim bildirim kaydı bulunmuyor.
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

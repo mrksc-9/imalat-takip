@@ -1,0 +1,527 @@
+{% extends "layout.html" %}
+
+{% block title %}Depo & Sarf Malzeme Stok Takibi - ORDUMAK MES{% endblock %}
+{% block page_title %}Depo Sarf Stok Yönetimi & Çıkış Takip Sistemi{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- KRİTİK STOK UYARI BANNERI (EĞER KRİTİK STOKTA ÜRÜN VARSA) -->
+    {% if critical_count > 0 %}
+    <div class="p-4 bg-gradient-to-r from-rose-950/80 via-amber-950/60 to-slate-950 border-2 border-rose-500/50 rounded-2xl shadow-xl flex items-center justify-between gap-4 flex-wrap animate-pulse">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 text-lg shrink-0">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <h4 class="text-sm font-black text-rose-300">⚠️ DİKKAT: {{ critical_count }} Adet Sarf Malzeme Kritik Seviyenin Altında!</h4>
+                <p class="text-xs text-rose-200/80 mt-0.5">Kritik stok eşiğinin altına düşen sarf malzemeler için acil satınalma / sipariş verilmesi gerekmektedir.</p>
+            </div>
+        </div>
+        <a href="{{ url_for('depo_sarf', critical='1') }}" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-rose-600/30 flex items-center gap-2">
+            <i class="fa-solid fa-filter"></i>
+            <span>Kritik Malzemeleri Filtrele</span>
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- ÜST BİLGİ & EYLEMLER KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-boxes-stacked text-amber-400 text-lg"></i>
+                <span>Sarf Malzemeler, Kritik Stok Eşikleri & Makine/İş Bazlı Çıkışlar</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Kaynak teli, kesme taşı, gaz, boya ve hırdavat sarflarını yönetin; formen, makine ve proje bilgisiyle anlık stoktan düşün.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <!-- Sarf Çıkış Yap Butonu -->
+            <button onclick="openModal('consumableCheckoutModal')" class="px-4 py-2 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-rose-600/20 flex items-center gap-2">
+                <i class="fa-solid fa-arrow-right-from-bracket text-sm"></i>
+                <span>- Sarf Malzeme Çıkışı Yap</span>
+            </button>
+
+            <!-- Stok Girişi Yap Butonu -->
+            <button onclick="openModal('consumableCheckinModal')" class="px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-2">
+                <i class="fa-solid fa-arrow-right-to-bracket text-xs"></i>
+                <span>+ Stok Girişi</span>
+            </button>
+
+            <!-- Yeni Malzeme Tanımla -->
+            <button onclick="openModal('addConsumableModal')" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-xs"></i>
+                <span>Yeni Malzeme</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- KATEGORİ FİLTRELERİ & ARAMA -->
+    <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2 flex-wrap">
+            <a href="{{ url_for('depo_sarf') }}" class="px-3 py-1.5 rounded-lg font-bold transition-all {% if not selected_category and not critical_only %}bg-amber-500 text-slate-950{% else %}bg-slate-800 text-slate-300 hover:bg-slate-700{% endif %}">
+                Tüm Malzemeler ({{ consumables|length }})
+            </a>
+            <a href="{{ url_for('depo_sarf', critical='1') }}" class="px-3 py-1.5 rounded-lg font-bold transition-all {% if critical_only %}bg-rose-600 text-white{% else %}bg-rose-950/40 text-rose-400 border border-rose-800/50 hover:bg-rose-900/40{% endif %}">
+                ⚠️ Kritik Stoktakiler ({{ critical_count }})
+            </a>
+            <a href="{{ url_for('depo_sarf', category='Kaynak & Montaj') }}" class="px-3 py-1.5 rounded-lg font-medium transition-all {% if selected_category == 'Kaynak & Montaj' %}bg-blue-600 text-white font-bold{% else %}bg-slate-800 text-slate-400 hover:bg-slate-700{% endif %}">
+                Kaynak & Montaj
+            </a>
+            <a href="{{ url_for('depo_sarf', category='Kesme & Taşlama') }}" class="px-3 py-1.5 rounded-lg font-medium transition-all {% if selected_category == 'Kesme & Taşlama' %}bg-blue-600 text-white font-bold{% else %}bg-slate-800 text-slate-400 hover:bg-slate-700{% endif %}">
+                Kesme & Taşlama
+            </a>
+            <a href="{{ url_for('depo_sarf', category='Boya & Kimyasal') }}" class="px-3 py-1.5 rounded-lg font-medium transition-all {% if selected_category == 'Boya & Kimyasal' %}bg-blue-600 text-white font-bold{% else %}bg-slate-800 text-slate-400 hover:bg-slate-700{% endif %}">
+                Boya & Kimyasal
+            </a>
+            <a href="{{ url_for('depo_sarf', category='Cıvata & Bağlantı') }}" class="px-3 py-1.5 rounded-lg font-medium transition-all {% if selected_category == 'Cıvata & Bağlantı' %}bg-blue-600 text-white font-bold{% else %}bg-slate-800 text-slate-400 hover:bg-slate-700{% endif %}">
+                Cıvata & Bağlantı
+            </a>
+            <a href="{{ url_for('depo_sarf', category='İSG & KKD') }}" class="px-3 py-1.5 rounded-lg font-medium transition-all {% if selected_category == 'İSG & KKD' %}bg-blue-600 text-white font-bold{% else %}bg-slate-800 text-slate-400 hover:bg-slate-700{% endif %}">
+                İSG & KKD
+            </a>
+        </div>
+
+        <input type="text" id="tableSearchInput" placeholder="Malzeme adı veya kod ara..." oninput="filterConsumableTable()" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 w-56">
+    </div>
+
+    <!-- 1. SARF MALZEME STOK KARTLARI TABLOSU -->
+    <div class="border border-slate-800 rounded-2xl overflow-x-auto shadow-xl bg-slate-950/90">
+        <table id="consumableTable" class="w-full text-left text-xs border-collapse">
+            <thead>
+                <tr class="bg-slate-900/90 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800 tracking-wider">
+                    <th class="py-3 px-3 w-24">Kod</th>
+                    <th class="py-3 px-3 min-w-[180px] text-white">Malzeme Adı</th>
+                    <th class="py-3 px-3 w-32">Kategori</th>
+                    <th class="py-3 px-3 w-28 text-right font-black text-amber-400">Mevcut Stok</th>
+                    <th class="py-3 px-3 w-28 text-right font-bold text-slate-400">Kritik Eşik</th>
+                    <th class="py-3 px-3 w-28 text-center">Stok Durumu</th>
+                    <th class="py-3 px-3 w-28">Raf / Konum</th>
+                    <th class="py-3 px-3 text-right w-28">İşlem</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                {% for m in consumables %}
+                <tr class="hover:bg-slate-800/40 transition-colors {% if m.current_qty <= m.critical_level %}bg-rose-950/15{% endif %}">
+                    <td class="py-2.5 px-3 font-mono text-slate-400 font-bold">{{ m.code or '-' }}</td>
+                    <td class="py-2.5 px-3">
+                        <span class="font-bold text-white block">{{ m.name }}</span>
+                        {% if m.notes %}
+                        <span class="text-[10px] text-slate-500 italic block">{{ m.notes }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-2.5 px-3">
+                        <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px] font-medium border border-slate-700">
+                            {{ m.category }}
+                        </span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono font-black text-sm
+                        {% if m.current_qty <= m.critical_level %}text-rose-400{% else %}text-emerald-400{% endif %}">
+                        {{ m.current_qty }} <span class="text-[10px] font-normal text-slate-400">{{ m.unit }}</span>
+                    </td>
+                    <td class="py-2.5 px-3 text-right font-mono text-slate-400 font-bold">
+                        {{ m.critical_level }} <span class="text-[10px] font-normal">{{ m.unit }}</span>
+                    </td>
+                    <td class="py-2.5 px-3 text-center">
+                        {% if m.current_qty <= m.critical_level %}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-400 border border-rose-500/40 inline-flex items-center gap-1 animate-pulse">
+                            <i class="fa-solid fa-circle-exclamation text-[9px]"></i> Kritik / Sipariş
+                        </span>
+                        {% else %}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                            <i class="fa-solid fa-circle-check text-[9px]"></i> Yeterli
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">{{ m.shelf_location or '-' }}</td>
+                    <td class="py-2.5 px-3 text-right">
+                        <div class="flex items-center justify-end gap-1.5">
+                            <button onclick="quickCheckoutMaterial({{ m.id }}, '{{ m.name | replace("'", "\\'") }}', '{{ m.unit }}', {{ m.current_qty }})" class="p-1.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 rounded-lg text-xs" title="Hızlı Çıkış Yap">
+                                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                            </button>
+                            <button onclick='openEditConsumableModal({{ m | tojson | safe }})' class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 text-xs" title="Düzenle">
+                                <i class="fa-solid fa-pen"></i>
+                            </button>
+                            <form action="{{ url_for('api_depo_sarf_sil', material_id=m.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu sarf malzemesini ve hareketlerini silmek istediğinizden emin misiniz?');">
+                                <button type="submit" class="p-1.5 bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700 text-xs" title="Sil">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="py-8 text-center text-slate-500 text-xs italic">
+                        Kayıtlı sarf malzeme bulunamadı. "+ Yeni Malzeme" butonu ile ekleyebilirsiniz.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 2. SON SARF ÇIKIŞ VE HAREKET GEÇMİŞİ (KİM ALDI / HANGİ MAKİNE / FORMEN / PROJE) -->
+    <div class="bg-slate-950/90 border border-slate-800/80 rounded-2xl p-5 shadow-xl space-y-3">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-amber-400"></i>
+                <span>Son Sarf Çıkış / Teslimat Hareketleri (Makine, Formen ve Proje Detayı)</span>
+            </h4>
+            <span class="text-xs text-slate-400">Son {{ transactions|length }} hareket gösteriliyor.</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse font-sans">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 text-[10px] uppercase font-semibold">
+                        <th class="py-2.5 px-3 w-32">Tarih / Saat</th>
+                        <th class="py-2.5 px-3 min-w-[150px] text-white">Malzeme</th>
+                        <th class="py-2.5 px-3 w-24 text-right">Miktar</th>
+                        <th class="py-2.5 px-3 min-w-[140px] text-yellow-300">Teslim Alan Personel</th>
+                        <th class="py-2.5 px-3 min-w-[140px] text-blue-300">İlgili Proje</th>
+                        <th class="py-2.5 px-3 min-w-[130px] text-cyan-300">Makine / İstasyon</th>
+                        <th class="py-2.5 px-3 min-w-[130px] text-purple-300">Formen / Ustabaşı</th>
+                        <th class="py-2.5 px-3">Notlar</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for t in transactions %}
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="py-2 px-3 font-mono text-slate-400 text-[11px]">{{ t.created_at }}</td>
+                        <td class="py-2 px-3 font-bold text-white">{{ t.material_name }}</td>
+                        <td class="py-2 px-3 text-right font-mono font-black
+                            {% if t.trans_type == 'Çıkış' %}text-rose-400{% else %}text-emerald-400{% endif %}">
+                            {% if t.trans_type == 'Çıkış' %}-{% else %}+{% endif %}{{ t.qty }} {{ t.material_unit }}
+                        </td>
+                        <td class="py-2 px-3 font-semibold text-slate-200">
+                            <i class="fa-solid fa-user-gear text-slate-500 mr-1 text-[10px]"></i>
+                            {{ t.recipient_person or '-' }}
+                        </td>
+                        <td class="py-2 px-3 font-medium text-slate-300">
+                            {% if t.project_code %}
+                            <span class="font-mono text-blue-400 font-bold">{{ t.project_code }}</span> - {{ t.project_name }}
+                            {% else %}
+                            <span class="text-slate-500">Genel / Fabrika</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2 px-3 font-medium text-cyan-300">
+                            {{ t.machine_name or '-' }}
+                        </td>
+                        <td class="py-2 px-3 font-medium text-purple-300">
+                            {{ t.foreman_name or '-' }}
+                        </td>
+                        <td class="py-2 px-3 text-slate-400 text-[11px] italic">{{ t.notes or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="py-4 text-center text-slate-500 italic text-xs">
+                            Henüz sarf malzeme hareketi kaydedilmedi.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- 1. MODAL: SARF ÇIKIŞI FORMU (KULLANICI İSTEĞİ: KİMİN, HANGİ İŞ, HANGİ MAKİNE, HANGİ FORMEN) -->
+<div id="consumableCheckoutModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-arrow-right-from-bracket text-rose-400"></i>
+                <span>Sarf Malzeme Çıkışı (Stoktan Düşüş)</span>
+            </h3>
+            <button onclick="closeModal('consumableCheckoutModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_depo_sarf_cikis') }}" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Çıkışı Yapılacak Malzeme *</label>
+                <select id="checkout_material_id" name="material_id" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-rose-500">
+                    <option value="">-- Malzeme Seçin --</option>
+                    {% for m in consumables %}
+                    <option value="{{ m.id }}">{{ m.name }} (Mevcut: {{ m.current_qty }} {{ m.unit }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Çıkış Miktarı *</label>
+                <input type="number" step="0.1" name="qty" required value="1" min="0.1" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm focus:outline-none focus:border-rose-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Teslim Alan Personel *</label>
+                    <input type="text" name="recipient_person" required placeholder="Örn: Ahmet Usta" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500 font-medium">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İlgili İş / Proje</label>
+                    <select name="project_id" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500 font-medium">
+                        <option value="">-- Genel / Projesiz --</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}">{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Hangi Makine / İstasyon</label>
+                    <input type="text" name="machine_name" placeholder="Örn: CNC Plazma, Gazaltı 3" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Onaylayan Formen / Ustabaşı</label>
+                    <input type="text" name="foreman_name" placeholder="Örn: Mehmet Formen" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Açıklama / Not (Opsiyonel)</label>
+                <input type="text" name="notes" placeholder="Örn: 2. kat kiriş kaynakları için" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-rose-500">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('consumableCheckoutModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white rounded-xl font-black shadow-lg shadow-rose-600/30">Stoktan Düş ve Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. MODAL: YENİ SARF MALZEMESİ TANIMLA (KRİTİK EŞİĞİ BİZ BELİRLİYORUZ) -->
+<div id="addConsumableModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-boxes-stacked text-amber-400"></i>
+                <span>Yeni Sarf Malzeme Tanımla</span>
+            </h3>
+            <button onclick="closeModal('addConsumableModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_depo_sarf_ekle') }}" method="POST" class="mt-4 space-y-3.5">
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Malzeme Kodu</label>
+                    <input type="text" name="code" placeholder="Örn: SRF-001" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-slate-400 mb-1 font-semibold">Malzeme Adı *</label>
+                    <input type="text" name="name" required placeholder="Örn: Magmaweld 1.2mm Gazaltı Kaynak Teli (15kg)" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kategori</label>
+                    <select name="category" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+                        <option value="Kaynak & Montaj">Kaynak & Montaj</option>
+                        <option value="Kesme & Taşlama">Kesme & Taşlama</option>
+                        <option value="Boya & Kimyasal">Boya & Kimyasal</option>
+                        <option value="Cıvata & Bağlantı">Cıvata & Bağlantı</option>
+                        <option value="İSG & KKD">İSG & KKD</option>
+                        <option value="Genel Sarf">Genel Sarf</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Birim</label>
+                    <select name="unit" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+                        <option value="Adet">Adet</option>
+                        <option value="Kg">Kg</option>
+                        <option value="Paket">Paket</option>
+                        <option value="Rulo">Rulo</option>
+                        <option value="Kutu">Kutu</option>
+                        <option value="Teneke">Teneke</option>
+                        <option value="Litre">Litre</option>
+                        <option value="Tüp">Tüp</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Başlangıç Mevcut Stok</label>
+                    <input type="number" step="0.1" name="current_qty" value="0" min="0" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold">
+                </div>
+                <div>
+                    <label class="block text-amber-400 mb-1 font-bold">⚠️ Kritik Stok Eşiği (Min Stok) *</label>
+                    <input type="number" step="0.1" name="critical_level" value="10" min="0" required class="w-full bg-slate-950 border border-amber-500/50 rounded-xl px-3 py-2 text-amber-300 font-mono font-black" title="Bu miktarın altına düşünce sistem otomatik sipariş uyarısı verir">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Raf / Depo Konumu</label>
+                <input type="text" name="shelf_location" placeholder="Örn: A-Blok Raf 3, Göz 2" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Malzeme Notu / Standart</label>
+                <input type="text" name="notes" placeholder="Örn: AWS A5.18 ER70S-6 standardı" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addConsumableModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow-lg shadow-amber-500/20">Malzemeyi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 3. MODAL: STOK GİRİŞİ YAP -->
+<div id="consumableCheckinModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-arrow-right-to-bracket text-emerald-400"></i>
+                <span>Stok Girişi (Satınalma / Depo Girişi)</span>
+            </h3>
+            <button onclick="closeModal('consumableCheckinModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_depo_sarf_giris') }}" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Giriş Yapılacak Malzeme *</label>
+                <select name="material_id" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                    <option value="">-- Malzeme Seçin --</option>
+                    {% for m in consumables %}
+                    <option value="{{ m.id }}">{{ m.name }} (Mevcut: {{ m.current_qty }} {{ m.unit }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Giriş Yapılan Miktar *</label>
+                <input type="number" step="0.1" name="qty" required value="10" min="0.1" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">İrsaliye / Fatura / Tedarikçi Notu</label>
+                <input type="text" name="notes" placeholder="Örn: ABC Tedarikçi İrsaliye No: 12345" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('consumableCheckinModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black shadow-lg shadow-emerald-600/30">Stok Girişini Onayla</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 4. MODAL: SARF MALZEME DÜZENLE -->
+<div id="editConsumableModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen text-amber-400"></i>
+                <span>Sarf Malzemesini Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editConsumableModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form id="editConsumableForm" method="POST" class="mt-4 space-y-3.5">
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Malzeme Kodu</label>
+                    <input type="text" id="edit_c_code" name="code" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div class="col-span-2">
+                    <label class="block text-slate-400 mb-1 font-semibold">Malzeme Adı *</label>
+                    <input type="text" id="edit_c_name" name="name" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kategori</label>
+                    <select id="edit_c_category" name="category" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+                        <option value="Kaynak & Montaj">Kaynak & Montaj</option>
+                        <option value="Kesme & Taşlama">Kesme & Taşlama</option>
+                        <option value="Boya & Kimyasal">Boya & Kimyasal</option>
+                        <option value="Cıvata & Bağlantı">Cıvata & Bağlantı</option>
+                        <option value="İSG & KKD">İSG & KKD</option>
+                        <option value="Genel Sarf">Genel Sarf</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Birim</label>
+                    <select id="edit_c_unit" name="unit" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+                        <option value="Adet">Adet</option>
+                        <option value="Kg">Kg</option>
+                        <option value="Paket">Paket</option>
+                        <option value="Rulo">Rulo</option>
+                        <option value="Kutu">Kutu</option>
+                        <option value="Teneke">Teneke</option>
+                        <option value="Litre">Litre</option>
+                        <option value="Tüp">Tüp</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-amber-400 mb-1 font-bold">⚠️ Kritik Stok Eşiği (Min Stok Eşiği) *</label>
+                <input type="number" step="0.1" id="edit_c_critical" name="critical_level" required class="w-full bg-slate-950 border border-amber-500/50 rounded-xl px-3 py-2 text-amber-300 font-mono font-black">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Raf / Depo Konumu</label>
+                <input type="text" id="edit_c_location" name="shelf_location" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Malzeme Notu / Standart</label>
+                <input type="text" id="edit_c_notes" name="notes" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editConsumableModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black">Güncellemeyi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function quickCheckoutMaterial(materialId, materialName, unit, currentQty) {
+        document.getElementById('checkout_material_id').value = materialId;
+        openModal('consumableCheckoutModal');
+    }
+
+    function openEditConsumableModal(m) {
+        document.getElementById('edit_c_code').value = m.code || '';
+        document.getElementById('edit_c_name').value = m.name || '';
+        document.getElementById('edit_c_category').value = m.category || 'Kaynak & Montaj';
+        document.getElementById('edit_c_unit').value = m.unit || 'Adet';
+        document.getElementById('edit_c_critical').value = m.critical_level || 10;
+        document.getElementById('edit_c_location').value = m.shelf_location || '';
+        document.getElementById('edit_c_notes').value = m.notes || '';
+        document.getElementById('editConsumableForm').action = `/api/depo/sarf/${m.id}/guncelle`;
+        openModal('editConsumableModal');
+    }
+
+    function filterConsumableTable() {
+        const query = document.getElementById('tableSearchInput').value.toLowerCase();
+        const rows = document.querySelectorAll('#consumableTable tbody tr');
+        rows.forEach(r => {
+            const text = r.textContent.toLowerCase();
+            r.style.display = text.indexOf(query) !== -1 ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

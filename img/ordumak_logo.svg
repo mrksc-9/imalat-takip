@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 90" width="360" height="90">
+  <defs>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+  </defs>
+  <!-- Steel Hexagon & I-Beam Icon -->
+  <g transform="translate(10, 10)">
+    <polygon points="35,5 65,22 65,58 35,75 5,58 5,22" fill="#0F172A" stroke="url(#blueGrad)" stroke-width="4.5" stroke-linejoin="round" />
+    <polygon points="35,15 55,27 55,53 35,65 15,53 15,27" fill="url(#blueGrad)" opacity="0.18" />
+    <!-- I-Beam (Steel Profile) -->
+    <path d="M25 28 L45 28 M35 28 L35 52 M25 52 L45 52" stroke="url(#amberGrad)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+  <!-- Brand Text -->
+  <text x="88" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="30" font-weight="900" letter-spacing="1.5" fill="#FFFFFF">
+    ORDU<tspan fill="#3B82F6">MAK</tspan>
+  </text>
+  <text x="90" y="68" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="10" font-weight="800" letter-spacing="3" fill="#94A3B8">
+    DEMİR ÇELİK A.Ş.
+  </text>
+</svg>

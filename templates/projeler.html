@@ -1,0 +1,425 @@
+﻿{% extends "layout.html" %}
+
+{% block title %}Projeler ve Montaj Listeleri - ORDUMAK MES{% endblock %}
+{% block page_title %}1. Proje Takip & Tekla Structures Listeleri{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR: Başlık, İstatistik ve Eylemler -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-folder-tree text-blue-400"></i>
+                <span>İmalat Projeleri Yönetimi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Tekla Structures parça listeleri, montaj markaları, tonaj ve aşama takibi</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+            <!-- Sekmeler -->
+            <div class="flex items-center bg-slate-900 border border-slate-800 p-1 rounded-xl">
+                <a href="{{ url_for('projeler', tab='aktif') }}" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 {% if active_tab == 'aktif' %}bg-blue-600 text-white shadow-md shadow-blue-600/30{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+                    <i class="fa-solid fa-spinner text-[10px]"></i>
+                    <span>Aktif Projeler</span>
+                    <span class="px-1.5 py-0.2 rounded-full text-[10px] {% if active_tab == 'aktif' %}bg-white/20 text-white{% else %}bg-slate-800 text-slate-400{% endif %}">{{ active_projects|length }}</span>
+                </a>
+                <a href="{{ url_for('projeler', tab='biten') }}" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 {% if active_tab == 'biten' %}bg-emerald-600 text-white shadow-md shadow-emerald-600/30{% else %}text-slate-400 hover:text-slate-200{% endif %}">
+                    <i class="fa-solid fa-flag-checkered text-[10px]"></i>
+                    <span>Biten Projeler (Arşiv)</span>
+                    <span class="px-1.5 py-0.2 rounded-full text-[10px] {% if active_tab == 'biten' %}bg-white/20 text-white{% else %}bg-slate-800 text-slate-400{% endif %}">{{ finished_projects|length }}</span>
+                </a>
+            </div>
+
+            {% if can_user_edit('projeler') %}
+            <button onclick="openModal('newProjectModal')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5">
+                <i class="fa-solid fa-plus"></i>
+                <span>Yeni Proje Ekle</span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if active_tab == 'biten' %}
+    <!-- ========================================================================= -->
+    <!-- BİTEN PROJELER TABLOSU (ZENGİN LİSTE / TABLE GÖRÜNÜMÜ) -->
+    <!-- ========================================================================= -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        <div class="p-4 border-b border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-950/50">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center text-sm">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold text-white">Tamamlanan İmalat Projeleri Tablosu</h4>
+                    <p class="text-[11px] text-slate-400">Arşivlenen projeleri inceleyebilir, detaylarına bakabilir veya tek tıkla aktif projelere geri alabilirsiniz.</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <input type="text" id="finishedProjSearch" onkeyup="filterFinishedProjects()" placeholder="Biten projelerde ara..." class="bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-48 md:w-64">
+                <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-900 border border-slate-800 text-emerald-400">{{ projects|length }} Proje</span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse" id="finishedProjectsTable">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/80">
+                        <th class="py-3 px-3.5">Proje Kodu</th>
+                        <th class="py-3 px-3">Proje Adı & Müşteri</th>
+                        <th class="py-3 px-2">Şantiye</th>
+                        <th class="py-3 px-2">Termin Tarihi</th>
+                        <th class="py-3 px-2 text-right">Toplam Tonaj</th>
+                        <th class="py-3 px-3 text-center">İlerleme Özeti (Kesim / İmalat / Boya / Sevk)</th>
+                        <th class="py-3 px-2 text-center">Durum</th>
+                        <th class="py-3 px-3.5 text-right">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for p in projects %}
+                    <tr class="hover:bg-slate-900/50 transition-colors finished-row">
+                        <td class="py-3 px-3.5 font-mono font-bold text-blue-400">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ p.color or '#10b981' }};"></span>
+                                <span>{{ p.code }}</span>
+                            </div>
+                        </td>
+                        <td class="py-3 px-3">
+                            <div class="font-bold text-white text-xs">{{ p.name }}</div>
+                            <div class="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                <i class="fa-solid fa-building text-[9px] text-slate-500"></i>
+                                <span>{{ p.customer or 'Müşteri Belirtilmedi' }}</span>
+                                {% if p.pos_prefix %}
+                                <span class="text-[9px] text-slate-500 font-mono ml-1 bg-slate-900 px-1 rounded border border-slate-800">Önek: {{ p.pos_prefix }}</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="py-3 px-2 text-slate-300 font-medium">{{ p.site_location or '-' }}</td>
+                        <td class="py-3 px-2 font-mono text-slate-300">{{ p.delivery_date | format_date }}</td>
+                        <td class="py-3 px-2 text-right font-mono font-black text-emerald-400 text-xs">{{ p.total_tonnage | format_num }} Ton</td>
+                        <td class="py-3 px-3">
+                            <!-- 4'lü Mini İlerleme Rozetleri -->
+                            <div class="grid grid-cols-4 gap-1.5 text-center text-[10px] font-mono font-bold max-w-[280px] mx-auto">
+                                <div class="bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/20" title="Kesim: {{ p.cut_tonnage | format_num }} Ton">⚡ %{{ p.cut_pct }}</div>
+                                <div class="bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20" title="İmalat: {{ p.fab_completed_tonnage | format_num }} Ton">🔨 %{{ p.fab_pct }}</div>
+                                <div class="bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20" title="Boya: {{ p.paint_completed_tonnage | format_num }} Ton">🎨 %{{ p.paint_pct }}</div>
+                                <div class="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Sevk: {{ p.shipped_tonnage | format_num }} Ton">🚛 %{{ p.ship_pct }}</div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-2 text-center">
+                            <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                <i class="fa-solid fa-check text-[9px]"></i> Tamamlandı
+                            </span>
+                        </td>
+                        <td class="py-3 px-3.5 text-right">
+                            <div class="flex items-center justify-end gap-1.5">
+                                <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all" title="Parça Listeleri ve Detay">
+                                    <i class="fa-solid fa-list-check mr-1"></i> Detay
+                                </a>
+                                {% if can_user_edit('projeler') %}
+                                <button type="button" onclick="openEditProjectModal({{ p|tojson }})" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-all" title="Projeyi Düzenle">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
+                                <form method="POST" action="{{ url_for('api_proje_durum', project_id=p.id) }}" class="inline" onsubmit="return confirm('\'{{ p.name }}\' projesini tekrar AKTİF projeler arasına almak istiyor musunuz?');">
+                                    <input type="hidden" name="status" value="Devam Ediyor">
+                                    <button type="submit" class="px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white border border-amber-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1" title="Aktif Projelere Geri Al">
+                                        <i class="fa-solid fa-rotate-left"></i>
+                                        <span>Geri Aktif Et</span>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-16 text-slate-500">
+                            <i class="fa-solid fa-flag-checkered text-3xl mb-2 block text-slate-600"></i>
+                            <span class="font-bold text-slate-400">Henüz Biten Proje Bulunmuyor</span>
+                            <p class="text-[11px] text-slate-500 mt-1">Tamamlanan projeleriniz burada liste halinde arşivlenecektir.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- ========================================================================= -->
+    <!-- AKTİF PROJE KARTLARI LİSTESİ -->
+    <!-- ========================================================================= -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for p in projects %}
+        <div class="bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 rounded-2xl p-5 shadow-xl flex flex-col justify-between transition-all hover:bg-slate-900/60 relative overflow-hidden group">
+            <!-- Proje Rengi Üst Şerit -->
+            <div class="absolute top-0 left-0 right-0 h-1.5" style="background-color: {{ p.color or '#3b82f6' }};"></div>
+
+            <div>
+                <!-- Başlık & Müşteri & Durum Rozeti -->
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-blue-400">
+                                {{ p.code }}
+                            </span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center gap-1">
+                                <i class="fa-solid fa-play text-[8px]"></i> {{ p.status or 'Devam Ediyor' }}
+                            </span>
+                        </div>
+                        <h4 class="text-sm font-bold text-white mt-1.5 line-clamp-1 group-hover:text-blue-400 transition-colors">
+                            <a href="{{ url_for('proje_detay', project_id=p.id) }}">{{ p.name }}</a>
+                        </h4>
+                        <p class="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
+                            <i class="fa-solid fa-building text-[10px] text-slate-500"></i>
+                            <span>{{ p.customer or 'Müşteri Belirtilmedi' }}</span>
+                        </p>
+                    </div>
+
+                    <span class="text-xs font-mono font-black text-white px-2.5 py-1 bg-slate-900 border border-slate-800 rounded-lg shrink-0">
+                        {{ p.total_tonnage | format_num }} Ton
+                    </span>
+                </div>
+
+                <!-- Şantiye & Tarihler -->
+                <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-400 py-2 border-y border-slate-800/80 mb-3">
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Şantiye:</span>
+                        <span class="text-slate-300 font-medium truncate block">{{ p.site_location or '-' }}</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Termin Tarihi:</span>
+                        <span class="text-slate-300 font-mono font-medium block">{{ p.delivery_date | format_date }}</span>
+                    </div>
+                </div>
+
+                <!-- 4 Aşamalı İlerleme Çubukları -->
+                <div class="space-y-2 text-xs mb-4">
+                    <!-- Kesim -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-yellow-400 font-medium flex items-center gap-1"><i class="fa-solid fa-bolt text-[9px]"></i> Kesim</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.cut_pct }} ({{ p.cut_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-yellow-400 h-full rounded-full" style="width: {{ p.cut_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- İmalat (Çatım/Kaynak) -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-amber-400 font-medium flex items-center gap-1"><i class="fa-solid fa-hammer text-[9px]"></i> İmalat (Montaj)</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.fab_pct }} ({{ p.fab_completed_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-amber-500 h-full rounded-full" style="width: {{ p.fab_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Boya -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-purple-400 font-medium flex items-center gap-1"><i class="fa-solid fa-paint-roller text-[9px]"></i> Boya & Yüzey</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.paint_pct }} ({{ p.paint_completed_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-purple-500 h-full rounded-full" style="width: {{ p.paint_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Sevk -->
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-0.5">
+                            <span class="text-emerald-400 font-medium flex items-center gap-1"><i class="fa-solid fa-truck-moving text-[9px]"></i> Sevkiyat</span>
+                            <span class="text-slate-300 font-mono font-bold">%{{ p.ship_pct }} ({{ p.shipped_tonnage | format_num }} Ton)</span>
+                        </div>
+                        <div class="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-emerald-500 h-full rounded-full" style="width: {{ p.ship_pct }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kart Alt Eylem Butonları -->
+            <div class="flex flex-col gap-2.5 pt-3 border-t border-slate-800/80">
+                <div class="flex items-center justify-between text-[11px] text-slate-400">
+                    <div>
+                        <span class="font-bold text-white">{{ p.total_assemblies_count }}</span> Marka | <span class="font-bold text-white">{{ p.total_parts_count }}</span> Poz
+                    </div>
+                    <div>
+                        {% if p.pos_prefix %}
+                        <span class="text-[10px] text-slate-500 font-mono">Önek: {{ p.pos_prefix }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-1.5 flex-wrap">
+                    <div class="flex items-center gap-1.5">
+                        <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all">
+                            <i class="fa-solid fa-list-check mr-1"></i> Listeler & Detay
+                        </a>
+
+                        {% if can_user_edit('projeler') %}
+                        <button type="button" onclick="openEditProjectModal({{ p|tojson }})" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium transition-all" title="Projeyi Düzenle">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    {% if can_user_edit('projeler') %}
+                    <div>
+                        <form method="POST" action="{{ url_for('api_proje_durum', project_id=p.id) }}" onsubmit="return confirm('\'{{ p.name }}\' projesini TAMAMLANDI olarak işaretlemek istiyor musunuz? Proje \'Biten Projeler\' sekmesine taşınacaktır.');">
+                            <input type="hidden" name="status" value="Tamamlandı">
+                            <button type="submit" class="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1">
+                                <i class="fa-solid fa-check-double text-[10px]"></i> Projeyi Bitir
+                            </button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-16 text-center bg-slate-950/60 border border-slate-800 rounded-2xl">
+            <i class="fa-solid fa-folder-open text-slate-600 text-4xl mb-3"></i>
+            <h4 class="text-base font-bold text-slate-300">Henüz Aktif Proje Yok</h4>
+            <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                Yukarıdaki 'Yeni Proje Ekle' butonuna basarak ilk çelik konstrüksiyon imalat projenizi oluşturabilirsiniz.
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- PROJE DÜZENLEME MODALI -->
+<div id="editProjectModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-scaleIn">
+        <div class="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950/50">
+            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+                <span>Proje Bilgilerini Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editProjectModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form id="editProjectForm" method="POST" action="" class="p-5 space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Proje Kodu *</label>
+                    <input type="text" id="edit_p_code" name="code" required class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs font-mono uppercase focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Proje Durumu</label>
+                    <select id="edit_p_status" name="status" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:border-blue-500">
+                        <option value="Başlamadı">Başlamadı</option>
+                        <option value="Devam Ediyor">Devam Ediyor</option>
+                        <option value="Tamamlandı">Tamamlandı</option>
+                        <option value="Arşiv">Arşiv</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Proje Adı *</label>
+                <input type="text" id="edit_p_name" name="name" required class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:border-blue-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Müşteri / İşveren</label>
+                    <input type="text" id="edit_p_customer" name="customer" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Şantiye / Konum</label>
+                    <input type="text" id="edit_p_site" name="site_location" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Başlama Tarihi</label>
+                    <input type="date" id="edit_p_start" name="start_date" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Kesim Başlama</label>
+                    <input type="date" id="edit_p_cut_start" name="cutting_start_date" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Termin Tarihi</label>
+                    <input type="date" id="edit_p_delivery" name="delivery_date" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Hedef Tonaj (Ton)</label>
+                    <input type="number" step="0.01" id="edit_p_target" name="target_tonnage" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Poz Prefix / Önek</label>
+                    <input type="text" id="edit_p_prefix" name="pos_prefix" placeholder="Örn: P, PL" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Proje Rengi</label>
+                    <input type="color" id="edit_p_color" name="color" class="w-full h-[34px] bg-slate-950 border border-slate-700 rounded-lg p-1 cursor-pointer">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Notlar / Açıklama</label>
+                <textarea id="edit_p_notes" name="notes" rows="2" class="w-full bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-2 text-xs focus:border-blue-500"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editProjectModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Değişiklikleri Kaydet</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditProjectModal(project) {
+    if (!project) return;
+    document.getElementById('editProjectForm').action = "/api/projeler/" + project.id + "/guncelle";
+    document.getElementById('edit_p_code').value = project.code || '';
+    document.getElementById('edit_p_name').value = project.name || '';
+    document.getElementById('edit_p_customer').value = project.customer || '';
+    document.getElementById('edit_p_site').value = project.site_location || '';
+    document.getElementById('edit_p_start').value = project.start_date || '';
+    document.getElementById('edit_p_cut_start').value = project.cutting_start_date || '';
+    document.getElementById('edit_p_delivery').value = project.delivery_date || '';
+    document.getElementById('edit_p_target').value = project.target_tonnage || '';
+    document.getElementById('edit_p_prefix').value = project.pos_prefix || '';
+    document.getElementById('edit_p_color').value = project.color || '#3b82f6';
+    document.getElementById('edit_p_notes').value = project.notes || '';
+    
+    var statusSelect = document.getElementById('edit_p_status');
+    if (statusSelect) {
+        statusSelect.value = project.status || 'Devam Ediyor';
+    }
+    
+    openModal('editProjectModal');
+}
+
+function filterFinishedProjects() {
+    var input = document.getElementById("finishedProjSearch");
+    if (!input) return;
+    var filter = input.value.toLowerCase();
+    var rows = document.querySelectorAll(".finished-row");
+    rows.forEach(function(row) {
+        var text = row.innerText.toLowerCase();
+        row.style.display = text.indexOf(filter) > -1 ? "" : "none";
+    });
+}
+</script>
+{% endblock %}

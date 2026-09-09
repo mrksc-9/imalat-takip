@@ -1,0 +1,1135 @@
+{% extends "layout.html" %}
+
+{% block title %}4. Kesim Girişi & Geçmiş Paketler - Çelik İmalat MES{% endblock %}
+{% block page_title %}4. Kesim Girişi & Çoklu Poz İşleme İstasyonu{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- 1. KESİM GİRİŞİ KARTI (SEKMELİ: ÇOKLU POZ GİRİŞİ & SON KESİM GİRİŞ GRUPLARI) -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- Sekme Başlıkları -->
+        <div class="flex items-center justify-between border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 flex-wrap">
+            <div class="flex items-center gap-2">
+                <button onclick="switchCutTab('tabCoklu', this)" class="cut-tab-btn px-4 py-2.5 rounded-t-xl bg-yellow-500 text-slate-950 font-black text-xs flex items-center gap-2 transition-all shadow-sm">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>1) Excel Tarzı Kesilenler Girişi</span>
+                </button>
+                <button onclick="switchCutTab('tabGirisGruplari', this)" class="cut-tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 font-bold text-xs flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-boxes-stacked text-yellow-400"></i>
+                    <span>2) Son Kesim Giriş Grupları & Geçmiş (Giriş 1, 2...)</span>
+                    <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-yellow-400 font-mono border border-slate-700">{{ cutting_batches|length }}</span>
+                </button>
+            </div>
+            <span class="text-xs text-slate-400 py-1 hidden sm:inline">💡 Excel'den 3 sütun (Poz, Profil, Adet) kopyalayıp tabloya doğrudan Ctrl+V ile yapıştırabilirsiniz.</span>
+        </div>
+
+        <!-- 1. TAB: ÇOKLU POZ KESİM GİRİŞİ (3 SÜTUNLU EXCEL GRİDİ) -->
+        <div id="tabCoklu" class="cut-tab-content p-5 space-y-4">
+            
+            <!-- Üst Ortak Bilgiler (Proje, Makine, Operatör, Tarih vb.) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-slate-400 font-semibold">Proje Seç *</label>
+                        <span id="batchProjectPrefixBadge" class="hidden text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">
+                            Prefix: <b id="batchProjectPrefixText">-</b>
+                        </span>
+                    </div>
+                    <select id="batch_project_id" onchange="onBatchProjectChanged(this)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-yellow-500">
+                        <option value="">-- Proje Seçin --</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}" data-prefix="{{ p.pos_prefix or '' }}">{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kesim Makinesi</label>
+                    <select id="batch_machine" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                        {% for m in machines %}
+                        <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Operatör</label>
+                    <select id="batch_operator" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                        {% for op in operators %}
+                        <option value="{{ op }}">{{ op }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Yardımcı</label>
+                    <select id="batch_helper" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                        <option value="">-- Yok --</option>
+                        {% for h in helpers %}
+                        <option value="{{ h }}">{{ h }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Vardiya</label>
+                        <select id="batch_shift" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                            <option value="Gündüz">☀️ Gündüz</option>
+                            <option value="Gece">🌙 Gece</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold">Tarih</label>
+                        <input type="date" id="batch_cut_date" value="{{ today_str }}" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXCEL TABLOSU ARAÇ ÇUBUĞU -->
+            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button" onclick="addBatchRow(1)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-plus text-yellow-400"></i>
+                        <span>+1 Satır</span>
+                    </button>
+                    <button type="button" onclick="addBatchRow(5)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-layer-group text-yellow-400"></i>
+                        <span>+5 Satır</span>
+                    </button>
+                    <button type="button" onclick="openExcelPasteModal()" class="px-3.5 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-500/50 text-emerald-300 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-paste text-emerald-400"></i>
+                        <span>Excel'den Yapıştır</span>
+                    </button>
+                    <button type="button" onclick="clearBatchTable()" class="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-trash text-rose-400"></i>
+                        <span>Temizle</span>
+                    </button>
+                </div>
+                <div class="text-[11px] text-slate-400 flex items-center gap-3">
+                    <span>📋 <b class="text-yellow-400">Ctrl+V</b> ile Excel tablosunu doğrudan yapıştırabilirsiniz</span>
+                    <span>⌨️ <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-yellow-400">Enter</kbd> Alt Satır</span>
+                    <span><kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-700 text-yellow-400">Tab</kbd> Yan Hücre</span>
+                </div>
+            </div>
+
+            <!-- KULLANICI İSTEĞİ: SADECE 3 SÜTUNLU EXCEL KUTUCUK TABLOSU (POZ + PROFİL + KESİLEN ADET) -->
+            <div class="border-2 border-slate-700/80 rounded-xl overflow-x-auto shadow-2xl bg-slate-950 relative">
+                <table id="excelCutTable" class="w-full text-left text-xs border-collapse font-mono select-none">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-200 font-black uppercase text-[11px] border-b-2 border-slate-700 tracking-wider">
+                            <th class="py-3 px-2 w-12 text-center bg-slate-950 border-r border-slate-700 text-slate-500">#</th>
+                            <th class="py-3 px-4 min-w-[220px] text-yellow-400 border-r border-slate-700">
+                                <div class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-hashtag text-xs"></i>
+                                    <span>Poz (Prefix Dahil) *</span>
+                                </div>
+                            </th>
+                            <th class="py-3 px-4 min-w-[220px] text-blue-300 border-r border-slate-700">
+                                <div class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-shapes text-xs"></i>
+                                    <span>Profil *</span>
+                                </div>
+                            </th>
+                            <th class="py-3 px-4 w-48 text-right text-yellow-400 font-black border-r border-slate-700 bg-yellow-500/10">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <i class="fa-solid fa-arrow-down-1-9 text-xs"></i>
+                                    <span>Kesilen Adet *</span>
+                                </div>
+                            </th>
+                            <th class="py-3 px-2 w-14 text-center text-slate-500">Sil</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchCutRows" class="divide-y divide-slate-800/80 text-slate-200">
+                        <!-- Dinamik Satırlar JS ile eklenir -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tablo Altı Butonlar & Not Alanı -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div class="flex items-center gap-3 text-xs text-slate-400">
+                    <span>Toplam <b id="totalRowCountBadge" class="font-bold text-yellow-400 text-sm">0</b> satır kesim verisi hazır.</span>
+                    <input type="text" id="batch_notes" placeholder="Opsiyonel Kesim / Vardiya Notu..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 w-64 focus:outline-none focus:border-yellow-500">
+                </div>
+
+                {% if can_user_edit('kesim') %}
+                <button type="button" onclick="submitBatchCutting()" id="btnSubmitBatch" class="px-8 py-3 bg-gradient-to-r from-yellow-500 via-amber-500 to-yellow-600 hover:from-yellow-400 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-xl shadow-yellow-500/20 flex items-center gap-2 transform active:scale-95">
+                    <i class="fa-solid fa-floppy-disk text-sm"></i>
+                    <span>Tüm Kesimleri Ana Listeye Kaydet</span>
+                </button>
+                {% endif %}
+            </div>
+
+        </div>
+
+        <!-- 2. TAB: SON KESİM GİRİŞ GRUPLARI & GEÇMİŞ (GİRİŞ #1, GİRİŞ #2...) -->
+        <div id="tabGirisGruplari" class="cut-tab-content p-5 space-y-4 hidden">
+            
+            <!-- Arama & Filtreleme Çubuğu -->
+            <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div class="flex items-center gap-2.5 flex-1 min-w-[260px]">
+                    <div class="relative flex-1">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                        <input type="text" id="batchSearchInput" placeholder="Giriş No, Proje, Operatör veya Makine ara..." oninput="filterBatchList()" class="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-yellow-500">
+                    </div>
+                    <select id="batchFilterProject" onchange="filterBatchList()" class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-yellow-500">
+                        <option value="">Tüm Projeler</option>
+                        {% for p in projects %}
+                        <option value="{{ p.code }}">{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="text-xs text-slate-400">
+                    Toplam <span id="visibleBatchCount" class="font-bold text-yellow-400">{{ cutting_batches|length }}</span> kesim paketi listeleniyor.
+                </div>
+            </div>
+
+            <!-- Giriş Grupları Tablosu -->
+            <div class="border border-slate-800 rounded-xl overflow-x-auto shadow-inner bg-slate-950">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900/90 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800 tracking-wider">
+                            <th class="py-3 px-3 w-28 text-yellow-400">Giriş Adı</th>
+                            <th class="py-3 px-3 min-w-[180px] text-white">Proje</th>
+                            <th class="py-3 px-3 w-32 text-slate-300">Tarih / Vardiya</th>
+                            <th class="py-3 px-3 min-w-[160px] text-slate-300">Makine / Operatör</th>
+                            <th class="py-3 px-3 text-center w-24">Poz Çeşidi</th>
+                            <th class="py-3 px-3 text-right w-24 text-slate-300">Toplam Adet</th>
+                            <th class="py-3 px-3 text-right w-28 text-yellow-400 font-bold">Tonaj</th>
+                            <th class="py-3 px-3 min-w-[130px] text-slate-400">Kayıt Eden</th>
+                            <th class="py-3 px-3 text-center w-36">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="batchTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for b in cutting_batches %}
+                        <tr class="batch-row hover:bg-slate-900/70 transition-colors" data-search="{{ b.batch_code }} {{ b.project_code or '' }} {{ b.project_name or '' }} {{ b.operator or '' }} {{ b.machine or '' }}" data-project="{{ b.project_code or '' }}">
+                            <td class="py-3 px-3 font-mono font-bold whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-lg bg-yellow-500/10 text-yellow-400 border border-yellow-500/30">
+                                    {{ b.batch_code }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-3">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-yellow-400 shrink-0">
+                                        {{ b.project_code or 'PRJ' }}
+                                    </span>
+                                    <span class="font-semibold text-white truncate max-w-[200px]" title="{{ b.project_name or b.proj_name }}">
+                                        {{ b.project_name or b.proj_name or 'Proje' }}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="py-3 px-3 whitespace-nowrap">
+                                <div class="font-mono text-slate-300 text-[11px]">{{ b.cut_date | format_date }}</div>
+                                <div class="text-[10px] text-slate-500 font-medium">{% if b.shift == 'Gece' %}🌙 Gece{% else %}☀️ Gündüz{% endif %}</div>
+                            </td>
+                            <td class="py-3 px-3">
+                                <div class="text-white font-medium truncate max-w-[150px]" title="{{ b.machine }}">{{ b.machine or '-' }}</div>
+                                <div class="text-[11px] text-slate-400 truncate max-w-[150px]">
+                                    <i class="fa-solid fa-user-gear text-[10px] text-yellow-500 mr-1"></i>{{ b.operator or '-' }}
+                                    {% if b.helper %}<span class="text-slate-500 text-[10px]"> (Yrd: {{ b.helper }})</span>{% endif %}
+                                </div>
+                            </td>
+                            <td class="py-3 px-3 text-center font-mono font-bold text-slate-300">
+                                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">
+                                    {{ b.total_items }} Satır
+                                </span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono font-black text-white text-xs">
+                                {{ b.total_quantity }} <span class="text-[10px] text-slate-500 font-normal">Ad.</span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-mono font-black text-yellow-400 text-xs whitespace-nowrap">
+                                {{ b.total_tonnage | format_num }} <span class="text-[10px] text-slate-400 font-normal">Ton</span>
+                            </td>
+                            <td class="py-3 px-3 text-[11px] text-slate-400">
+                                <span class="text-slate-300 font-medium">{{ b.created_by or 'Sistem' }}</span>
+                                <div class="text-[10px] text-slate-500 font-mono">{{ b.created_at | format_datetime }}</div>
+                            </td>
+                            <td class="py-3 px-3 text-center">
+                                <div class="flex items-center justify-center gap-1.5">
+                                    <button type="button" onclick="openBatchDetailModal({{ b.id }})" class="px-2.5 py-1 bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-300 border border-yellow-500/40 rounded-lg text-xs font-bold transition-all flex items-center gap-1" title="Pozları Gör ve Adetleri Düzenle">
+                                        <i class="fa-solid fa-pen-to-square text-[11px]"></i>
+                                        <span>Detay</span>
+                                    </button>
+                                    {% if can_user_edit('kesim') %}
+                                    <button type="button" onclick="deleteBatchDirect({{ b.id }}, '{{ b.batch_code }}')" class="px-2 py-1 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 rounded-lg text-xs transition-all" title="Girişi Geri Al & Sil">
+                                        <i class="fa-solid fa-trash text-[11px]"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr id="emptyBatchRow">
+                            <td colspan="9" class="py-8 text-center text-slate-500 text-xs">
+                                <i class="fa-solid fa-box-open text-2xl mb-2 text-slate-600 block"></i>
+                                Henüz kaydedilmiş kesim giriş grubu bulunmuyor.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- EXCEL'DEN TOPLU YAPIŞTIRMA MODALI -->
+    <div id="excelPasteModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                    <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                    <span>Excel'den Kopyala-Yapıştır ile Kesim Doldur</span>
+                </h3>
+                <button onclick="closeModal('excelPasteModal')" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="mt-3 space-y-3 text-xs">
+                <p class="text-slate-300">
+                    Excel'deki satırlarınızı <b>(Poz, Profil, Kesilen Adet)</b> veya <b>(Poz, Kesilen Adet)</b> sırasıyla kopyalayıp aşağıdaki kutucuğa yapıştırın:
+                </p>
+                <textarea id="excelPasteArea" rows="8" placeholder="Excel'den kopyaladığınız verileri Ctrl+V ile buraya yapıştırın...&#10;Örn:&#10;IKC12-P1	SHS50*3	20&#10;IKC12-P2	SHS50*3	20&#10;IKC12-P3	SHS50*3	20" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-yellow-300 font-mono text-xs focus:outline-none focus:border-yellow-500"></textarea>
+                <div class="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+                    <button type="button" onclick="closeModal('excelPasteModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl">İptal</button>
+                    <button type="button" onclick="parseAndApplyExcelPaste()" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-md shadow-emerald-600/30">Tabloya Aktar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GİRİŞ DETAYI VE DÜZENLEME MODALI (GİRİŞ #1 DETAYI) -->
+    <div id="batchDetailModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl my-auto space-y-4">
+            
+            <!-- Modal Başlık & Üst Bilgiler -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div class="flex items-center gap-3">
+                    <span id="modalBatchCodeBadge" class="px-3 py-1 bg-yellow-500/20 text-yellow-400 font-mono font-black text-sm rounded-xl border border-yellow-500/40">
+                        Giriş #?
+                    </span>
+                    <div>
+                        <h3 id="modalBatchProjectName" class="font-bold text-sm text-white flex items-center gap-2">
+                            Proje Yükleniyor...
+                        </h3>
+                        <p id="modalBatchSubInfo" class="text-[11px] text-slate-400 font-mono mt-0.5">
+                            -
+                        </p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeModal('batchDetailModal')" class="text-slate-400 hover:text-white p-1 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Bilgilendirme Notu -->
+            <div class="p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl text-xs text-blue-300 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info text-blue-400 text-sm"></i>
+                    <span>Bu girişteki poz adetlerini doğrudan kutulardan değiştirebilir veya satır silebilirsiniz. Yapılan değişiklikler ana parça listesindeki kesilen ve kalan adetleri otomatik günceller.</span>
+                </div>
+            </div>
+
+            <!-- Pozlar Tablosu -->
+            <div class="border border-slate-800 rounded-xl overflow-x-auto shadow-inner bg-slate-950 max-h-[50vh] custom-scrollbar">
+                <table class="w-full text-left text-xs border-collapse font-mono">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-300 font-bold uppercase text-[10px] border-b border-slate-800 tracking-wider sticky top-0 z-10">
+                            <th class="py-2.5 px-2 w-10 text-center bg-slate-900">#</th>
+                            <th class="py-2.5 px-3 min-w-[130px] text-white">Poz No / Marka</th>
+                            <th class="py-2.5 px-3 min-w-[130px] text-blue-300">Profil / Kesit</th>
+                            <th class="py-2.5 px-3 w-24 text-right text-slate-400">Proje Toplam</th>
+                            <th class="py-2.5 px-3 w-24 text-right text-emerald-400">Proje Kalan</th>
+                            <th class="py-2.5 px-3 w-36 text-right text-yellow-400 font-black bg-yellow-500/10">Bu Girişte Kesilen *</th>
+                            <th class="py-2.5 px-3 w-24 text-right text-slate-400">Birim (kg)</th>
+                            <th class="py-2.5 px-3 w-28 text-right text-yellow-400 font-bold">Tonaj (Ton)</th>
+                            <th class="py-2.5 px-2 w-12 text-center">Sil</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modalBatchItemsBody" class="divide-y divide-slate-800/70 text-slate-200">
+                        <!-- JS ile doldurulur -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Canlı Özet Çubuğu -->
+            <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-wrap items-center justify-between text-xs font-mono">
+                <div class="text-slate-400">
+                    Aktif Satır: <b id="modalTotalItemsCount" class="text-white">0</b>
+                </div>
+                <div class="flex items-center gap-4">
+                    <span>Toplam Adet: <b id="modalTotalQtyCount" class="text-white font-bold">0</b></span>
+                    <span>Toplam Tonaj: <b id="modalTotalTonnageCount" class="text-yellow-400 font-black">0.000</b> Ton</span>
+                </div>
+            </div>
+
+            <!-- Modal Aksiyon Butonları -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
+                {% if can_user_edit('kesim') %}
+                <button type="button" onclick="deleteCurrentBatchFromModal()" class="px-4 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 text-rose-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-trash text-rose-400"></i>
+                    <span>Tüm Bu Girişi Geri Al & Sil</span>
+                </button>
+                {% else %}
+                <div></div>
+                {% endif %}
+
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="closeModal('batchDetailModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition-all">
+                        İptal
+                    </button>
+                    {% if can_user_edit('kesim') %}
+                    <button type="button" id="btnSaveBatchModal" onclick="saveBatchModalEdits()" class="px-6 py-2 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-yellow-500/20 flex items-center gap-2">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Değişiklikleri Kaydet & Ana Listeyi Güncelle</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 2. KESİM ANALİZLERİ VE ÖZET TABLOLAR -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        
+        <!-- Gün Bazlı Kesim Tonajı & Adet Özeti -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-calendar-check text-blue-400"></i>
+                        <span>Gün Bazlı Kesim Tonajı</span>
+                    </h4>
+                    <span class="text-[10px] text-slate-500 font-mono">Son Günler</span>
+                </div>
+                <div class="overflow-x-auto max-h-72 custom-scrollbar">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                                <th class="py-2 px-2">Tarih</th>
+                                <th class="py-2 px-1 text-center">İşlem</th>
+                                <th class="py-2 px-2 text-right text-yellow-400">Tonaj</th>
+                                <th class="py-2 px-2 text-right text-slate-400">Adet</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y border-slate-800/60 text-slate-200">
+                            {% for d in daily_summary %}
+                            <tr class="hover:bg-slate-900/50">
+                                <td class="py-2 px-2 font-mono font-bold text-yellow-400 whitespace-nowrap">{{ d.cut_date | format_date }}</td>
+                                <td class="py-2 px-1 text-center font-mono text-[11px] text-slate-400">{{ d.entry_count }}</td>
+                                <td class="py-2 px-2 text-right font-mono font-black text-white whitespace-nowrap">{{ d.total_tonnage | format_num }} <span class="text-[10px] font-normal text-slate-400">Ton</span></td>
+                                <td class="py-2 px-2 text-right font-mono font-bold text-slate-300 whitespace-nowrap">{{ d.total_pieces }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="py-4 text-center text-slate-500">Kayıt yok.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Makine Bazlı Kesim Performansı -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-gears text-yellow-400"></i>
+                        <span>Makine Bazlı Tonaj</span>
+                    </h4>
+                    <span class="text-[10px] text-slate-500 font-mono">Toplam</span>
+                </div>
+                <div class="overflow-x-auto max-h-72 custom-scrollbar">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                                <th class="py-2 px-2">Makine</th>
+                                <th class="py-2 px-1 text-center">İşlem</th>
+                                <th class="py-2 px-2 text-right text-emerald-400">Tonaj</th>
+                                <th class="py-2 px-2 text-right text-slate-400">Adet</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y border-slate-800/60 text-slate-200">
+                            {% for m in machine_summary %}
+                            <tr class="hover:bg-slate-900/50">
+                                <td class="py-2 px-2 font-bold text-white text-[11px] truncate max-w-[100px]" title="{{ m.machine }}">{{ m.machine }}</td>
+                                <td class="py-2 px-1 text-center font-mono text-[11px] text-slate-400">{{ m.entry_count }}</td>
+                                <td class="py-2 px-2 text-right font-mono font-black text-emerald-400 whitespace-nowrap">{{ m.total_tonnage | format_num }} <span class="text-[10px] font-normal text-slate-400">Ton</span></td>
+                                <td class="py-2 px-2 text-right font-mono font-bold text-slate-300 whitespace-nowrap">{{ m.total_pieces }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="py-4 text-center text-slate-500">Kayıt yok.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Operatör Bazlı Kesim Performansı -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-user-gear text-purple-400"></i>
+                        <span>Operatör Performansı</span>
+                    </h4>
+                    <span class="text-[10px] text-slate-500 font-mono">Tonaj Bazlı</span>
+                </div>
+                <div class="overflow-x-auto max-h-72 custom-scrollbar">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                                <th class="py-2 px-2">Operatör</th>
+                                <th class="py-2 px-1 text-center">İşlem</th>
+                                <th class="py-2 px-2 text-right text-purple-400">Tonaj</th>
+                                <th class="py-2 px-2 text-right text-slate-400">Adet</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y border-slate-800/60 text-slate-200">
+                            {% for op in operator_summary %}
+                            <tr class="hover:bg-slate-900/50">
+                                <td class="py-2 px-2 font-bold text-white text-[11px] truncate max-w-[100px]" title="{{ op.operator }}">{{ op.operator }}</td>
+                                <td class="py-2 px-1 text-center font-mono text-[11px] text-slate-400">{{ op.entry_count }}</td>
+                                <td class="py-2 px-2 text-right font-mono font-black text-purple-300 whitespace-nowrap">{{ op.total_tonnage | format_num }} <span class="text-[10px] font-normal text-slate-400">Ton</span></td>
+                                <td class="py-2 px-2 text-right font-mono font-bold text-slate-300 whitespace-nowrap">{{ op.total_pieces }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" class="py-4 text-center text-slate-500">Kayıt yok.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Son Kesim Girişleri Logu -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-amber-400"></i>
+                        <span>Son Kesim Logları</span>
+                    </h4>
+                    <span class="text-[10px] text-slate-500 font-mono">Poz & Adet</span>
+                </div>
+                <div class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar text-xs">
+                    {% for log in cutting_logs %}
+                    <div class="p-2.5 bg-slate-900/60 border border-slate-800/80 rounded-xl flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <span class="font-mono font-bold text-yellow-400 truncate block">
+                                {% if log.project_code %}{{ log.project_code }} • {% endif %}{{ log.pos_no }}
+                            </span>
+                            <p class="text-[11px] text-slate-400 truncate">
+                                {{ log.machine or '-' }} {% if log.operator %}({{ log.operator }}){% endif %}
+                            </p>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <span class="font-mono font-bold text-white block">{{ log.cut_quantity }} Adet</span>
+                            {% if log.cut_tonnage and log.cut_tonnage > 0 %}
+                            <span class="text-[10px] text-yellow-500 font-mono">{{ log.cut_tonnage | format_num }} Ton</span>
+                            {% else %}
+                            <span class="text-[10px] text-slate-500 font-mono">{{ log.cut_date | format_date }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-slate-500 text-center py-6">Kayıtlı kesim logu yok.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function switchCutTab(tabId, btn) {
+        document.querySelectorAll('.cut-tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.cut-tab-btn').forEach(el => {
+            el.classList.remove('bg-yellow-500', 'text-slate-950', 'font-black');
+            el.classList.add('text-slate-400', 'font-bold');
+        });
+
+        const activeTab = document.getElementById(tabId);
+        if (activeTab) activeTab.classList.remove('hidden');
+
+        btn.classList.remove('text-slate-400', 'font-bold');
+        btn.classList.add('bg-yellow-500', 'text-slate-950', 'font-black');
+    }
+
+    let projectPartsCache = [];
+    let rowCounter = 0;
+    let currentProjectPrefix = '';
+
+    function onBatchProjectChanged(sel) {
+        const prjId = sel.value;
+        const opt = sel.options[sel.selectedIndex];
+        currentProjectPrefix = opt ? (opt.getAttribute('data-prefix') || '') : '';
+        
+        const badge = document.getElementById('batchProjectPrefixBadge');
+        const text = document.getElementById('batchProjectPrefixText');
+        if (badge && text) {
+            if (currentProjectPrefix) {
+                text.innerText = currentProjectPrefix;
+                badge.classList.remove('hidden');
+            } else {
+                text.innerText = '-';
+                badge.classList.add('hidden');
+            }
+        }
+
+        const tbody = document.getElementById('batchCutRows');
+        tbody.innerHTML = '';
+        rowCounter = 0;
+        projectPartsCache = [];
+
+        if (!prjId) {
+            updateRowCountBadge();
+            return;
+        }
+
+        fetch(`/api/kesim-takip/proje-pozlar?proje_id=${prjId}`)
+        .then(res => res.json())
+        .then(parts => {
+            projectPartsCache = parts || [];
+            // Varsayılan olarak 5 boş excel kutusu ekle
+            addBatchRow(5);
+        })
+        .catch(err => console.error(err));
+    }
+
+    // 3 SÜTUNLU EXCEL BENZERİ SATIR EKLEME
+    function addBatchRow(count = 1) {
+        const tbody = document.getElementById('batchCutRows');
+        for (let i = 0; i < count; i++) {
+            rowCounter++;
+            const tr = document.createElement('tr');
+            tr.id = `batchRow_${rowCounter}`;
+            tr.dataset.rowIndex = rowCounter;
+            tr.className = 'hover:bg-slate-900/90 transition-colors border-b border-slate-800/80 group';
+
+            tr.innerHTML = `
+                <td class="py-2 px-2 font-mono text-slate-500 text-center bg-slate-950/80 border-r border-slate-800 text-[11px]">${rowCounter}</td>
+                <td class="p-1 border-r border-slate-800 bg-slate-950/40">
+                    <input type="text" id="b_pos_${rowCounter}" list="posList_${rowCounter}" placeholder="Örn: ${currentProjectPrefix ? currentProjectPrefix + 'P1' : 'P1'}" oninput="onBatchRowPosTyped(${rowCounter})" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-yellow-500 px-3 py-2 text-yellow-300 font-mono font-black text-xs uppercase rounded-lg focus:outline-none focus:ring-1 focus:ring-yellow-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 1)">
+                    <datalist id="posList_${rowCounter}">
+                        ${projectPartsCache.map(p => `<option value="${p.pos_no}">${p.pos_no} (${p.profile_type || ''}) - Kalan: ${p.remaining_quantity}</option>`).join('')}
+                    </datalist>
+                </td>
+                <td class="p-1 border-r border-slate-800 bg-slate-950/40">
+                    <input type="text" id="b_profile_${rowCounter}" placeholder="Profil (Örn: SHS50*3)" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-blue-500 px-3 py-2 text-blue-300 font-mono font-bold text-xs rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 2)">
+                </td>
+                <td class="p-1 border-r border-slate-800 bg-yellow-500/5">
+                    <input type="text" id="b_qty_${rowCounter}" placeholder="Adet (Örn: 20 veya 4*5)" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-yellow-500 px-3 py-2 text-yellow-400 font-mono font-black text-xs text-right rounded-lg focus:outline-none focus:ring-1 focus:ring-yellow-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 3)">
+                </td>
+                <td class="p-1 text-center bg-slate-950/80">
+                    <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-500 hover:text-rose-300 hover:bg-rose-950/60 p-2 rounded-lg transition-colors" title="Satırı Sil">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        }
+        updateRowCountBadge();
+    }
+
+    function removeBatchRow(idx) {
+        const row = document.getElementById(`batchRow_${idx}`);
+        if (row) row.remove();
+        updateRowCountBadge();
+    }
+
+    function clearBatchTable() {
+        if (confirm('Tablodaki tüm satırlar temizlensin mi?')) {
+            document.getElementById('batchCutRows').innerHTML = '';
+            rowCounter = 0;
+            addBatchRow(5);
+        }
+    }
+
+    function updateRowCountBadge() {
+        const rows = document.querySelectorAll('#batchCutRows tr');
+        document.getElementById('totalRowCountBadge').innerText = rows.length;
+    }
+
+    function onBatchRowPosTyped(idx) {
+        let posVal = document.getElementById(`b_pos_${idx}`).value.trim();
+        if (!posVal) return;
+
+        let match = projectPartsCache.find(p => 
+            p.pos_no === posVal || 
+            (currentProjectPrefix && p.pos_no === (currentProjectPrefix + posVal)) ||
+            (currentProjectPrefix && posVal.startsWith(currentProjectPrefix) && p.pos_no === posVal.replace(currentProjectPrefix, '')) ||
+            p.pos_no.toLowerCase() === posVal.toLowerCase()
+        );
+
+        if (match) {
+            const profInp = document.getElementById(`b_profile_${idx}`);
+            if (profInp && (!profInp.value || profInp.value.trim() === '')) {
+                profInp.value = match.profile_type || '';
+            }
+            const qtyInput = document.getElementById(`b_qty_${idx}`);
+            if (qtyInput && !qtyInput.value) {
+                qtyInput.value = match.remaining_quantity > 0 ? match.remaining_quantity : 1;
+            }
+        }
+    }
+
+    // EXCEL KLAVYE YÖN VE ENTER KONTROLLERİ
+    function handleExcelGridKeys(event, rowIdx, colIdx) {
+        const colMap = [null, 'b_pos_', 'b_profile_', 'b_qty_'];
+        
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            const nextRow = document.getElementById(`batchRow_${rowIdx + 1}`);
+            if (nextRow) {
+                const nextInput = nextRow.querySelector(`input[id^="${colMap[colIdx]}"]`);
+                if (nextInput) nextInput.focus();
+            } else {
+                addBatchRow(1);
+                setTimeout(() => {
+                    const newRow = document.getElementById(`batchRow_${rowCounter}`);
+                    if (newRow) {
+                        const newInp = newRow.querySelector(`input[id^="${colMap[colIdx]}"]`);
+                        if (newInp) newInp.focus();
+                    }
+                }, 40);
+            }
+        } else if (event.key === 'ArrowDown') {
+            const nextRow = document.getElementById(`batchRow_${rowIdx + 1}`);
+            if (nextRow) {
+                const inp = nextRow.querySelector(`input[id^="${colMap[colIdx]}"]`);
+                if (inp) inp.focus();
+            }
+        } else if (event.key === 'ArrowUp' && rowIdx > 1) {
+            const prevRow = document.getElementById(`batchRow_${rowIdx - 1}`);
+            if (prevRow) {
+                const inp = prevRow.querySelector(`input[id^="${colMap[colIdx]}"]`);
+                if (inp) inp.focus();
+            }
+        }
+    }
+
+    // DOĞRUDAN TABLO ÜZERİNDE CTRL+V İLE ÇOKLU EXCEL KOPYALA-YAPIŞTIR DİNLEYİCİSİ
+    document.addEventListener('DOMContentLoaded', () => {
+        const table = document.getElementById('excelCutTable');
+        if (table) {
+            table.addEventListener('paste', function(e) {
+                const text = (e.clipboardData || window.clipboardData).getData('text');
+                if (!text || !text.includes('	') && !text.includes('\n')) {
+                    return; // Tek hücre düz yazıysa varsayılan paste çalışsın
+                }
+                e.preventDefault();
+                
+                // Hangi satırda olunduğunu bul
+                let activeRowIdx = 1;
+                const activeEl = document.activeElement;
+                if (activeEl && activeEl.id) {
+                    const m = activeEl.id.match(/_(\d+)$/);
+                    if (m) activeRowIdx = parseInt(m[1]);
+                }
+
+                applyPastedData(text, activeRowIdx);
+            });
+        }
+    });
+
+    function applyPastedData(text, startRowIdx = 1) {
+        const lines = text.trim().split(/\r?\n/);
+        let addedCount = 0;
+        let curRowIdx = startRowIdx;
+
+        lines.forEach((line, lIdx) => {
+            if (!line.trim()) return;
+            const parts = line.split('\t');
+            
+            let pos_no = '';
+            let profile = '';
+            let qty = '1';
+
+            if (parts.length === 1) {
+                pos_no = parts[0].trim();
+            } else if (parts.length === 2) {
+                pos_no = parts[0].trim();
+                qty = parts[1].trim();
+            } else if (parts.length === 3) {
+                // 3 Sütunlu tam format: Poz (prefix dahil) + Profil + Kesilen Adet
+                pos_no = parts[0].trim();
+                profile = parts[1].trim();
+                qty = parts[2].trim();
+            } else if (parts.length >= 4) {
+                // 4 Sütunlu: Prefix + Poz + Profil + Kesilen Adet
+                const pref = parts[0].trim();
+                const rawP = parts[1].trim();
+                pos_no = (pref && !rawP.startsWith(pref)) ? (pref + rawP) : rawP;
+                profile = parts[2].trim();
+                qty = parts[3].trim();
+            }
+
+            if (pos_no) {
+                let targetRow = document.getElementById(`batchRow_${curRowIdx}`);
+                if (!targetRow) {
+                    addBatchRow(1);
+                    curRowIdx = rowCounter;
+                }
+
+                const posInp = document.getElementById(`b_pos_${curRowIdx}`);
+                const profInp = document.getElementById(`b_profile_${curRowIdx}`);
+                const qtyInp = document.getElementById(`b_qty_${curRowIdx}`);
+
+                if (posInp) posInp.value = pos_no;
+                if (profInp) profInp.value = profile;
+                if (qtyInp) qtyInp.value = qty;
+
+                onBatchRowPosTyped(curRowIdx);
+                curRowIdx++;
+                addedCount++;
+            }
+        });
+
+        alert(`Excel'den ${addedCount} satır veri kutucuklara başarıyla aktarıldı!`);
+    }
+
+    // Excel Modal Ayrıştırıcı
+    function openExcelPasteModal() {
+        openModal('excelPasteModal');
+        document.getElementById('excelPasteArea').value = '';
+        setTimeout(() => document.getElementById('excelPasteArea').focus(), 100);
+    }
+
+    function parseAndApplyExcelPaste() {
+        const text = document.getElementById('excelPasteArea').value.trim();
+        if (!text) {
+            alert('Lütfen yapıştırılacak veri girin.');
+            return;
+        }
+        applyPastedData(text, 1);
+        closeModal('excelPasteModal');
+    }
+
+    function submitBatchCutting() {
+        const prjId = document.getElementById('batch_project_id').value;
+        if (!prjId) {
+            alert('Lütfen bir proje seçin.');
+            return;
+        }
+
+        const machine = document.getElementById('batch_machine').value;
+        const operator = document.getElementById('batch_operator').value;
+        const helper = document.getElementById('batch_helper').value;
+        const shift = document.getElementById('batch_shift').value;
+        const cut_date = document.getElementById('batch_cut_date').value;
+        const notes = document.getElementById('batch_notes') ? document.getElementById('batch_notes').value.trim() : '';
+
+        const items = [];
+        const rows = document.querySelectorAll('#batchCutRows tr');
+        rows.forEach(tr => {
+            const posInput = tr.querySelector('input[id^="b_pos_"]');
+            const pos_no = posInput ? posInput.value.trim() : '';
+            const profileInput = tr.querySelector('input[id^="b_profile_"]');
+            const profile = profileInput ? profileInput.value.trim() : '';
+            const qtyInput = tr.querySelector('input[id^="b_qty_"]');
+            const cut_quantity = qtyInput ? qtyInput.value.trim() : '';
+
+            if (pos_no && cut_quantity) {
+                items.push({ pos_no, profile, cut_quantity, prefix: currentProjectPrefix });
+            }
+        });
+
+        if (items.length === 0) {
+            alert('Lütfen en az bir poz ve kesilen adet girin.');
+            return;
+        }
+
+        const btn = document.getElementById('btnSubmitBatch');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Kaydediliyor...';
+
+        fetch('/api/kesim-takip/toplu-kaydet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_id: prjId,
+                machine,
+                operator,
+                helper,
+                shift,
+                cut_date,
+                notes,
+                items
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert(`Başarılı! ${data.message || (data.saved_count + ' poz kesimi sisteme işlendi.')}`);
+                window.location.reload();
+            } else {
+                alert('Hata: ' + (data.message || 'Kesim kaydedilemedi.'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-sm"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Bir bağlantı hatası oluştu.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-floppy-disk text-sm"></i> <span>Tüm Kesimleri Ana Listeye Kaydet</span>';
+        });
+    }
+
+    // =========================================================================
+    // KESİM GİRİŞ GRUPLARI FİLTRELEME & DETAY DÜZENLEME JS
+    // =========================================================================
+    function filterBatchList() {
+        const query = (document.getElementById('batchSearchInput').value || '').toLowerCase().trim();
+        const prj = (document.getElementById('batchFilterProject').value || '').toLowerCase().trim();
+        const rows = document.querySelectorAll('.batch-row');
+        let visibleCount = 0;
+
+        rows.forEach(r => {
+            const searchData = (r.getAttribute('data-search') || '').toLowerCase();
+            const projectData = (r.getAttribute('data-project') || '').toLowerCase();
+
+            const matchQuery = !query || searchData.includes(query);
+            const matchPrj = !prj || projectData.includes(prj);
+
+            if (matchQuery && matchPrj) {
+                r.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                r.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('visibleBatchCount').innerText = visibleCount;
+        const emptyRow = document.getElementById('emptyBatchRow');
+        if (emptyRow) {
+            if (visibleCount === 0) emptyRow.classList.remove('hidden');
+            else emptyRow.classList.add('hidden');
+        }
+    }
+
+    let activeBatchData = null;
+
+    function openBatchDetailModal(batchId) {
+        openModal('batchDetailModal');
+        const tbody = document.getElementById('modalBatchItemsBody');
+        tbody.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-yellow-400 mr-2"></i> Detaylar yükleniyor...</td></tr>';
+
+        fetch(`/api/kesim-takip/batch/${batchId}/detay`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success' && data.batch) {
+                activeBatchData = data.batch;
+                renderBatchModal(data.batch);
+            } else {
+                alert('Detaylar yüklenemedi: ' + (data.message || 'Kayıt bulunamadı.'));
+                closeModal('batchDetailModal');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Bağlantı hatası.');
+            closeModal('batchDetailModal');
+        });
+    }
+
+    function renderBatchModal(batch) {
+        document.getElementById('modalBatchCodeBadge').innerText = batch.batch_code || `Giriş #${batch.id}`;
+        document.getElementById('modalBatchProjectName').innerHTML = `
+            <span class="text-yellow-400 font-mono font-bold">[${batch.project_code || 'PRJ'}]</span> 
+            <span>${batch.project_name || batch.proj_name || 'Proje'}</span>
+        `;
+        document.getElementById('modalBatchSubInfo').innerText = `📅 ${batch.cut_date || '-'} (${batch.shift || 'Gündüz'}) • ⚙️ ${batch.machine || '-'} • 👤 ${batch.operator || '-'} ${batch.helper ? '(Yrd: ' + batch.helper + ')' : ''} • ✍️ ${batch.created_by || 'Sistem'}`;
+
+        const tbody = document.getElementById('modalBatchItemsBody');
+        tbody.innerHTML = '';
+
+        const items = batch.items || [];
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-slate-500">Bu pakette poz kaydı bulunamadı.</td></tr>';
+            recalcBatchModalSummary();
+            return;
+        }
+
+        items.forEach((it, index) => {
+            const tr = document.createElement('tr');
+            tr.id = `modalItemRow_${it.id}`;
+            tr.className = 'hover:bg-slate-900/80 transition-colors border-b border-slate-800/60';
+            tr.dataset.entryId = it.id;
+            tr.dataset.unitWeight = it.unit_weight || 0.0;
+            tr.dataset.isDeleted = 'false';
+
+            const unitWt = parseFloat(it.unit_weight || 0.0);
+            const qty = parseInt(it.cut_quantity || 0);
+            const ton = ((qty * unitWt) / 1000.0).toFixed(3);
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-2 text-center font-mono text-slate-500 text-[11px]">${index + 1}</td>
+                <td class="py-2.5 px-3 font-mono font-black text-white text-xs">${it.pos_no}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-blue-300 text-xs">${it.profile || it.part_profile || '-'}</td>
+                <td class="py-2.5 px-3 text-right font-mono text-slate-400 text-xs">${it.part_total_qty || '-'}</td>
+                <td class="py-2.5 px-3 text-right font-mono font-bold text-emerald-400 text-xs">${it.part_remaining !== undefined ? it.part_remaining : '-'}</td>
+                <td class="py-1 px-2 text-right bg-yellow-500/5">
+                    <input type="number" min="0" value="${qty}" id="modalQtyInput_${it.id}" oninput="onModalItemQtyChanged(${it.id})" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:outline-none focus:border-yellow-400">
+                </td>
+                <td class="py-2.5 px-3 text-right font-mono text-slate-400 text-xs">${unitWt.toFixed(2)}</td>
+                <td class="py-2.5 px-3 text-right font-mono font-black text-yellow-400 text-xs" id="modalItemTon_${it.id}">${ton}</td>
+                <td class="py-2.5 px-2 text-center">
+                    <button type="button" onclick="toggleDeleteBatchItem(${it.id})" id="btnDelItem_${it.id}" class="text-rose-400 hover:text-rose-200 p-1 transition-colors" title="Satırı Sil">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        recalcBatchModalSummary();
+    }
+
+    function onModalItemQtyChanged(entryId) {
+        const tr = document.getElementById(`modalItemRow_${entryId}`);
+        if (!tr) return;
+        const inp = document.getElementById(`modalQtyInput_${entryId}`);
+        const qty = Math.max(0, parseInt(inp.value) || 0);
+        const unitWt = parseFloat(tr.dataset.unitWeight || 0.0);
+        const ton = ((qty * unitWt) / 1000.0).toFixed(3);
+        const tonCell = document.getElementById(`modalItemTon_${entryId}`);
+        if (tonCell) tonCell.innerText = ton;
+
+        recalcBatchModalSummary();
+    }
+
+    function toggleDeleteBatchItem(entryId) {
+        const tr = document.getElementById(`modalItemRow_${entryId}`);
+        if (!tr) return;
+        const isDel = tr.dataset.isDeleted === 'true';
+        const btn = document.getElementById(`btnDelItem_${entryId}`);
+        const inp = document.getElementById(`modalQtyInput_${entryId}`);
+
+        if (!isDel) {
+            tr.dataset.isDeleted = 'true';
+            tr.classList.add('opacity-40', 'line-through', 'bg-rose-950/20');
+            btn.innerHTML = '<i class="fa-solid fa-rotate-left text-emerald-400"></i>';
+            btn.title = 'Geri Al';
+            if (inp) inp.disabled = true;
+        } else {
+            tr.dataset.isDeleted = 'false';
+            tr.classList.remove('opacity-40', 'line-through', 'bg-rose-950/20');
+            btn.innerHTML = '<i class="fa-solid fa-trash-can text-rose-400"></i>';
+            btn.title = 'Satırı Sil';
+            if (inp) inp.disabled = false;
+        }
+
+        recalcBatchModalSummary();
+    }
+
+    function recalcBatchModalSummary() {
+        const rows = document.querySelectorAll('#modalBatchItemsBody tr[id^="modalItemRow_"]');
+        let totalItems = 0;
+        let totalQty = 0;
+        let totalTon = 0.0;
+
+        rows.forEach(tr => {
+            if (tr.dataset.isDeleted === 'true') return;
+            totalItems++;
+            const entryId = tr.dataset.entryId;
+            const inp = document.getElementById(`modalQtyInput_${entryId}`);
+            const qty = Math.max(0, parseInt(inp.value) || 0);
+            const unitWt = parseFloat(tr.dataset.unitWeight || 0.0);
+            totalQty += qty;
+            totalTon += (qty * unitWt) / 1000.0;
+        });
+
+        document.getElementById('modalTotalItemsCount').innerText = totalItems;
+        document.getElementById('modalTotalQtyCount').innerText = totalQty;
+        document.getElementById('modalTotalTonnageCount').innerText = totalTon.toFixed(3);
+    }
+
+    function saveBatchModalEdits() {
+        if (!activeBatchData) return;
+        const rows = document.querySelectorAll('#modalBatchItemsBody tr[id^="modalItemRow_"]');
+        const items = [];
+
+        rows.forEach(tr => {
+            const entryId = parseInt(tr.dataset.entryId);
+            const isDel = tr.dataset.isDeleted === 'true';
+            const inp = document.getElementById(`modalQtyInput_${entryId}`);
+            const qty = isDel ? 0 : Math.max(0, parseInt(inp.value) || 0);
+
+            items.push({
+                entry_id: entryId,
+                cut_quantity: qty,
+                is_deleted: isDel
+            });
+        });
+
+        const btn = document.getElementById('btnSaveBatchModal');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Güncelleniyor...';
+
+        fetch(`/api/kesim-takip/batch/${activeBatchData.id}/guncelle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Başarılı! ' + data.message);
+                window.location.reload();
+            } else {
+                alert('Hata: ' + (data.message || 'Güncelleme yapılamadı.'));
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> <span>Değişiklikleri Kaydet & Ana Listeyi Güncelle</span>';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Bağlantı hatası.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> <span>Değişiklikleri Kaydet & Ana Listeyi Güncelle</span>';
+        });
+    }
+
+    function deleteCurrentBatchFromModal() {
+        if (!activeBatchData) return;
+        deleteBatchDirect(activeBatchData.id, activeBatchData.batch_code);
+    }
+
+    function deleteBatchDirect(batchId, batchCode) {
+        if (!confirm(`Dikkat: '${batchCode}' kesim paketini tamamen geri almak istediğinize emin misiniz?\n\nBu paketteki tüm poz adetleri ana parçalar listesindeki 'kesilen' miktarından otomatik düşülecek ve kalan adetler düzeltilecektir.`)) {
+            return;
+        }
+
+        fetch(`/api/kesim-takip/batch/${batchId}/sil`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                alert('Başarılı: ' + data.message);
+                window.location.reload();
+            } else {
+                alert('Hata: ' + (data.message || 'Silme işlemi gerçekleştirilemedi.'));
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert('Bağlantı hatası.');
+        });
+    }
+</script>
+{% endblock %}

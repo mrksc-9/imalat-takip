@@ -1,0 +1,403 @@
+{% extends "layout.html" %}
+
+{% block title %}İmalat Planı & Takvim - Çelik İmalat MES{% endblock %}
+{% block page_title %}İmalat / İmalat Planı (Aşama & Termin Takvimi){% endblock %}
+
+{% block extra_head %}
+<!-- FullCalendar 6 CSS/JS -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<style>
+    /* FullCalendar Dark Theme Entegrasyonu */
+    .fc {
+        --fc-border-color: #334155;
+        --fc-page-bg-color: transparent;
+        --fc-neutral-bg-color: #0f172a;
+        --fc-list-event-hover-bg-color: #1e293b;
+        --fc-today-bg-color: rgba(59, 130, 246, 0.08);
+        color: #e2e8f0;
+        font-family: inherit;
+        font-size: 0.8125rem;
+    }
+    .fc .fc-toolbar-title {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #f8fafc;
+    }
+    .fc .fc-button-primary {
+        background-color: #1e293b;
+        border-color: #334155;
+        color: #cbd5e1;
+        font-weight: 600;
+        text-transform: capitalize;
+        border-radius: 0.625rem;
+        padding: 0.4rem 0.8rem;
+        transition: all 0.2s;
+    }
+    .fc .fc-button-primary:hover, .fc .fc-button-primary:focus {
+        background-color: #3b82f6 !important;
+        border-color: #3b82f6 !important;
+        color: #ffffff !important;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    .fc .fc-button-primary:disabled {
+        background-color: #0f172a;
+        border-color: #1e293b;
+        color: #475569;
+    }
+    .fc .fc-button-active {
+        background-color: #2563eb !important;
+        border-color: #2563eb !important;
+        color: #ffffff !important;
+    }
+    .fc-theme-standard th {
+        background-color: #090d16;
+        padding: 8px 0;
+        color: #94a3b8;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.7rem;
+        border-color: #1e293b;
+    }
+    .fc-theme-standard td {
+        border-color: #1e293b;
+    }
+    .fc .fc-col-header-cell, .fc-daygrid-day {
+        width: 14.2857% !important;
+        min-width: 0 !important;
+    }
+    .fc-scrollgrid {
+        border-radius: 1rem;
+        overflow: hidden;
+        width: 100% !important;
+        table-layout: fixed !important;
+    }
+    .fc-daygrid-day-frame {
+        min-height: 85px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+    }
+    .fc-daygrid-day-number {
+        color: #94a3b8;
+        font-family: monospace;
+        font-weight: 700;
+        font-size: 0.8rem;
+        padding: 4px 6px !important;
+    }
+    .fc-event {
+        border-radius: 6px;
+        padding: 2px 6px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        cursor: pointer;
+        border: none !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        transition: transform 0.15s ease;
+    }
+    .fc-event:hover {
+        transform: scale(1.02);
+        filter: brightness(1.15);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR: Görünüm Değiştirici ve Eylemler -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-calendar-days text-indigo-400"></i>
+                <span>İmalat ve Termin Planlama Çizelgesi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Projelerin kesim, çatım, kaynak, boya ve sevkiyat hedef bitiş tarihleri</p>
+        </div>
+
+        <div class="flex items-center gap-2 w-full md:w-auto">
+            <!-- Görünüm Butonları -->
+            <div class="bg-slate-900 p-1 rounded-xl border border-slate-800 flex items-center gap-1 text-xs font-bold">
+                <button id="btnViewTimeline" onclick="switchView('timeline')" class="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white flex items-center gap-1.5 transition-all shadow-sm">
+                    <i class="fa-solid fa-timeline"></i>
+                    <span>Proje Çizelgeleri (Liste)</span>
+                </button>
+                <button id="btnViewCalendar" onclick="switchView('calendar')" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white flex items-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-calendar-week"></i>
+                    <span>Takvim Görünümü</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RENK LEJANTI (AŞAMA RENKLERİ) -->
+    <div class="flex flex-wrap items-center gap-3 bg-slate-950/50 border border-slate-800/60 rounded-xl px-4 py-2.5 text-xs">
+        <span class="text-slate-400 font-bold uppercase text-[10px] mr-1">Aşama Renkleri:</span>
+        <span class="flex items-center gap-1.5 font-medium text-yellow-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-yellow-500"></span> Kesim Başlama
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-cyan-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-500"></span> Çatım Başlama
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-amber-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Çatım Bitiş
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-orange-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span> Kaynak & Temizlik Bitiş
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-purple-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Boya Bitiş
+        </span>
+        <span class="flex items-center gap-1.5 font-medium text-emerald-300">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Teslimat / Montaj
+        </span>
+    </div>
+
+    <!-- 1. GÖRÜNÜM: PROJE AŞAMA ÇİZELGELERİ (LİSTE / GANTT - VARSAYILAN AKTİF) -->
+    <div id="timelineViewContainer" class="space-y-4">
+        {% for p in projects %}
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl transition-all hover:bg-slate-900/40 relative overflow-hidden">
+            <div class="absolute top-0 left-0 bottom-0 w-1.5" style="background-color: {{ p.color or '#3b82f6' }};"></div>
+
+            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                <div class="pl-2">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                            {{ p.code }}
+                        </span>
+                        <h4 class="text-sm font-bold text-white">{{ p.name }}</h4>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Müşteri: <b>{{ p.customer or '-' }}</b> | Tonaj: <b>{{ p.total_tonnage | format_num }} Ton</b></p>
+                </div>
+
+                <div class="flex items-center gap-3 text-xs">
+                    <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                        İlerleme: %{{ p.fab_pct }}
+                    </span>
+                    {% if can_user_edit('imalat_plan') %}
+                    <button onclick="openPlanEditModal('{{ p.id }}', '{{ p.code }}', '{{ p.start_date }}', '{{ p.cutting_start_date }}', '{{ p.fitup_start_date }}', '{{ p.fitup_end_date }}', '{{ p.welding_cleaning_end_date or p.welding_end_date }}', '{{ p.paint_end_date }}', '{{ p.delivery_date }}')"
+                            class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        <span>Tarihleri Düzenle</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Zaman Çizelgesi (Timeline Kademeleri) -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 pt-4 text-xs pl-2">
+                <!-- 1. Proje Başlama -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase block mb-1">1. Proje Başlama</span>
+                    <span class="font-mono font-bold text-white block">{{ p.start_date | format_date }}</span>
+                    <span class="text-[10px] text-slate-500 mt-1 block">Sipariş & Detay</span>
+                </div>
+
+                <!-- 2. Kesim Başlama -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-yellow-400 font-bold uppercase block mb-1">2. Kesim Başlama</span>
+                    <span class="font-mono font-bold text-yellow-300 block">{{ p.cutting_start_date | format_date }}</span>
+                    <span class="text-[10px] text-yellow-500/80 mt-1 block">%{{ p.cut_pct }} Kesildi</span>
+                </div>
+
+                <!-- 3. Çatım Başlama -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-cyan-400 font-bold uppercase block mb-1">3. Çatım Başlama</span>
+                    <span class="font-mono font-bold text-cyan-300 block">{{ p.fitup_start_date | format_date }}</span>
+                    <span class="text-[10px] text-slate-500 mt-1 block">Çatıma Giriş</span>
+                </div>
+
+                <!-- 4. Çatım Bitiş -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-amber-400 font-bold uppercase block mb-1">4. Çatım Bitiş</span>
+                    <span class="font-mono font-bold text-amber-300 block">{{ p.fitup_end_date | format_date }}</span>
+                    <span class="text-[10px] text-slate-500 mt-1 block">Fit-up Tamamlama</span>
+                </div>
+
+                <!-- 5. Kaynak & Temizlik Bitiş -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-orange-400 font-bold uppercase block mb-1">5. Kaynak & Temizlik</span>
+                    <span class="font-mono font-bold text-orange-300 block">{{ (p.welding_cleaning_end_date or p.welding_end_date) | format_date }}</span>
+                    <span class="text-[10px] text-slate-500 mt-1 block">Kaynak & Taşlama</span>
+                </div>
+
+                <!-- 6. Boya Bitiş -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-purple-400 font-bold uppercase block mb-1">6. Boya Bitiş</span>
+                    <span class="font-mono font-bold text-purple-300 block">{{ p.paint_end_date | format_date }}</span>
+                    <span class="text-[10px] text-purple-400/80 mt-1 block">%{{ p.paint_pct }} Boyandı</span>
+                </div>
+
+                <!-- 7. Teslim / Sevk Bitiş -->
+                <div class="p-2.5 bg-slate-900/70 border border-slate-800 rounded-xl">
+                    <span class="text-[10px] text-emerald-400 font-bold uppercase block mb-1">7. Teslim & Sevk</span>
+                    <span class="font-mono font-bold text-emerald-300 block">{{ p.delivery_date | format_date }}</span>
+                    <span class="text-[10px] text-emerald-400/80 mt-1 block">%{{ p.ship_pct }} Sevk Edildi</span>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="py-8 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            Planlanacak aktif proje bulunmuyor.
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 2. GÖRÜNÜM: İNTERAKTİF FULLCALENDAR (İSTENİRSE AÇILIR) -->
+    <div id="calendarViewContainer" class="hidden bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+        <div id="manufacturingCalendar"></div>
+    </div>
+
+</div>
+
+<!-- TARİH DÜZENLEME MODAL -->
+<div id="planEditModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-calendar-check text-indigo-400"></i>
+                <span id="modalProjectTitle">İmalat Planı Düzenle</span>
+            </h3>
+            <button onclick="closeModal('planEditModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_imalat_plan_guncelle') }}" method="POST" class="mt-4 space-y-3">
+            <input type="hidden" id="edit_project_id" name="project_id">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">1. Proje Başlama</label>
+                    <input type="date" id="edit_start_date" name="start_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">2. Kesim Başlama</label>
+                    <input type="date" id="edit_cutting_start_date" name="cutting_start_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">3. Çatım Başlama Tarihi</label>
+                    <input type="date" id="edit_fitup_start_date" name="fitup_start_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">4. Çatım Hedef Bitiş</label>
+                    <input type="date" id="edit_fitup_end_date" name="fitup_end_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">5. Kaynak & Temizlik Hedef Bitiş</label>
+                    <input type="date" id="edit_welding_cleaning_end_date" name="welding_cleaning_end_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">6. Boya Hedef Bitiş</label>
+                    <input type="date" id="edit_paint_end_date" name="paint_end_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">7. Teslim / Termin Tarihi</label>
+                <input type="date" id="edit_delivery_date" name="delivery_date" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-medium">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('planEditModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold shadow-md shadow-indigo-600/30">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let calendarInstance = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const calendarEl = document.getElementById('manufacturingCalendar');
+        if (calendarEl) {
+            calendarInstance = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'tr',
+                firstDay: 1, // Pazartesi
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,listMonth'
+                },
+                buttonText: {
+                    today: 'Bugün',
+                    month: 'Ay',
+                    week: 'Hafta',
+                    list: 'Liste'
+                },
+                events: '/api/imalat-plan/takvim-etkinlikleri',
+                eventClick: function(info) {
+                    const props = info.event.extendedProps;
+                    if (props && props.project_id) {
+                        // Projenin düzenleme modalını aç veya proje sayfasına yönlendir
+                        const projectCards = {{ projects | tojson | safe }};
+                        const proj = projectCards.find(p => p.id === props.project_id);
+                        if (proj) {
+                            openPlanEditModal(
+                                proj.id,
+                                proj.code,
+                                proj.start_date,
+                                proj.cutting_start_date,
+                                proj.fitup_start_date,
+                                proj.fitup_end_date,
+                                proj.welding_cleaning_end_date || proj.welding_end_date,
+                                proj.paint_end_date,
+                                proj.delivery_date
+                            );
+                        }
+                    }
+                }
+            });
+            calendarInstance.render();
+        }
+    });
+
+    function switchView(viewName) {
+        const calView = document.getElementById('calendarViewContainer');
+        const timView = document.getElementById('timelineViewContainer');
+        const btnCal = document.getElementById('btnViewCalendar');
+        const btnTim = document.getElementById('btnViewTimeline');
+
+        if (viewName === 'calendar') {
+            calView.classList.remove('hidden');
+            timView.classList.add('hidden');
+            btnCal.classList.add('bg-indigo-600', 'text-white');
+            btnCal.classList.remove('text-slate-400');
+            btnTim.classList.remove('bg-indigo-600', 'text-white');
+            btnTim.classList.add('text-slate-400');
+            if (calendarInstance) {
+                setTimeout(() => calendarInstance.updateSize(), 50);
+            }
+        } else {
+            calView.classList.add('hidden');
+            timView.classList.remove('hidden');
+            btnTim.classList.add('bg-indigo-600', 'text-white');
+            btnTim.classList.remove('text-slate-400');
+            btnCal.classList.remove('bg-indigo-600', 'text-white');
+            btnCal.classList.add('text-slate-400');
+        }
+    }
+
+    function openPlanEditModal(id, code, start, cut, fitupStart, fitupEnd, weldCleaning, paint, del) {
+        document.getElementById('edit_project_id').value = id;
+        document.getElementById('modalProjectTitle').innerText = `${code} - İmalat Planı Düzenle`;
+        document.getElementById('edit_start_date').value = start || '';
+        document.getElementById('edit_cutting_start_date').value = cut || '';
+        document.getElementById('edit_fitup_start_date').value = fitupStart || '';
+        document.getElementById('edit_fitup_end_date').value = fitupEnd || '';
+        document.getElementById('edit_welding_cleaning_end_date').value = weldCleaning || '';
+        document.getElementById('edit_paint_end_date').value = paint || '';
+        document.getElementById('edit_delivery_date').value = del || '';
+        openModal('planEditModal');
+    }
+</script>
+{% endblock %}

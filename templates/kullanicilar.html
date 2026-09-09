@@ -1,0 +1,412 @@
+{% extends "layout.html" %}
+
+{% block title %}10. Kullanıcılar & Rol Yetki Matrisi - Çelik İmalat MES{% endblock %}
+{% block page_title %}10. Kullanıcı Tanımları & Dinamik Rol Yetkilendirme{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-users-gear text-cyan-400"></i>
+                <span>Sistem Kullanıcıları ve Dinamik Rol Yönetimi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Kullanıcı listesini tüm personel görüntüleyebilir; yeni kullanıcı ekleme, dinamik rol tanımlama ve yetki düzenleme sadece Yönetici/Patron yetkisindedir.</p>
+        </div>
+
+        {% if current_user.role in ('admin', 'patron') %}
+        <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="openModal('manageRolesModal')" class="px-3.5 py-2 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-600/10 flex items-center gap-1.5">
+                <i class="fa-solid fa-user-shield"></i>
+                <span>Rolleri Düzenle</span>
+            </button>
+            <button onclick="openModal('addUserModal')" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/20 flex items-center gap-1.5">
+                <i class="fa-solid fa-user-plus"></i>
+                <span>Yeni Kullanıcı Ekle</span>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 1. KULLANICI LİSTESİ TABLOSU -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-4 overflow-hidden">
+        <div class="flex items-center justify-between mb-3 text-xs">
+            <h4 class="font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-group text-blue-400"></i>
+                <span>Kayıtlı Kullanıcılar ({{ users|length }})</span>
+            </h4>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                        <th class="py-2.5 px-3">Kullanıcı</th>
+                        <th class="py-2.5 px-2">Kullanıcı Adı</th>
+                        <th class="py-2.5 px-2">Yetki Rolü</th>
+                        <th class="py-2.5 px-2 text-center">Durum</th>
+                        <th class="py-2.5 px-2">Kayıt Tarihi</th>
+                        {% if current_user.role in ('admin', 'patron') %}
+                        <th class="py-2.5 px-3 text-right">İşlem</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for u in users %}
+                    <tr class="hover:bg-slate-900/50 transition-colors">
+                        <td class="py-2.5 px-3 flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs uppercase">
+                                {{ (u.full_name[0] if u.full_name else 'U') }}
+                            </div>
+                            <div>
+                                <span class="font-bold text-white block">{{ u.full_name }}</span>
+                                {% if u.id == current_user.id %}
+                                <span class="text-[10px] text-emerald-400 font-semibold">(Siz)</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="py-2.5 px-2 font-mono text-slate-300">{{ u.username }}</td>
+                        <td class="py-2.5 px-2">
+                            <span class="px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase
+                                {% if u.role in ('admin', 'patron') %}bg-rose-500/10 text-rose-400 border border-rose-500/20
+                                {% elif u.role in ('genel müdür', 'fabrika müdürü', 'imalat müdürü') %}bg-amber-500/10 text-amber-400 border border-amber-500/20
+                                {% elif u.role == 'dizayn' %}bg-indigo-500/10 text-indigo-400 border border-indigo-500/20
+                                {% elif u.role in ('imalat mühendisi', 'iş hazırlama') %}bg-blue-500/10 text-blue-400 border border-blue-500/20
+                                {% elif u.role == 'kalite mühendisi' %}bg-teal-500/10 text-teal-400 border border-teal-500/20
+                                {% elif u.role == 'satınalma' %}bg-purple-500/10 text-purple-400 border border-purple-500/20
+                                {% elif u.role in ('formen', 'usta') %}bg-yellow-500/10 text-yellow-400 border border-yellow-500/20
+                                {% else %}bg-slate-800 text-slate-400 border border-slate-700{% endif %}">
+                                {{ u.role }}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-2 text-center">
+                            {% if u.is_active == 1 %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Aktif</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-500">Pasif</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2.5 px-2 font-mono text-slate-400 text-[11px]">{{ u.created_at | format_date }}</td>
+                        {% if current_user.role in ('admin', 'patron') %}
+                        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                            <button type="button" onclick="openEditUserModal({{ u | tojson | forceescape }})" class="px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all mr-1">
+                                <i class="fa-solid fa-pen-to-square mr-1"></i>Düzenle
+                            </button>
+                            {% if u.username != 'admin' and u.id != current_user.id %}
+                            <form action="{{ url_for('api_kullanici_durum', user_id=u.id) }}" method="POST" class="inline">
+                                <button type="submit" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition-colors">
+                                    {{ 'Pasif Yap' if u.is_active == 1 else 'Aktif Et' }}
+                                </button>
+                            </form>
+                            <form action="{{ url_for('api_kullanici_sil', user_id=u.id) }}" method="POST" class="inline ml-1" onsubmit="return confirm('{{ u.full_name }} ({{ u.username }}) kullanıcısını kalıcı olarak silmek istediğinize emin misiniz?');">
+                                <button type="submit" class="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all" title="Kullanıcıyı Tamamen Sil">
+                                    <i class="fa-solid fa-trash-can mr-1"></i>Sil
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="text-[11px] text-slate-500 ml-1">Sabit</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 2. ROL DÜZENLEME & MODÜL YETKİ MATRİSİ -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-5 overflow-hidden">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+            <div>
+                <h4 class="font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-table-cells text-amber-400"></i>
+                    <span>Roller İçin Modül Düzenleme / Yazma Yetki Matrisi ({{ roles|length }} Rol)</span>
+                </h4>
+                <p class="text-xs text-slate-400 mt-0.5">İşaretli olan roller o modülde ekleme/düzenleme yapabilir. İşaretsiz roller sadece görüntüleyebilir (İzleyici mod).</p>
+            </div>
+            {% if current_user.role in ('admin', 'patron') %}
+            <button type="button" onclick="openModal('manageRolesModal')" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-indigo-400"></i>
+                <span>Yeni Rol Ekle / Rol Sil</span>
+            </button>
+            {% endif %}
+        </div>
+
+        <form action="{{ url_for('api_kullanicilar_yetkiler_guncelle') }}" method="POST">
+            <div class="overflow-x-auto custom-scrollbar border border-slate-800 rounded-xl">
+                <table class="w-full text-center text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-300 text-[10px] uppercase font-bold border-b border-slate-800">
+                            <th class="py-3 px-3 text-left bg-slate-950 min-w-[140px] sticky left-0 z-10">Rol Adı</th>
+                            {% for mod_code, mod_name in modules %}
+                            <th class="py-3 px-2 min-w-[90px] border-l border-slate-800/60" title="{{ mod_name }}">
+                                <span class="block truncate max-w-[90px]">{{ mod_name }}</span>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for r in roles %}
+                        <tr class="hover:bg-slate-900/40 transition-colors">
+                            <td class="py-2.5 px-3 text-left font-bold text-white uppercase bg-slate-950 sticky left-0 z-10 truncate font-mono text-[11px] flex items-center justify-between gap-1">
+                                <span>{{ r }}</span>
+                                {% if r == 'dizayn' %}
+                                <span class="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 lowercase font-sans">3d model</span>
+                                {% endif %}
+                            </td>
+                            {% for mod_code, _ in modules %}
+                            {% set is_allowed = permissions.get((r, mod_code), 0) == 1 %}
+                            <td class="py-2.5 px-2 border-l border-slate-800/60">
+                                {% if r in ('admin', 'patron') %}
+                                <input type="hidden" name="perm_{{ r }}_{{ mod_code }}" value="1">
+                                <span class="text-emerald-400 font-bold text-xs" title="Yönetici tam yetkili">✅</span>
+                                {% elif current_user.role in ('admin', 'patron') %}
+                                <label class="inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" name="perm_{{ r }}_{{ mod_code }}" value="1"
+                                           {% if is_allowed %}checked{% endif %}
+                                           class="w-4 h-4 rounded bg-slate-900 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer">
+                                </label>
+                                {% else %}
+                                <span class="text-xs">{{ '✅' if is_allowed else '🔒' }}</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if current_user.role in ('admin', 'patron') %}
+            <div class="flex items-center justify-end gap-3 pt-4">
+                <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                    <span>Yetki Matrisini Kaydet</span>
+                </button>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: ROLLERİ DÜZENLE & YENİ ROL EKLE / SİL -->
+<!-- ========================================================================= -->
+<div id="manageRolesModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-shield text-indigo-400"></i>
+                <span>Rolleri Düzenle & Dinamik Rol Tanımlama</span>
+            </h3>
+            <button onclick="closeModal('manageRolesModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <div class="overflow-y-auto custom-scrollbar flex-1 py-4 space-y-5">
+            <!-- Yeni Rol Ekle Formu -->
+            <form action="{{ url_for('api_roller_ekle') }}" method="POST" class="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                <h4 class="font-bold text-white text-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus-circle text-emerald-400"></i>
+                    <span>Yeni Özel Rol Tanımla</span>
+                </h4>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold text-[11px]">Rol Adı *</label>
+                        <input type="text" name="role_name" required placeholder="Örn: montaj şefi" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono lowercase">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1 font-semibold text-[11px]">Açıklama (İsteğe Bağlı)</label>
+                        <input type="text" name="description" placeholder="Örn: Şantiye montaj sorumlusu" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white">
+                    </div>
+                </div>
+                <div class="flex justify-end pt-1">
+                    <button type="submit" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs shadow transition-all flex items-center gap-1">
+                        <i class="fa-solid fa-plus"></i> Rolü Ekle
+                    </button>
+                </div>
+            </form>
+
+            <!-- Mevcut Roller Listesi -->
+            <div class="space-y-2">
+                <h4 class="font-bold text-white text-xs flex items-center gap-1.5">
+                    <i class="fa-solid fa-list-check text-blue-400"></i>
+                    <span>Kayıtlı Sistem & Özel Roller</span>
+                </h4>
+                <div class="border border-slate-800 rounded-xl overflow-hidden">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-950 text-slate-400 uppercase text-[10px] border-b border-slate-800">
+                                <th class="py-2 px-3">Rol Adı</th>
+                                <th class="py-2 px-2 text-center">Tür</th>
+                                <th class="py-2 px-2 text-center">Kullanıcı Sayısı</th>
+                                <th class="py-2 px-3 text-right">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                            {% for r_obj in role_objects %}
+                            <tr class="hover:bg-slate-800/40">
+                                <td class="py-2 px-3 font-bold uppercase font-mono text-[11px]">
+                                    {{ r_obj.name }}
+                                </td>
+                                <td class="py-2 px-2 text-center">
+                                    {% if r_obj.is_system == 1 %}
+                                    <span class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">Sistem</span>
+                                    {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">Özel Rol</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-2 px-2 text-center font-mono">
+                                    {{ r_obj.user_count or 0 }}
+                                </td>
+                                <td class="py-2 px-3 text-right">
+                                    {% if r_obj.is_system == 0 and r_obj.name not in ('admin', 'patron', 'genel müdür', 'izleyici') %}
+                                    <form action="{{ url_for('api_roller_sil') }}" method="POST" class="inline" onsubmit="return confirm(''{{ r_obj.name }}' rolünü silmek istediğinize emin misiniz? Bu roldeki kullanıcılar otomatik 'izleyici' yapılacaktır.');">
+                                        <input type="hidden" name="role_name" value="{{ r_obj.name }}">
+                                        <button type="submit" class="px-2 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded text-[11px] font-semibold transition-all">
+                                            <i class="fa-solid fa-trash-can mr-1"></i>Sil
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="text-[10px] text-slate-500">Korumalı</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-3 border-t border-slate-800 flex justify-end shrink-0">
+            <button type="button" onclick="closeModal('manageRolesModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium text-xs">
+                Kapat
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- YENİ KULLANICI EKLE MODAL -->
+<div id="addUserModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-blue-400"></i>
+                <span>Yeni Kullanıcı Tanımla</span>
+            </h3>
+            <button onclick="closeModal('addUserModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_kullanici_ekle') }}" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Ad Soyad *</label>
+                <input type="text" name="full_name" required placeholder="Örn: Mustafa Yılmaz" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kullanıcı Adı *</label>
+                    <input type="text" name="username" required placeholder="Örn: myilmaz" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono lowercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Şifre *</label>
+                    <input type="password" name="password" required placeholder="••••••••" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Yetki Rolü *</label>
+                <select name="role" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold capitalize">
+                    {% for r in roles %}
+                    <option value="{{ r }}">{{ r|upper }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addUserModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-md shadow-blue-600/30">Kullanıcıyı Ekle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- KULLANICI DÜZENLEME MODAL -->
+<div id="editUserModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-pen text-blue-400"></i>
+                <span id="editUserModalTitle">Kullanıcıyı Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editUserModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_kullanicilar_guncelle') }}" method="POST" class="mt-4 space-y-3.5">
+            <input type="hidden" id="edit_u_id" name="user_id">
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Ad Soyad *</label>
+                <input type="text" id="edit_u_fullname" name="full_name" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kullanıcı Adı *</label>
+                    <input type="text" id="edit_u_username" name="username" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono lowercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Hesap Durumu</label>
+                    <select id="edit_u_is_active" name="is_active" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
+                        <option value="1">Aktif</option>
+                        <option value="0">Pasif / Devre Dışı</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Yetki Rolü *</label>
+                <select id="edit_u_role" name="role" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold uppercase">
+                    {% for r in roles %}
+                    <option value="{{ r }}">{{ r|upper }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Şifre Sıfırlama (İsteğe Bağlı)</label>
+                <input type="password" name="new_password" placeholder="Değiştirmek istemiyorsanız boş bırakın" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editUserModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold shadow-md shadow-blue-600/30">Değişiklikleri Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openEditUserModal(u) {
+        document.getElementById('edit_u_id').value = u.id;
+        document.getElementById('edit_u_fullname').value = u.full_name || '';
+        document.getElementById('edit_u_username').value = u.username || '';
+        document.getElementById('edit_u_role').value = u.role || 'izleyici';
+        document.getElementById('edit_u_is_active').value = (u.is_active === 0) ? '0' : '1';
+        document.getElementById('editUserModalTitle').innerText = `${u.full_name} (${u.username}) Düzenle`;
+        openModal('editUserModal');
+    }
+</script>
+{% endblock %}

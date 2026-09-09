@@ -1,0 +1,259 @@
+{% extends "layout.html" %}
+
+{% block title %}8. Boya & Yüzey İşlem Takibi - Çelik İmalat MES{% endblock %}
+{% block page_title %}8. Boyahane, Kumlama & Galvaniz Takip Paneli{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-paint-roller text-purple-400"></i>
+                <span>Yüzey Koruma, Kumlama & Boya Takibi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Kaliteden onay alan montajların Sa 2.5 kumlama, astar/son kat boya ve galvaniz süreci</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <form method="GET" action="{{ url_for('boya_takip') }}" class="flex items-center gap-2">
+                <label class="text-xs font-bold text-slate-300">Proje:</label>
+                <select name="proje_id" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 font-medium">
+                    <option value="">-- Tüm Projeler --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+
+            <div class="relative flex-1 sm:w-56">
+                <input type="text" id="boyaSearchInput" onkeyup="filterBoyaTable()" placeholder="Marka no, RAL ara..." class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 font-medium">
+                <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2 text-slate-500 text-xs"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOYA & YÜZEY İŞLEM KPI KARTLARI -->
+    {% set total_qa_sevk = assemblies | sum(attribute='qa_approved_qty') %}
+    {% set total_sandblast = assemblies | sum(attribute='paint_sandblast_qty') %}
+    {% set total_in_paint = assemblies | sum(attribute='paint_paint_qty') + assemblies | sum(attribute='paint_galv_qty') %}
+    {% set total_paint_done = assemblies | sum(attribute='paint_done_qty') %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-teal-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-shield-halved"></i> Kaliteden Sevk Edilen
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_qa_sevk }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-amber-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-wind"></i> Kumlamada (Sa 2.5)
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_sandblast }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-purple-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-paint-roller"></i> Boyada & Galvanizde
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_in_paint }} Adet</span>
+        </div>
+        <div class="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl">
+            <span class="text-emerald-400 block text-[10px] uppercase font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-check-double"></i> Boyası Biten / Sevke Hazır
+            </span>
+            <span class="text-lg font-black text-white font-mono mt-0.5 block">{{ total_paint_done }} Adet</span>
+        </div>
+    </div>
+
+    <!-- BOYA VE YÜZEY İŞLEM LİSTESİ TABLOSU -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-4 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                        <th class="py-2.5 px-3">Proje</th>
+                        <th class="py-2.5 px-2">Montaj / Marka No</th>
+                        <th class="py-2.5 px-2">Profil & Açıklama</th>
+                        <th class="py-2.5 px-2 text-right">Kaliteden Onaylı</th>
+                        <th class="py-2.5 px-2 text-center text-amber-400 font-bold">Kumlamada</th>
+                        <th class="py-2.5 px-2 text-center text-purple-400 font-bold">Boyada</th>
+                        <th class="py-2.5 px-2 text-center text-cyan-400 font-bold">Galvanizde</th>
+                        <th class="py-2.5 px-2 text-center text-emerald-400 font-bold">Boyası Biten</th>
+                        <th class="py-2.5 px-2">RAL & Mikron</th>
+                        <th class="py-2.5 px-3 text-right">İşlem Yap</th>
+                    </tr>
+                </thead>
+                <tbody id="boyaTableBody" class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for a in assemblies %}
+                    <tr class="hover:bg-slate-900/50 transition-colors">
+                        <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ a.project_code }}</td>
+                        <td class="py-2.5 px-2 font-mono font-black text-white flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                            <span>{{ a.assembly_pos }}</span>
+                        </td>
+                        <td class="py-2.5 px-2 text-slate-300">
+                            <span class="font-mono text-blue-300">{{ a.profile_type or '-' }}</span>
+                            <span class="block text-[11px] text-slate-500">{{ a.description or '' }}</span>
+                        </td>
+                        <td class="py-2.5 px-2 text-right font-mono font-black text-teal-400">{{ a.qa_approved_qty }} Adet</td>
+                        <td class="py-2.5 px-2 text-center font-mono font-bold text-amber-400">{{ a.paint_sandblast_qty }}</td>
+                        <td class="py-2.5 px-2 text-center font-mono font-bold text-purple-400">{{ a.paint_paint_qty }}</td>
+                        <td class="py-2.5 px-2 text-center font-mono font-bold text-cyan-400">{{ a.paint_galv_qty }}</td>
+                        <td class="py-2.5 px-2 text-center font-mono font-black text-emerald-400">{{ a.paint_done_qty }} / {{ a.quantity }}</td>
+                        <td class="py-2.5 px-2 text-slate-300 font-mono text-[11px]">
+                            {% if a.paint_ral %}<span class="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 font-bold text-purple-300">{{ a.paint_ral }}</span>{% endif %}
+                            {% if a.paint_dft %}<span class="block text-slate-400 mt-0.5">{{ a.paint_dft }}</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 px-3 text-right">
+                            <button onclick="openPaintModal('{{ a.id }}', '{{ a.assembly_pos }}', {{ a.quantity }}, '{{ a.paint_ral or '' }}', '{{ a.paint_dft or '' }}')"
+                                    class="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-purple-600/20">
+                                <i class="fa-solid fa-paint-roller mr-1"></i> Boya / Tamamla
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="10" class="py-8 text-center text-slate-500">Boyahanede bekleyen parça bulunmuyor.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- BOYA VE YÜZEY İŞLEM GEÇMİŞİ LOGLARI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+        <h4 class="text-sm font-bold text-white flex items-center gap-2 mb-3">
+            <i class="fa-solid fa-clock-rotate-left text-purple-400"></i>
+            <span>Son Boya & Kumlama İşlem Kayıtları</span>
+        </h4>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                        <th class="py-2 px-3">Tarih</th>
+                        <th class="py-2 px-2">Proje</th>
+                        <th class="py-2 px-2">Montaj No</th>
+                        <th class="py-2 px-2">İşlem Türü</th>
+                        <th class="py-2 px-2 text-right">Adet</th>
+                        <th class="py-2 px-2">RAL Kodu</th>
+                        <th class="py-2 px-2">DFT Kalınlık</th>
+                        <th class="py-2 px-2">Operatör / Not</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for p in paint_logs %}
+                    <tr class="hover:bg-slate-900/50">
+                        <td class="py-2 px-3 font-mono text-slate-400">{{ p.completion_date | format_date }}</td>
+                        <td class="py-2 px-2 font-mono font-bold text-blue-400">{{ p.project_code }}</td>
+                        <td class="py-2 px-2 font-mono font-bold text-white">{{ p.assembly_pos }}</td>
+                        <td class="py-2 px-2 font-bold text-purple-400">{{ p.process_type }}</td>
+                        <td class="py-2 px-2 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
+                        <td class="py-2 px-2 font-mono text-purple-300">{{ p.ral_code or '-' }}</td>
+                        <td class="py-2 px-2 font-mono text-slate-300">{{ p.dft_micron or '-' }}</td>
+                        <td class="py-2 px-2 text-slate-400">{{ p.operator_name or '-' }} {% if p.notes %}({{ p.notes }}){% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8" class="py-4 text-center text-slate-500">Kayıtlı boya işlemi yok.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- BOYA VE YÜZEY İŞLEM KAYIT MODAL -->
+<div id="paintModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paint-roller text-purple-400"></i>
+                <span id="paintModalTitle">Boya / Yüzey İşlemi Kaydet</span>
+            </h3>
+            <button onclick="closeModal('paintModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_boya_kaydet') }}" method="POST" class="mt-4 space-y-3.5">
+            <input type="hidden" id="paint_assembly_id" name="assembly_id">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İşlem Türü *</label>
+                    <select name="process_type" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
+                        <option value="Boya">🎨 Boya (Astar / Son Kat)</option>
+                        <option value="Kumlama">🌪️ Kumlama (Sa 2.5)</option>
+                        <option value="Galvaniz">⚡ Sıcak Daldırma Galvaniz</option>
+                        <option value="Tamamlandı">✅ Boyası Bitti (Sevke Hazır)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İşlem Gören Adet *</label>
+                    <input type="number" min="1" id="paint_qty" name="quantity" value="1" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono font-bold">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">RAL Boya Kodu</label>
+                    <input type="text" id="paint_ral_input" name="ral_code" placeholder="Örn: RAL 7016" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Boya Kalınlığı (DFT µm)</label>
+                    <input type="text" id="paint_dft_input" name="dft_micron" placeholder="Örn: 120 µm" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Parti / Lot No</label>
+                    <input type="text" name="lot_no" placeholder="Örn: LOT-01" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">İşlem Tarihi</label>
+                    <input type="date" name="completion_date" value="{{ now.strftime('%Y-%m-%d') }}" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Açıklama / Not</label>
+                <textarea name="notes" rows="2" placeholder="Örn: Epoksi astar + Poliüretan son kat uygulandı." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white resize-none"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('paintModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold shadow-md shadow-purple-600/30">İşlemi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function filterBoyaTable() {
+        const input = document.getElementById('boyaSearchInput');
+        if (!input) return;
+        const filter = input.value.toLowerCase().trim();
+        const rows = document.querySelectorAll('#boyaTableBody tr');
+        rows.forEach(r => {
+            if (!filter) {
+                r.style.display = '';
+                return;
+            }
+            const text = r.innerText.toLowerCase();
+            r.style.display = text.includes(filter) ? '' : 'none';
+        });
+    }
+
+    function openPaintModal(id, pos, maxQty, ral, dft) {
+        document.getElementById('paint_assembly_id').value = id;
+        document.getElementById('paintModalTitle').innerText = `${pos} - Boya / Yüzey İşlemi`;
+        document.getElementById('paint_qty').value = maxQty > 0 ? maxQty : 1;
+        document.getElementById('paint_ral_input').value = ral || 'RAL 7016';
+        document.getElementById('paint_dft_input').value = dft || '120 µm';
+        openModal('paintModal');
+    }
+</script>
+{% endblock %}
