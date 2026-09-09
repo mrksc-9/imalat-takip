@@ -13,13 +13,13 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, session, g
+    flash, jsonify, send_file, session, g, send_from_directory, abort
 )
 
 from database import (
     get_db, init_db, run_schema_migrations, ensure_column, log_activity, hash_password,
     get_global_metrics, get_project_summary, get_all_projects_summary, get_customers, set_project_status,
-    get_system_settings, update_system_settings,
+    get_system_settings, update_system_settings, invalidate_app_cache,
     get_machines, get_machine_by_id, add_machine, update_machine, delete_machine,
     get_all_role_permissions, update_role_permission,
     can_user_edit, get_next_dispatch_no,
@@ -278,10 +278,21 @@ def ensure_db_and_auth():
                 pass
 
     # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW, Manifest ve Push API hariç)
-    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json', '/api/push/vapid-public-key', '/api/push/subscribe'))):
+    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe', 'serve_upload_fallback') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json', '/api/push/vapid-public-key', '/api/push/subscribe'))):
         return
     if 'user' not in session:
         return redirect(url_for('login'))
+
+@app.route('/static/uploads/<path:filename>')
+def serve_upload_fallback(filename):
+    """Yüklenen logolar veya fotoğraflar sunucu diskinde yoksa varsayılan logoya yönlendirir (404 döngüsünü engeller)."""
+    upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+    target_path = os.path.join(upload_dir, filename)
+    if os.path.exists(target_path):
+        return send_from_directory(upload_dir, filename)
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.svg', '.webp', '.ico')):
+        return send_from_directory(os.path.join(BASE_DIR, 'static', 'img'), 'ordumak_logo.svg')
+    return abort(404)
 
 @app.after_request
 def add_cache_and_compression(response):

@@ -13,49 +13,6 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
 
-    <!-- Native Browser Instant Prerender & Prefetch (Speculation Rules API) -->
-    <script type="speculationrules">
-    {
-      "prerender": [
-        {
-          "source": "list",
-          "urls": [
-            "/",
-            "/projeler",
-            "/dizayn-modelleme",
-            "/siparis-takip",
-            "/on-imalat-plan",
-            "/kesim-takip",
-            "/imalat-plan",
-            "/imalat-takip",
-            "/kalite-kontrol",
-            "/boya-takip",
-            "/sevk",
-            "/muhasebe-irsaliye",
-            "/sohbet",
-            "/kullanicilar",
-            "/raporlar"
-          ],
-          "eagerness": "moderate"
-        }
-      ],
-      "prefetch": [
-        {
-          "source": "document",
-          "where": {
-            "and": [
-              { "href_matches": "/*" },
-              { "not": { "href_matches": "/api/*" } },
-              { "not": { "href_matches": "/logout" } },
-              { "not": { "href_matches": "/static/*" } }
-            ]
-          },
-          "eagerness": "immediate"
-        }
-      ]
-    }
-    </script>
-
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -117,7 +74,7 @@
         <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0 hidden md:flex">
             <!-- Logo & Başlık (Dinamik & Tıklanabilir) -->
             <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" title="Firma Web Sitesini Aç" class="h-20 flex items-center px-5 border-b border-slate-800/80 gap-3 bg-slate-950/60 hover:bg-slate-900/80 transition-all group">
-                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Firma Logo" class="h-10 w-auto object-contain max-w-[48px] rounded-lg shadow-sm" onerror="this.src='/static/img/ordumak_logo.svg'">
+                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Firma Logo" class="h-10 w-auto object-contain max-w-[48px] rounded-lg shadow-sm" onerror="this.onerror=null; this.src='/static/img/ordumak_logo.svg'">
                 <div class="overflow-hidden min-w-0">
                     <h1 class="font-bold text-xs tracking-wide text-white truncate group-hover:text-blue-400 transition-colors">{{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}</h1>
                     <p class="text-[10px] text-blue-400 font-medium truncate">{{ system_settings.app_subtitle or 'İmalat Takip Sistemi' }}</p>
@@ -406,7 +363,7 @@
         <div class="w-72 bg-slate-950 h-full p-4 flex flex-col border-r border-slate-800 overflow-y-auto">
             <div class="flex items-center justify-between pb-4 border-b border-slate-800">
                 <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" class="flex items-center gap-2">
-                    <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Logo" class="h-8 w-auto max-w-[36px]" onerror="this.src='/static/img/ordumak_logo.svg'">
+                    <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}" alt="Logo" class="h-8 w-auto max-w-[36px]" onerror="this.onerror=null; this.src='/static/img/ordumak_logo.svg'">
                     <span class="font-bold text-xs text-white truncate">{{ system_settings.app_title or 'ORDUMAK MES' }}</span>
                 </a>
                 <button onclick="toggleMobileMenu()" class="text-slate-400 hover:text-white p-2">
@@ -1204,8 +1161,8 @@
             }
         });
 
-        // 12 saniyede bir hafif kontrol
-        setInterval(runBackgroundSync, 12000);
+        // 30 saniyede bir hafif arka plan kontrolü (Sunucu kaynaklarını korur)
+        setInterval(runBackgroundSync, 30000);
         runBackgroundSync();
 
 

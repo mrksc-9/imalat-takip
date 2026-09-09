@@ -1,9 +1,25 @@
 import sqlite3
 import os
 import re
+import time
 import hashlib
 import functools
 from datetime import datetime, timezone, timedelta
+
+# =========================================================================
+# YÜKSEK PERFORMANS TTL ÖNBELLEK (RAM CACHE) MOTORU (0ms YANIT)
+# =========================================================================
+_RAM_METRICS_CACHE = {}
+_RAM_PROJECTS_CACHE = {}
+_RAM_SETTINGS_CACHE = {}
+_RAM_ANNOUNCEMENTS_CACHE = {}
+
+def invalidate_app_cache():
+    """Veri güncellendiğinde tüm bellek içi özet önbelleklerini temizler."""
+    _RAM_METRICS_CACHE.clear()
+    _RAM_PROJECTS_CACHE.clear()
+    _RAM_SETTINGS_CACHE.clear()
+    _RAM_ANNOUNCEMENTS_CACHE.clear()
 
 ISTANBUL_TZ = timezone(timedelta(hours=3))
 
@@ -80,8 +96,9 @@ class PostgresRow:
         return repr(self._dict)
 
 class PostgresCursorWrapper:
-    def __init__(self, cursor):
+    def __init__(self, cursor, conn=None):
         self._cur = cursor
+        self._conn = conn
         self.lastrowid = None
 
     def _convert_sql(self, sql):
@@ -131,11 +148,21 @@ class PostgresCursorWrapper:
                     pass
         except Exception as e:
             if should_add_returning:
+                try:
+                    if self._conn:
+                        self._conn.rollback()
+                except Exception:
+                    pass
                 if params is not None:
                     self._cur.execute(sql_conv, tuple(params) if isinstance(params, (list, tuple)) else params)
                 else:
                     self._cur.execute(sql_conv)
             else:
+                try:
+                    if self._conn:
+                        self._conn.rollback()
+                except Exception:
+                    pass
                 raise e
 
         return self
@@ -197,7 +224,7 @@ class PostgresConnectionWrapper:
         self._pool = pool
 
     def cursor(self):
-        return PostgresCursorWrapper(self._conn.cursor())
+        return PostgresCursorWrapper(self._conn.cursor(), self._conn)
 
     def commit(self):
         try:
@@ -213,6 +240,10 @@ class PostgresConnectionWrapper:
 
     def close(self):
         if self._pool:
+            try:
+                self._conn.rollback()
+            except Exception:
+                pass
             try:
                 self._pool.putconn(self._conn)
             except Exception:
@@ -1051,6 +1082,8 @@ def log_activity(action, entity_type=None, entity_id=None, details="", username=
         conn.close()
     except Exception as e:
         print(f"Log error: {e}")
+    finally:
+        invalidate_app_cache()
 
 @functools.lru_cache(maxsize=256)
 def can_user_edit(user_role, module_name):
@@ -1088,9 +1121,17 @@ def set_project_status(project_id, status):
     cursor.execute("UPDATE projects SET status = ? WHERE id = ?", (status, project_id))
     conn.commit()
     conn.close()
+    invalidate_app_cache()
 
 def get_global_metrics(customer=None):
-    """Tüm projelerin (veya seçilen müşterinin) toplam metriklerini hesaplar."""
+    """Tüm projelerin (veya seçilen müşterinin) toplam metriklerini hesaplar (15s RAM Önbellekli)."""
+    cache_key = str(customer or '').strip()
+    now_time = time.time()
+    if cache_key in _RAM_METRICS_CACHE:
+        cached_data, exp_time = _RAM_METRICS_CACHE[cache_key]
+        if now_time < exp_time:
+            return cached_data
+
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1209,7 +1250,7 @@ def get_global_metrics(customer=None):
     ship_ton = ass_stats['shipped_tonnage']
     stock_ton = max(0.0, fab_ton - ship_ton)
 
-    return {
+    metrics_res = {
         'active_projects': active_projects,
         'total_tonnage': round(total_ton, 2),
         'cut_tonnage': round(cut_ton, 2),
@@ -1232,6 +1273,8 @@ def get_global_metrics(customer=None):
         'total_assemblies_count': ass_stats['total_assemblies_count'],
         'total_assemblies_qty': ass_stats['total_assemblies_qty']
     }
+    _RAM_METRICS_CACHE[cache_key] = (metrics_res, now_time + 15.0)
+    return metrics_res
 
 def get_project_summary(project_id):
     conn = get_db()
@@ -1338,7 +1381,14 @@ def get_project_summary(project_id):
     return proj_dict
 
 def get_all_projects_summary(customer=None, status_filter=None, exclude_status=('Arşiv',)):
-    """Tüm projelerin özet metriklerini N+1 sorgu problemi olmadan tek seferde toplu olarak hesaplar (Ultra Hızlı)."""
+    """Tüm projelerin özet metriklerini N+1 sorgu problemi olmadan tek seferde toplu olarak hesaplar (15s RAM Önbellekli)."""
+    cache_key = f"{customer}_{status_filter}_{exclude_status}"
+    now_time = time.time()
+    if cache_key in _RAM_PROJECTS_CACHE:
+        cached_data, exp_time = _RAM_PROJECTS_CACHE[cache_key]
+        if now_time < exp_time:
+            return cached_data
+
     conn = get_db()
     cursor = conn.cursor()
 
@@ -1486,6 +1536,7 @@ def get_all_projects_summary(customer=None, status_filter=None, exclude_status=(
         })
         summaries.append(proj_copy)
 
+    _RAM_PROJECTS_CACHE[cache_key] = (summaries, now_time + 15.0)
     return summaries
 
 def get_machines(active_only=False):
@@ -1884,12 +1935,19 @@ def delete_user(user_id):
 # DUYURU VE UYARI SİSTEMİ
 # =========================================================================
 def get_active_announcements():
-    """Sistemde yayında olan aktif duyuruları en yeniden eskiye döner."""
+    """Sistemde yayında olan aktif duyuruları en yeniden eskiye döner (60s RAM Önbellekli)."""
+    now_time = time.time()
+    if 'active' in _RAM_ANNOUNCEMENTS_CACHE:
+        cached_data, exp_time = _RAM_ANNOUNCEMENTS_CACHE['active']
+        if now_time < exp_time:
+            return cached_data
+
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM announcements WHERE is_active = 1 ORDER BY id DESC")
     rows = [dict(r) for r in cursor.fetchall()]
     conn.close()
+    _RAM_ANNOUNCEMENTS_CACHE['active'] = (rows, now_time + 60.0)
     return rows
 
 def add_announcement(user_id, username, full_name, title, content, priority='Önemli'):
@@ -1903,6 +1961,7 @@ def add_announcement(user_id, username, full_name, title, content, priority='Ön
     """, (user_id, username, full_name, title.strip(), content.strip(), priority, now_ts))
     conn.commit()
     conn.close()
+    _RAM_ANNOUNCEMENTS_CACHE.clear()
 
 def deactivate_announcement(announcement_id):
     """Duyuruyu yayından kaldırır."""
@@ -1911,6 +1970,7 @@ def deactivate_announcement(announcement_id):
     cursor.execute("UPDATE announcements SET is_active = 0 WHERE id = ?", (announcement_id,))
     conn.commit()
     conn.close()
+    _RAM_ANNOUNCEMENTS_CACHE.clear()
 
 def delete_announcement(announcement_id):
     """Duyuruyu tamamen siler."""
@@ -1919,6 +1979,7 @@ def delete_announcement(announcement_id):
     cursor.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
     conn.commit()
     conn.close()
+    _RAM_ANNOUNCEMENTS_CACHE.clear()
 
 
 # =========================================================================
@@ -2052,25 +2113,33 @@ def get_unread_chat_summary(current_user_id):
     """Kullanıcının toplam okunmamış DM mesajlarını ve kişi bazlı sayaçları döner."""
     if not current_user_id:
         return {'total_unread': 0, 'by_user': {}}
-    conn = get_db()
-    cursor = conn.cursor()
-    cur_id = int(current_user_id)
-    cursor.execute("""
-        SELECT user_id, COUNT(*) as count
-        FROM chat_messages
-        WHERE receiver_id = ? AND is_read = 0
-        GROUP BY user_id
-    """, (cur_id,))
-    rows = cursor.fetchall()
-    by_user = {}
-    total = 0
-    for r in rows:
-        uid = str(r['user_id'])
-        c = r['count']
-        by_user[uid] = c
-        total += c
-    conn.close()
-    return {'total_unread': total, 'by_user': by_user}
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cur_id = int(current_user_id)
+        cursor.execute("""
+            SELECT user_id, COUNT(*) as count
+            FROM chat_messages
+            WHERE receiver_id = ? AND is_read = 0
+            GROUP BY user_id
+        """, (cur_id,))
+        rows = cursor.fetchall()
+        by_user = {}
+        total = 0
+        for r in rows:
+            uid = str(r['user_id'])
+            c = r['count']
+            by_user[uid] = c
+            total += c
+        return {'total_unread': total, 'by_user': by_user}
+    except Exception as e:
+        print(f"Unread summary query note: {e}")
+        return {'total_unread': 0, 'by_user': {}}
+    finally:
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
 def clear_chat_messages(channel=None, user_id=None, partner_id=None):
     """Belirli bir kanaldaki, iki kullanıcı arasındaki veya tüm sohbetlerdeki mesajları temizler."""
