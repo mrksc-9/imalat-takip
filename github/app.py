@@ -20,6 +20,11 @@ from flask import (
 )
 
 from database import (
+    get_isg_records, add_isg_record, update_isg_record, delete_isg_record,
+    get_shuttle_routes, add_shuttle_route, update_shuttle_route, delete_shuttle_route, add_shuttle_passenger, delete_shuttle_passenger,
+    get_consumables, add_consumable, update_consumable, delete_consumable, record_consumable_transaction, get_consumable_transactions,
+    get_anonymous_reports, add_anonymous_report, update_anonymous_report_status, delete_anonymous_report,
+    get_system_feature_requests, add_system_feature_request, update_system_feature_request, delete_system_feature_request,
     get_db, init_db, run_schema_migrations, ensure_column, log_activity, hash_password,
     get_global_metrics, get_project_summary, get_all_projects_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings, invalidate_app_cache,
@@ -290,7 +295,7 @@ def ensure_db_and_auth():
             or request.path.startswith('/js/')
             or request.path.startswith('/img/')
             or request.path.endswith(('.css', '.js', '.png', '.svg', '.jpg', '.jpeg', '.webp', '.ico', '.json'))
-            or request.path in ('/logo', '/api/company-logo', '/sw.js', '/manifest.json', '/style.css', '/main.js', '/ordumak_logo.svg', '/ordumak_logo.png', '/api/push/vapid-public-key', '/api/push/subscribe')
+            or request.path in ('/favicon.ico', '/apple-touch-icon.png', '/logo', '/api/company-logo', '/sw.js', '/manifest.json', '/style.css', '/main.js', '/ordumak_logo.svg', '/ordumak_logo.png', '/api/push/vapid-public-key', '/api/push/subscribe')
         ))
     ):
         return
@@ -597,6 +602,31 @@ def service_worker():
     resp = app.response_class(EMBEDDED_SW_JS, mimetype='application/javascript')
     resp.headers['Service-Worker-Allowed'] = '/'
     resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
+
+
+@app.route('/favicon.ico')
+@app.route('/static/favicon.ico')
+def serve_favicon():
+    """Masaüstü ve tarayıcı sekme ikonu (Favicon)."""
+    ico_path = os.path.join(BASE_DIR, 'static', 'favicon.ico')
+    if os.path.exists(ico_path):
+        resp = send_file(ico_path, mimetype='image/x-icon')
+    else:
+        resp = send_file(os.path.join(BASE_DIR, 'static', 'img', 'ordumak_icon_192.png'), mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/static/apple-touch-icon.png')
+def serve_apple_touch_icon():
+    """iOS Safari, Mac ve Mobil Masaüstü İkonu."""
+    icon_path = os.path.join(BASE_DIR, 'static', 'img', 'apple-touch-icon.png')
+    if not os.path.exists(icon_path):
+        icon_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_icon_192.png')
+    resp = send_file(icon_path, mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
     return resp
 
 @app.route('/manifest.json')
@@ -4521,6 +4551,344 @@ def ai_muhendis():
 # =========================================================================
 # SUNUCU ÇALIŞTIRMA
 # =========================================================================
+
+
+# =========================================================================
+# 22. İSG & SAHA UYGUNSUZLUK MODÜLÜ
+# =========================================================================
+@app.route('/isg-takip')
+def isg_takip():
+    """İSG uygunsuzluk, ramak kala ve saha güvenlik bildirimleri sayfası."""
+    status_filter = request.args.get('status', '')
+    records = get_isg_records(status=status_filter if status_filter else None)
+    return render_template('isg_takip.html', records=records, selected_status=status_filter)
+
+@app.route('/api/isg/ekle', methods=['POST'])
+def api_isg_ekle():
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Uygunsuzluk')
+    location = request.form.get('location', '').strip()
+    description = request.form.get('description', '').strip()
+    priority = request.form.get('priority', 'Orta')
+    status = request.form.get('status', 'Açık')
+    corrective_action = request.form.get('corrective_action', '').strip()
+    assigned_to = request.form.get('assigned_to', '').strip()
+    
+    cur_user = session.get('user', {})
+    reported_by = cur_user.get('full_name') or cur_user.get('username') or 'Saha Personeli'
+    
+    photo_url = ''
+    if 'photo' in request.files and request.files['photo'].filename != '':
+        pfile = request.files['photo']
+        ext = os.path.splitext(pfile.filename)[1].lower()
+        fname = f"isg_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        pfile.save(os.path.join(upload_dir, fname))
+        photo_url = f"/static/uploads/{fname}"
+        
+    add_isg_record(title, category, location, description, photo_url, priority, status, corrective_action, assigned_to, reported_by)
+    flash("İSG bildirimi başarıyla kaydedildi.", "success")
+    return redirect(url_for('isg_takip'))
+
+@app.route('/api/isg/<int:record_id>/guncelle', methods=['POST'])
+def api_isg_guncelle(record_id):
+    status = request.form.get('status', 'Açık')
+    corrective_action = request.form.get('corrective_action', '').strip()
+    assigned_to = request.form.get('assigned_to', '').strip()
+    update_isg_record(record_id, status, corrective_action, assigned_to)
+    flash("İSG kaydı güncellendi.", "success")
+    return redirect(url_for('isg_takip'))
+
+@app.route('/api/isg/<int:record_id>/sil', methods=['POST'])
+def api_isg_sil(record_id):
+    delete_isg_record(record_id)
+    flash("İSG kaydı silindi.", "success")
+    return redirect(url_for('isg_takip'))
+
+# =========================================================================
+# 23. SERVİS GÜZERGAHLARI VE YOLCU LİSTESİ MODÜLÜ
+# =========================================================================
+@app.route('/servis-guzergah')
+def servis_guzergah():
+    """Fabrika servis hatları, şoförler, duraklar ve yolcu listesi."""
+    shuttles = get_shuttle_routes()
+    return render_template('servis_guzergah.html', shuttles=shuttles)
+
+@app.route('/api/servis/ekle', methods=['POST'])
+def api_servis_ekle():
+    name = request.form.get('name', '').strip()
+    driver_name = request.form.get('driver_name', '').strip()
+    driver_phone = request.form.get('driver_phone', '').strip()
+    plate_number = request.form.get('plate_number', '').strip()
+    capacity = int(request.form.get('capacity', 16) or 16)
+    route_stops = request.form.get('route_stops', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    add_shuttle_route(name, driver_name, driver_phone, plate_number, capacity, route_stops, notes)
+    flash(f"'{name}' servis hattı başarıyla eklendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/guncelle', methods=['POST'])
+def api_servis_guncelle(shuttle_id):
+    name = request.form.get('name', '').strip()
+    driver_name = request.form.get('driver_name', '').strip()
+    driver_phone = request.form.get('driver_phone', '').strip()
+    plate_number = request.form.get('plate_number', '').strip()
+    capacity = int(request.form.get('capacity', 16) or 16)
+    route_stops = request.form.get('route_stops', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    update_shuttle_route(shuttle_id, name, driver_name, driver_phone, plate_number, capacity, route_stops, notes)
+    flash(f"'{name}' servisi güncellendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/sil', methods=['POST'])
+def api_servis_sil(shuttle_id):
+    delete_shuttle_route(shuttle_id)
+    flash("Servis hattı silindi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/yolcu-ekle', methods=['POST'])
+def api_servis_yolcu_ekle(shuttle_id):
+    person_name = request.form.get('person_name', '').strip()
+    department = request.form.get('department', '').strip()
+    boarding_stop = request.form.get('boarding_stop', '').strip()
+    phone = request.form.get('phone', '').strip()
+    
+    if person_name:
+        add_shuttle_passenger(shuttle_id, person_name, department, boarding_stop, phone)
+        flash(f"'{person_name}' servise eklendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/yolcu/<int:passenger_id>/sil', methods=['POST'])
+def api_servis_yolcu_sil(passenger_id):
+    delete_shuttle_passenger(passenger_id)
+    flash("Yolcu servisten çıkarıldı.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+# =========================================================================
+# 24. DEPO & SARF MALZEME STOK TAKİBİ VE ÇIKIŞ İŞLEMLERİ
+# =========================================================================
+@app.route('/depo-sarf')
+def depo_sarf():
+    """Depo sarf malzeme stok durumu, kritik stok uyarıları ve sarf çıkış/giriş paneli."""
+    cat_filter = request.args.get('category', '')
+    crit_only = request.args.get('critical') == '1'
+    
+    consumables = get_consumables(category=cat_filter if cat_filter else None, critical_only=crit_only)
+    transactions = get_consumable_transactions(limit=60)
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    
+    # Kritik stoktaki ürün sayısı
+    cursor.execute("SELECT COUNT(*) as count FROM inventory_consumables WHERE current_qty <= critical_level")
+    critical_count = cursor.fetchone()['count'] or 0
+    conn.close()
+    
+    return render_template('depo_sarf.html',
+                           consumables=consumables,
+                           transactions=transactions,
+                           projects=projects,
+                           critical_count=critical_count,
+                           selected_category=cat_filter,
+                           critical_only=crit_only)
+
+@app.route('/api/depo/sarf-ekle', methods=['POST'])
+def api_depo_sarf_ekle():
+    code = request.form.get('code', '').strip()
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', 'Kaynak & Montaj')
+    unit = request.form.get('unit', 'Adet')
+    current_qty = float(request.form.get('current_qty', 0) or 0)
+    critical_level = float(request.form.get('critical_level', 10) or 10)
+    shelf_location = request.form.get('shelf_location', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    add_consumable(code, name, category, unit, current_qty, critical_level, shelf_location, notes)
+    flash(f"'{name}' sarf malzemesi başarıyla eklendi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf/<int:material_id>/guncelle', methods=['POST'])
+def api_depo_sarf_guncelle(material_id):
+    code = request.form.get('code', '').strip()
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', 'Kaynak & Montaj')
+    unit = request.form.get('unit', 'Adet')
+    critical_level = float(request.form.get('critical_level', 10) or 10)
+    shelf_location = request.form.get('shelf_location', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    update_consumable(material_id, code, name, category, unit, critical_level, shelf_location, notes)
+    flash(f"'{name}' sarf malzemesi güncellendi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf/<int:material_id>/sil', methods=['POST'])
+def api_depo_sarf_sil(material_id):
+    delete_consumable(material_id)
+    flash("Sarf malzemesi ve hareketleri silindi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf-cikis', methods=['POST'])
+def api_depo_sarf_cikis():
+    material_id = int(request.form.get('material_id', 0))
+    qty = float(request.form.get('qty', 1) or 1)
+    recipient_person = request.form.get('recipient_person', '').strip()
+    project_id = request.form.get('project_id')
+    p_id = int(project_id) if project_id and project_id.isdigit() else None
+    machine_name = request.form.get('machine_name', '').strip()
+    foreman_name = request.form.get('foreman_name', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    cur_user = session.get('user', {})
+    created_by = cur_user.get('full_name') or cur_user.get('username') or 'Depocu'
+    
+    ok, msg = record_consumable_transaction(
+        material_id=material_id,
+        trans_type='Çıkış',
+        qty=qty,
+        recipient_person=recipient_person,
+        project_id=p_id,
+        machine_name=machine_name,
+        foreman_name=foreman_name,
+        notes=notes,
+        created_by=created_by
+    )
+    if ok:
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf-giris', methods=['POST'])
+def api_depo_sarf_giris():
+    material_id = int(request.form.get('material_id', 0))
+    qty = float(request.form.get('qty', 1) or 1)
+    notes = request.form.get('notes', '').strip()
+    
+    cur_user = session.get('user', {})
+    created_by = cur_user.get('full_name') or cur_user.get('username') or 'Depocu'
+    
+    ok, msg = record_consumable_transaction(
+        material_id=material_id,
+        trans_type='Giriş',
+        qty=qty,
+        notes=notes,
+        created_by=created_by
+    )
+    if ok:
+        flash(f"Stok girişi kaydedildi. {msg}", "success")
+    else:
+        flash(msg, "danger")
+    return redirect(url_for('depo_sarf'))
+
+# =========================================================================
+# 25. %100 ANONİM SAHA & İŞYERİ BİLDİRİM KUTUSU
+# =========================================================================
+@app.route('/anonim-bildirim')
+def anonim_bildirim():
+    """Kaytarma, duyum ve uygunsuz davranışların %100 anonim paylaşıldığı alan."""
+    reports = get_anonymous_reports()
+    return render_template('anonim_bildirim.html', reports=reports)
+
+@app.route('/api/anonim-bildirim/gonder', methods=['POST'])
+def api_anonim_bildirim_gonder():
+    """%100 Kimliksiz Bildirim Uç Noktası."""
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Genel')
+    description = request.form.get('description', '').strip()
+    
+    if not title or not description:
+        flash("Lütfen başlık ve açıklama alanlarını doldurun.", "warning")
+        return redirect(url_for('anonim_bildirim'))
+        
+    media_url = ''
+    media_type = 'image'
+    if 'media_file' in request.files and request.files['media_file'].filename != '':
+        mfile = request.files['media_file']
+        ext = os.path.splitext(mfile.filename)[1].lower()
+        if ext in ('.mp4', '.mov', '.avi', '.webm', '.mkv'):
+            media_type = 'video'
+        else:
+            media_type = 'image'
+            
+        fname = f"anon_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.urandom(4).hex()}{ext}"
+        upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        mfile.save(os.path.join(upload_dir, fname))
+        media_url = f"/static/uploads/{fname}"
+        
+    add_anonymous_report(title, category, description, media_url, media_type)
+    flash("🛡️ Bildiriminiz %100 Anonim olarak iletildi. Kimlik veya IP bilginiz kesinlikle kaydedilmemiştir.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+@app.route('/api/anonim-bildirim/<int:report_id>/durum', methods=['POST'])
+def api_anonim_bildirim_durum(report_id):
+    status = request.form.get('status', 'İncelendi')
+    update_anonymous_report_status(report_id, status)
+    flash("Bildirim durumu güncellendi.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+@app.route('/api/anonim-bildirim/<int:report_id>/sil', methods=['POST'])
+def api_anonim_bildirim_sil(report_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('anonim_bildirim'))
+    delete_anonymous_report(report_id)
+    flash("Bildirim silindi.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+# =========================================================================
+# 26. SİSTEM GELİŞTİRME & ANONİM GERİ BİLDİRİM KUTUSU (ADMİN YÖNETİR)
+# =========================================================================
+@app.route('/sistem-istek')
+def sistem_istek():
+    """Site düzenleme ve geliştirme talepleri sayfası."""
+    cur_user = session.get('user', {})
+    is_admin = cur_user.get('role') in ('admin', 'patron')
+    requests_list = get_system_feature_requests() if is_admin else []
+    return render_template('sistem_istek.html', requests_list=requests_list, is_admin=is_admin)
+
+@app.route('/api/sistem-istek/gonder', methods=['POST'])
+def api_sistem_istek_gonder():
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Yeni Özellik')
+    description = request.form.get('description', '').strip()
+    
+    if not title or not description:
+        flash("Lütfen başlık ve açıklama girin.", "warning")
+        return redirect(url_for('sistem_istek'))
+        
+    add_system_feature_request(title, category, description)
+    flash("💡 Sistem geliştirme öneriniz / geri bildiriminiz başarıyla iletildi. Teşekkür ederiz!", "success")
+    return redirect(url_for('sistem_istek'))
+
+@app.route('/api/sistem-istek/<int:req_id>/durum', methods=['POST'])
+def api_sistem_istek_durum(req_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('sistem_istek'))
+    status = request.form.get('status', 'İncelendi')
+    admin_notes = request.form.get('admin_notes', '').strip()
+    update_system_feature_request(req_id, status, admin_notes)
+    flash("Geliştirme talebi durumu güncellendi.", "success")
+    return redirect(url_for('sistem_istek'))
+
+@app.route('/api/sistem-istek/<int:req_id>/sil', methods=['POST'])
+def api_sistem_istek_sil(req_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('sistem_istek'))
+    delete_system_feature_request(req_id)
+    flash("Talep silindi.", "success")
+    return redirect(url_for('sistem_istek'))
+
 if __name__ == '__main__':
     local_ip = get_local_ip()
     print("=" * 70)

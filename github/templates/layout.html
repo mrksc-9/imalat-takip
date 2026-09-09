@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ system_settings.company_name or 'ORDUMAK DEMİR ÇELİK A.Ş.' }}</title>
 
+    <!-- Masaüstü & Mobil Favicon ve PWA İkonları -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/img/ordumak_icon_192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/static/img/ordumak_icon_512.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <meta name="msapplication-TileColor" content="#0f172a">
+    <meta name="msapplication-TileImage" content="/static/img/ordumak_icon_512.png">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="/manifest.json">
+
+
     <!-- DNS Prefetch & Preconnect for High Speed -->
     <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
@@ -253,35 +265,10 @@
 
                 <!-- Hızlı Butonlar, Duyuru Paylaş, Bildirimler & Profil -->
                 <div class="flex items-center gap-2 sm:gap-3">
-                    <!-- Masaüstü & Mobil Bildirim Butonu -->
-                    <button id="btnNotifToggle" onclick="requestNotificationAccess()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all border shadow-sm bg-slate-800/80 text-slate-300 border-slate-700 hover:text-white" title="Masaüstü ve Mobil Bildirim İzni">
-                        <i id="notifBellIcon" class="fa-solid fa-bell"></i>
-                        <span id="notifStatusText" class="hidden sm:inline">Bildirimler</span>
-                    </button>
-
-                    <!-- Test Push Bildirimi Butonu (Kapalı PWA & Mobil Testi) -->
-                    <button onclick="sendTestPushNotification()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500 hover:text-slate-950 border border-cyan-500/30 rounded-lg transition-all shadow-sm" title="Telefon / Masaüstü Anlık Test Bildirimi Gönder">
-                        <i class="fa-solid fa-paper-plane"></i>
-                        <span class="hidden md:inline">Test Bildirimi</span>
-                    </button>
-
-                    <!-- Site Kapalıyken Bildirim Rehberi Butonu -->
-                    <button onclick="openModal('pwaBackgroundNotifModal')" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-purple-300 bg-purple-500/10 hover:bg-purple-500 hover:text-slate-950 border border-purple-500/30 rounded-lg transition-all shadow-sm" title="Site Kapalıyken Telefondan ve Bilgisayardan Bildirim Alma Rehberi">
-                        <i class="fa-solid fa-mobile-screen-button"></i>
-                        <span class="hidden lg:inline">Kapalıyken Bildirim</span>
-                    </button>
-
-                    <button onclick="openModal('newAnnouncementModal')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-lg transition-all shadow-sm">
+                    <button onclick="openModal('newAnnouncementModal')" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/30 rounded-lg transition-all shadow-sm" title="Tüm Fabrikaya Duyuru Paylaş">
                         <i class="fa-solid fa-bullhorn"></i>
                         <span class="hidden sm:inline">Duyuru Paylaş</span>
                     </button>
-
-                    {% if user_role in ('admin', 'patron') %}
-                    <a href="{{ url_for('api_veritabani_yedek_indir') }}" title="Veritabanı Yedeğini İndir (.db)" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500 hover:text-slate-950 border border-emerald-500/30 rounded-lg transition-all shadow-sm">
-                        <i class="fa-solid fa-database"></i>
-                        <span class="hidden sm:inline">Yedek İndir</span>
-                    </a>
-                    {% endif %}
 
                     {% if can_user_edit('projeler') %}
                     <button onclick="openModal('newProjectModal')" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-all shadow-md shadow-blue-600/30">
@@ -429,6 +416,25 @@
                 </a>
                 <a href="{{ url_for('muhasebe_irsaliye') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
                     <i class="fa-solid fa-file-invoice-dollar w-4 text-center text-indigo-400"></i> Muhasebe & İrsaliye
+                </a>
+
+                <div class="pt-2 text-[10px] font-bold text-slate-400 uppercase">Fabrika & Saha Yönetimi</div>
+                <a href="{{ url_for('isg_takip') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-helmet-safety w-4 text-center text-amber-400"></i> İSG & Uygunsuzluk
+                </a>
+                <a href="{{ url_for('servis_guzergah') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-bus w-4 text-center text-blue-400"></i> Servis & Güzergahlar
+                </a>
+                <a href="{{ url_for('depo_sarf') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-boxes-stacked w-4 text-center text-emerald-400"></i> Depo & Sarf Stok
+                </a>
+
+                <div class="pt-2 text-[10px] font-bold text-slate-400 uppercase">Anonim Bildirim & İstek</div>
+                <a href="{{ url_for('anonim_bildirim') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-user-secret w-4 text-center text-emerald-400"></i> Anonim Bildirim Kutusu
+                </a>
+                <a href="{{ url_for('sistem_istek') }}" class="flex items-center gap-3 px-3 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800">
+                    <i class="fa-solid fa-lightbulb w-4 text-center text-indigo-400"></i> Sistem İstek & Geri Bildirim
                 </a>
 
                 <div class="pt-2 text-[10px] font-bold text-slate-500 uppercase">Yönetim</div>

@@ -1,0 +1,334 @@
+{% extends "layout.html" %}
+
+{% block title %}Servis Güzergahları & Yolcu Listesi - ORDUMAK MES{% endblock %}
+{% block page_title %}Fabrika Servis Güzergahları & Personel Dağılımı{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BİLGİ & EYLEMLER KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-bus text-blue-400 text-lg"></i>
+                <span>Fabrika Servis Hatları, Duraklar & Yolcu Listeleri</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Servis güzergahlarını, araç kapasitelerini, şoför iletişim bilgilerini ve hangi personelin hangi serviste olduğunu yönetin.</p>
+        </div>
+
+        <button onclick="openModal('addShuttleModal')" class="px-4 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2">
+            <i class="fa-solid fa-plus text-sm"></i>
+            <span>+ Yeni Servis Hattı Tanımla</span>
+        </button>
+    </div>
+
+    <!-- SERVİS HATLARI LİSTESİ -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {% for s in shuttles %}
+        <div class="bg-slate-950/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl transition-all hover:border-slate-700 relative overflow-hidden flex flex-col justify-between">
+            <!-- Sol Mavi Çizgi -->
+            <div class="absolute top-0 left-0 bottom-0 w-1.5 bg-blue-500"></div>
+
+            <div class="space-y-4 pl-2">
+                <!-- Başlık & Kapasite / Doluluk -->
+                <div class="flex items-start justify-between gap-3 border-b border-slate-800/80 pb-3">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                                {{ s.plate_number or 'Plaka Yok' }}
+                            </span>
+                            <h4 class="text-base font-black text-white tracking-wide">{{ s.name }}</h4>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-slate-400 mt-1">
+                            <span><i class="fa-solid fa-user-tie text-blue-400 mr-1"></i>Şoför: <b>{{ s.driver_name or 'Belirtilmedi' }}</b></span>
+                            {% if s.driver_phone %}
+                            <a href="tel:{{ s.driver_phone }}" class="text-blue-400 hover:underline flex items-center gap-1">
+                                <i class="fa-solid fa-phone text-[10px]"></i> {{ s.driver_phone }}
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Kapasite Rozeti -->
+                    <div class="text-right shrink-0">
+                        <span class="text-xs font-black px-2.5 py-1 rounded-xl border
+                            {% if s.passengers|length >= s.capacity %}bg-rose-500/10 text-rose-400 border-rose-500/30
+                            {% elif s.passengers|length >= s.capacity * 0.8 %}bg-amber-500/10 text-amber-400 border-amber-500/30
+                            {% else %}bg-emerald-500/10 text-emerald-400 border-emerald-500/30{% endif %}">
+                            <i class="fa-solid fa-users mr-1"></i>{{ s.passengers|length }} / {{ s.capacity }} Kişi
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Güzergah Durakları -->
+                {% if s.route_stops %}
+                <div class="p-3 bg-slate-900/90 border border-slate-800 rounded-xl text-xs space-y-1">
+                    <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-route text-indigo-400"></i>
+                        <span>Güzergah Durakları:</span>
+                    </span>
+                    <p class="text-slate-200 leading-relaxed font-medium">{{ s.route_stops }}</p>
+                </div>
+                {% endif %}
+
+                <!-- Servisteki Personeller (Yolcular) -->
+                <div class="bg-slate-900/70 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-id-card-clip"></i>
+                            <span>Servisi Kullanan Personeller ({{ s.passengers|length }})</span>
+                        </span>
+                        <button onclick="openAddPassengerModal({{ s.id }}, '{{ s.name | replace("'", "\\'") }}')" class="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-plus text-[10px]"></i>
+                            <span>+ Personel Ekle</span>
+                        </button>
+                    </div>
+
+                    {% if s.passengers|length > 0 %}
+                    <div class="divide-y divide-slate-800/60 max-h-48 overflow-y-auto pr-1 text-xs">
+                        {% for p in s.passengers %}
+                        <div class="py-2 flex items-center justify-between gap-2 hover:bg-slate-800/30 px-1 rounded transition-colors">
+                            <div>
+                                <span class="font-bold text-white">{{ p.person_name }}</span>
+                                {% if p.department %}
+                                <span class="text-[10px] text-slate-400 ml-1">({{ p.department }})</span>
+                                {% endif %}
+                                {% if p.boarding_stop %}
+                                <div class="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                    <i class="fa-solid fa-location-pin text-amber-400 text-[10px]"></i>
+                                    <span>Biniş: {{ p.boarding_stop }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            <form action="{{ url_for('api_servis_yolcu_sil', passenger_id=p.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu personeli servisten çıkarmak istediğinizden emin misiniz?');">
+                                <button type="submit" class="text-slate-500 hover:text-rose-400 p-1" title="Servisten Çıkar">
+                                    <i class="fa-solid fa-xmark text-xs"></i>
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-slate-500 italic py-1">Bu servise henüz personel eklenmedi.</p>
+                    {% endif %}
+                </div>
+
+                {% if s.notes %}
+                <p class="text-[11px] text-slate-400 italic">Not: {{ s.notes }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Alt Butonlar -->
+            <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-end gap-2 pl-2">
+                <button onclick='openEditShuttleModal({{ s | tojson | safe }})' class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-lg text-xs font-semibold transition-all border border-slate-700 flex items-center gap-1.5">
+                    <i class="fa-solid fa-pen text-xs text-blue-400"></i>
+                    <span>Düzenle</span>
+                </button>
+                <form action="{{ url_for('api_servis_sil', shuttle_id=s.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu servis hattını ve tüm yolcu kayıtlarını silmek istediğinizden emin misiniz?');">
+                    <button type="submit" class="p-1.5 bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700 text-xs" title="Sil">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-12 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            <i class="fa-solid fa-bus text-4xl mb-3 text-blue-500/40 block"></i>
+            Kayıtlı servis hattı bulunmuyor. <br>
+            <span class="text-slate-400 font-bold mt-1 block">"+ Yeni Servis Hattı Tanımla" butonu ile fabrika servislerini ekleyebilirsiniz.</span>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- 1. MODAL: YENİ SERVİS HATTI EKLE -->
+<div id="addShuttleModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-bus text-blue-400"></i>
+                <span>Yeni Servis Hattı Ekle</span>
+            </h3>
+            <button onclick="closeModal('addShuttleModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_servis_ekle') }}" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Servis Adı / Güzergah Başlığı *</label>
+                <input type="text" name="name" required placeholder="Örn: Gebze - Darıca - Fabrika Servisi" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Araç Plakası</label>
+                    <input type="text" name="plate_number" placeholder="Örn: 41 ABC 123" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kapasite (Kaç Kişilik) *</label>
+                    <input type="number" name="capacity" value="16" min="1" max="100" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Şoför Adı Soyadı</label>
+                    <input type="text" name="driver_name" placeholder="Örn: Mustafa Usta" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Şoför Telefon</label>
+                    <input type="text" name="driver_phone" placeholder="Örn: 0532 123 4567" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Güzergah Durakları</label>
+                <textarea name="route_stops" rows="2" placeholder="Örn: Çayırova Köprüsü -> Darıca Park -> İstasyon -> Fabrika" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Ek Notlar</label>
+                <input type="text" name="notes" placeholder="Örn: Sabah 07:15 Çayırova başlangıç" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addShuttleModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30">Servisi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. MODAL: SERVİSE PERSONEL / YOLCU EKLE -->
+<div id="addPassengerModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-user-plus text-blue-400"></i>
+                <span>Servise Personel Ekle</span>
+            </h3>
+            <button onclick="closeModal('addPassengerModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <div class="mt-3 mb-2 p-2.5 bg-slate-950 border border-slate-800 rounded-xl">
+            <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Seçili Servis</span>
+            <p id="addPassengerShuttleName" class="text-xs text-blue-300 font-bold mt-0.5 truncate"></p>
+        </div>
+
+        <form id="addPassengerForm" method="POST" class="space-y-3.5 mt-3">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Personel Adı Soyadı *</label>
+                <input type="text" name="person_name" required placeholder="Örn: Ahmet Yılmaz" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Bölüm / Departman</label>
+                    <input type="text" name="department" placeholder="Örn: Kaynak Atölyesi" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Telefon</label>
+                    <input type="text" name="phone" placeholder="Örn: 0500 000 0000" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Biniş Durağı</label>
+                <input type="text" name="boarding_stop" placeholder="Örn: Çayırova Köprüsü Altı" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addPassengerModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-lg shadow-blue-600/30">Personeli Ekle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 3. MODAL: SERVİS DÜZENLE -->
+<div id="editShuttleModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen text-blue-400"></i>
+                <span>Servis Hattını Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editShuttleModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form id="editShuttleForm" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Servis Adı *</label>
+                <input type="text" id="edit_s_name" name="name" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-medium">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Araç Plakası</label>
+                    <input type="text" id="edit_s_plate" name="plate_number" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Kapasite *</label>
+                    <input type="number" id="edit_s_capacity" name="capacity" min="1" max="100" required class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Şoför Adı Soyadı</label>
+                    <input type="text" id="edit_s_driver_name" name="driver_name" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Şoför Telefon</label>
+                    <input type="text" id="edit_s_driver_phone" name="driver_phone" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Güzergah Durakları</label>
+                <textarea id="edit_s_stops" name="route_stops" rows="2" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Ek Notlar</label>
+                <input type="text" id="edit_s_notes" name="notes" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editShuttleModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold">Güncellemeyi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openAddPassengerModal(shuttleId, shuttleName) {
+        document.getElementById('addPassengerShuttleName').textContent = shuttleName || ('Servis #' + shuttleId);
+        document.getElementById('addPassengerForm').action = `/api/servis/${shuttleId}/yolcu-ekle`;
+        openModal('addPassengerModal');
+    }
+
+    function openEditShuttleModal(s) {
+        document.getElementById('edit_s_name').value = s.name || '';
+        document.getElementById('edit_s_plate').value = s.plate_number || '';
+        document.getElementById('edit_s_capacity').value = s.capacity || 16;
+        document.getElementById('edit_s_driver_name').value = s.driver_name || '';
+        document.getElementById('edit_s_driver_phone').value = s.driver_phone || '';
+        document.getElementById('edit_s_stops').value = s.route_stops || '';
+        document.getElementById('edit_s_notes').value = s.notes || '';
+        document.getElementById('editShuttleForm').action = `/api/servis/${s.id}/guncelle`;
+        openModal('editShuttleModal');
+    }
+</script>
+{% endblock %}

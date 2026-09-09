@@ -1092,6 +1092,114 @@ def init_db():
     )
     ''')
 
+    # 22. İSG (İŞ SAĞLIĞI VE GÜVENLİĞİ) UYGUNSUZLUK VE BİLDİRİM TABLOSU
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS isg_records (
+        id {pk_type},
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'Uygunsuzluk',
+        location TEXT,
+        description TEXT NOT NULL,
+        photo_url TEXT,
+        priority TEXT DEFAULT 'Orta',
+        status TEXT DEFAULT 'Açık',
+        corrective_action TEXT,
+        assigned_to TEXT,
+        reported_by TEXT,
+        created_at TEXT,
+        updated_at TEXT
+    )
+    ''')
+
+    # 23. SERVİS GÜZERGAHLARI VE YOLCU LİSTESİ TABLOLARI
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS shuttle_routes (
+        id {pk_type},
+        name TEXT NOT NULL,
+        driver_name TEXT,
+        driver_phone TEXT,
+        plate_number TEXT,
+        capacity INTEGER DEFAULT 16,
+        route_stops TEXT,
+        notes TEXT,
+        created_at TEXT
+    )
+    ''')
+
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS shuttle_passengers (
+        id {pk_type},
+        shuttle_id INTEGER NOT NULL,
+        person_name TEXT NOT NULL,
+        department TEXT,
+        boarding_stop TEXT,
+        phone TEXT,
+        created_at TEXT,
+        FOREIGN KEY (shuttle_id) REFERENCES shuttle_routes(id) ON DELETE CASCADE
+    )
+    ''')
+
+    # 24. DEPO & SARF MALZEME STOK VE HAREKET TABLOLARI
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS inventory_consumables (
+        id {pk_type},
+        code TEXT,
+        name TEXT NOT NULL,
+        category TEXT DEFAULT 'Kaynak & Montaj',
+        unit TEXT DEFAULT 'Adet',
+        current_qty REAL DEFAULT 0,
+        critical_level REAL DEFAULT 10,
+        shelf_location TEXT,
+        notes TEXT,
+        updated_at TEXT
+    )
+    ''')
+
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS inventory_transactions (
+        id {pk_type},
+        material_id INTEGER NOT NULL,
+        trans_type TEXT DEFAULT 'Çıkış',
+        qty REAL NOT NULL,
+        recipient_person TEXT,
+        project_id INTEGER,
+        machine_name TEXT,
+        foreman_name TEXT,
+        notes TEXT,
+        created_by TEXT,
+        created_at TEXT,
+        FOREIGN KEY (material_id) REFERENCES inventory_consumables(id) ON DELETE CASCADE
+    )
+    ''')
+
+    # 25. %100 ANONİM SAHA & İŞYERİ BİLDİRİM KUTUSU (KİMLİK VE IP KESİNLİKLE SAKLANMAZ)
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS anonymous_reports (
+        id {pk_type},
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'Genel',
+        description TEXT NOT NULL,
+        media_url TEXT,
+        media_type TEXT DEFAULT 'image',
+        status TEXT DEFAULT 'İletildi',
+        created_at TEXT
+    )
+    ''')
+
+    # 26. SİSTEM GELİŞTİRME & ANONİM GERİ BİLDİRİM KUTUSU (SADECE ADMİN YÖNETİR)
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS system_feature_requests (
+        id {pk_type},
+        title TEXT NOT NULL,
+        category TEXT DEFAULT 'Yeni Özellik',
+        description TEXT NOT NULL,
+        status TEXT DEFAULT 'Yeni',
+        admin_notes TEXT,
+        created_at TEXT
+    )
+    ''')
+
+
     # 26. HIZLANDIRMA İNDEKSLERİ (PERFORMANCE INDEXES)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_parts_project_id ON parts(project_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_parts_pos_no ON parts(pos_no)")
@@ -3030,3 +3138,338 @@ def delete_cutting_batch(batch_id, user_info=None):
 
 
 
+
+
+# =========================================================================
+# 22. İSG & SAHA UYGUNSUZLUK MODÜLÜ VERİ FONKSİYONLARI
+# =========================================================================
+def get_isg_records(status=None):
+    """İSG ve uygunsuzluk kayıtlarını getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute("SELECT * FROM isg_records WHERE status = ? ORDER BY id DESC", (status,))
+    else:
+        cursor.execute("SELECT * FROM isg_records ORDER BY id DESC")
+    records = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return records
+
+def add_isg_record(title, category, location, description, photo_url, priority, status='Açık', corrective_action='', assigned_to='', reported_by=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO isg_records (title, category, location, description, photo_url, priority, status, corrective_action, assigned_to, reported_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (title.strip(), category or 'Uygunsuzluk', location or '', description.strip(), photo_url or '', priority or 'Orta', status or 'Açık', corrective_action or '', assigned_to or '', reported_by or '', now_str, now_str))
+    record_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return record_id
+
+def update_isg_record(record_id, status, corrective_action='', assigned_to=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    UPDATE isg_records
+    SET status = ?, corrective_action = ?, assigned_to = ?, updated_at = ?
+    WHERE id = ?
+    ''', (status, corrective_action, assigned_to, now_str, record_id))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+def delete_isg_record(record_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM isg_records WHERE id = ?", (record_id,))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+# =========================================================================
+# 23. SERVİS GÜZERGAHLARI VE YOLCU LİSTESİ MODÜLÜ
+# =========================================================================
+def get_shuttle_routes():
+    """Tüm servis hatlarını ve içindeki yolcu sayılarını getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT s.*, COUNT(p.id) as passenger_count
+    FROM shuttle_routes s
+    LEFT JOIN shuttle_passengers p ON s.id = p.shuttle_id
+    GROUP BY s.id
+    ORDER BY s.name ASC
+    ''')
+    shuttles = [dict(r) for r in cursor.fetchall()]
+    
+    for s in shuttles:
+        cursor.execute("SELECT * FROM shuttle_passengers WHERE shuttle_id = ? ORDER BY person_name ASC", (s['id'],))
+        s['passengers'] = [dict(p) for p in cursor.fetchall()]
+    conn.close()
+    return shuttles
+
+def add_shuttle_route(name, driver_name, driver_phone, plate_number, capacity, route_stops, notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO shuttle_routes (name, driver_name, driver_phone, plate_number, capacity, route_stops, notes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name.strip(), driver_name or '', driver_phone or '', plate_number or '', int(capacity or 16), route_stops or '', notes or '', now_str))
+    shuttle_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return shuttle_id
+
+def update_shuttle_route(shuttle_id, name, driver_name, driver_phone, plate_number, capacity, route_stops, notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE shuttle_routes
+    SET name = ?, driver_name = ?, driver_phone = ?, plate_number = ?, capacity = ?, route_stops = ?, notes = ?
+    WHERE id = ?
+    ''', (name.strip(), driver_name or '', driver_phone or '', plate_number or '', int(capacity or 16), route_stops or '', notes or '', shuttle_id))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+def delete_shuttle_route(shuttle_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM shuttle_passengers WHERE shuttle_id = ?", (shuttle_id,))
+    cursor.execute("DELETE FROM shuttle_routes WHERE id = ?", (shuttle_id,))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+def add_shuttle_passenger(shuttle_id, person_name, department='', boarding_stop='', phone=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO shuttle_passengers (shuttle_id, person_name, department, boarding_stop, phone, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (shuttle_id, person_name.strip(), department or '', boarding_stop or '', phone or '', now_str))
+    p_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return p_id
+
+def delete_shuttle_passenger(passenger_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM shuttle_passengers WHERE id = ?", (passenger_id,))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+# =========================================================================
+# 24. DEPO & SARF MALZEME STOK TAKİBİ VE ÇIKIŞ İŞLEMLERİ
+# =========================================================================
+def get_consumables(category=None, critical_only=False):
+    """Sarf malzemeleri getirir. critical_only=True ise mevcut stok <= kritik seviye olanları döner."""
+    conn = get_db()
+    cursor = conn.cursor()
+    query = "SELECT * FROM inventory_consumables"
+    params = []
+    conditions = []
+    
+    if category:
+        conditions.append("category = ?")
+        params.append(category)
+    if critical_only:
+        conditions.append("current_qty <= critical_level")
+        
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        
+    query += " ORDER BY CASE WHEN current_qty <= critical_level THEN 0 ELSE 1 END, name ASC"
+    
+    cursor.execute(query, tuple(params))
+    items = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return items
+
+def add_consumable(code, name, category, unit, current_qty, critical_level, shelf_location='', notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO inventory_consumables (code, name, category, unit, current_qty, critical_level, shelf_location, notes, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (code or '', name.strip(), category or 'Kaynak & Montaj', unit or 'Adet', float(current_qty or 0), float(critical_level or 10), shelf_location or '', notes or '', now_str))
+    item_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return item_id
+
+def update_consumable(item_id, code, name, category, unit, critical_level, shelf_location='', notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    UPDATE inventory_consumables
+    SET code = ?, name = ?, category = ?, unit = ?, critical_level = ?, shelf_location = ?, notes = ?, updated_at = ?
+    WHERE id = ?
+    ''', (code or '', name.strip(), category or 'Kaynak & Montaj', unit or 'Adet', float(critical_level or 10), shelf_location or '', notes or '', now_str, item_id))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+def record_consumable_transaction(material_id, trans_type, qty, recipient_person='', project_id=None, machine_name='', foreman_name='', notes='', created_by=''):
+    """
+    Sarf malzeme çıkışı veya girişi yapar.
+    Çıkış yapıldığında malzeme stoğundan otomatik düşer ve hareket kaydı oluşturur.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    qty_val = float(qty or 0)
+    
+    cursor.execute("SELECT id, current_qty, name FROM inventory_consumables WHERE id = ?", (material_id,))
+    item = cursor.fetchone()
+    if not item:
+        conn.close()
+        return False, "Malzeme bulunamadı."
+        
+    current = float(item['current_qty'] or 0)
+    if trans_type == 'Çıkış':
+        new_qty = max(0.0, current - qty_val)
+    else:
+        new_qty = current + qty_val
+        
+    cursor.execute("UPDATE inventory_consumables SET current_qty = ?, updated_at = ? WHERE id = ?", (new_qty, now_str, material_id))
+    
+    cursor.execute('''
+    INSERT INTO inventory_transactions (material_id, trans_type, qty, recipient_person, project_id, machine_name, foreman_name, notes, created_by, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (material_id, trans_type or 'Çıkış', qty_val, recipient_person or '', project_id or None, machine_name or '', foreman_name or '', notes or '', created_by or '', now_str))
+    
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return True, f"{item['name']} stoğu güncellendi (Kalan: {new_qty})."
+
+def get_consumable_transactions(material_id=None, limit=100):
+    conn = get_db()
+    cursor = conn.cursor()
+    query = '''
+    SELECT t.*, m.name as material_name, m.unit as material_unit, m.code as material_code, p.code as project_code, p.name as project_name
+    FROM inventory_transactions t
+    JOIN inventory_consumables m ON t.material_id = m.id
+    LEFT JOIN projects p ON t.project_id = p.id
+    '''
+    params = []
+    if material_id:
+        query += " WHERE t.material_id = ?"
+        params.append(material_id)
+    query += " ORDER BY t.id DESC LIMIT ?"
+    params.append(limit)
+    
+    cursor.execute(query, tuple(params))
+    txs = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return txs
+
+def delete_consumable(material_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM inventory_transactions WHERE material_id = ?", (material_id,))
+    cursor.execute("DELETE FROM inventory_consumables WHERE id = ?", (material_id,))
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+
+# =========================================================================
+# 25. %100 ANONİM SAHA & İŞYERİ BİLDİRİM KUTUSU
+# =========================================================================
+def get_anonymous_reports():
+    """Tüm anonim bildirimleri getirir (Kullanıcı veya IP bilgisi içermez)."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM anonymous_reports ORDER BY id DESC")
+    reports = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return reports
+
+def add_anonymous_report(title, category, description, media_url='', media_type='image'):
+    """
+    %100 Kimliksiz Bildirim Kaydı.
+    user_id, username, IP adresi KESİNLİKLE parametre alınmaz ve kaydedilmez.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO anonymous_reports (title, category, description, media_url, media_type, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'İletildi', ?)
+    ''', (title.strip(), category or 'Genel', description.strip(), media_url or '', media_type or 'image', now_str))
+    rep_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return rep_id
+
+def update_anonymous_report_status(report_id, status):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE anonymous_reports SET status = ? WHERE id = ?", (status, report_id))
+    conn.commit()
+    conn.close()
+
+def delete_anonymous_report(report_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM anonymous_reports WHERE id = ?", (report_id,))
+    conn.commit()
+    conn.close()
+
+# =========================================================================
+# 26. SİSTEM GELİŞTİRME & ANONİM GERİ BİLDİRİM KUTUSU (ADMİN YÖNETİR)
+# =========================================================================
+def get_system_feature_requests():
+    """Sistem geliştirme taleplerini getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM system_feature_requests ORDER BY id DESC")
+    requests = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return requests
+
+def add_system_feature_request(title, category, description):
+    """Anonim sistem istek / geliştirme talebi ekler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute('''
+    INSERT INTO system_feature_requests (title, category, description, status, created_at)
+    VALUES (?, ?, ?, 'Yeni', ?)
+    ''', (title.strip(), category or 'Yeni Özellik', description.strip(), now_str))
+    req_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return req_id
+
+def update_system_feature_request(req_id, status, admin_notes=''):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE system_feature_requests
+    SET status = ?, admin_notes = ?
+    WHERE id = ?
+    ''', (status, admin_notes or '', req_id))
+    conn.commit()
+    conn.close()
+
+def delete_system_feature_request(req_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM system_feature_requests WHERE id = ?", (req_id,))
+    conn.commit()
+    conn.close()
