@@ -881,14 +881,26 @@ def init_db():
 
     ensure_column(cursor, "system_settings", "app_title", "TEXT", "'ORDUMAK ÇELİK İMALAT MES'")
     ensure_column(cursor, "system_settings", "app_subtitle", "TEXT", "'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi'")
-    ensure_column(cursor, "system_settings", "company_logo_url", "TEXT", "'/static/img/ordumak_logo.png'")
-    ensure_column(cursor, "system_settings", "company_website_url", "TEXT", "'https://ordumak.com'")
+    ensure_column(cursor, "system_settings", "company_logo_url", "TEXT", "'/api/company-logo'")
+    ensure_column(cursor, "system_settings", "company_website_url", "TEXT", "'https://ordumak.com.tr'")
 
     cursor.execute('SELECT COUNT(*) as count FROM system_settings')
     if cursor.fetchone()['count'] == 0:
         cursor.execute('''
         INSERT INTO system_settings (app_title, app_subtitle, company_name, company_sub_title, company_address, company_phone, company_email, company_tax_info, company_logo_url, company_website_url)
-        VALUES ('ORDUMAK ÇELİK İMALAT MES', 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi', 'ORDUMAK ÇELİK VE METAL İMALAT SAN. TİC. A.Ş.', 'Endüstriyel Çelik Konstrüksiyon & İmalat Tesisleri', 'Dilovası İMES Organize Sanayi Bölgesi Kocaeli', '+90 (262) 555 01 23', 'info@ordumak.com', 'Dilovası V.D. - 1234567890', '/static/img/ordumak_logo.png', 'https://ordumak.com')
+        VALUES ('ORDUMAK ÇELİK İMALAT MES', 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi', 'ORDUMAK ÇELİK VE METAL İMALAT SAN. TİC. A.Ş.', 'Endüstriyel Çelik Konstrüksiyon & İmalat Tesisleri', 'Dilovası İMES Organize Sanayi Bölgesi Kocaeli', '+90 (262) 555 01 23', 'info@ordumak.com', 'Dilovası V.D. - 1234567890', '/api/company-logo', 'https://ordumak.com.tr')
+        ''')
+    else:
+        # Eski veya silinmiş logo referanslarını temizle ve doğru web sitesine güncelle
+        cursor.execute('''
+        UPDATE system_settings
+        SET company_logo_url = '/api/company-logo'
+        WHERE company_logo_url LIKE '%logo_2026%' OR company_logo_url IS NULL OR company_logo_url = '' OR company_logo_url = '/static/img/ordumak_logo.png'
+        ''')
+        cursor.execute('''
+        UPDATE system_settings
+        SET company_website_url = 'https://ordumak.com.tr'
+        WHERE company_website_url = 'https://ordumak.com' OR company_website_url IS NULL OR company_website_url = ''
         ''')
 
     # 18. OPERATÖRLER TABLOSU

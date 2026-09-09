@@ -449,6 +449,107 @@ def serve_upload_fallback(filename):
         return serve_company_logo()
     return abort(404)
 
+EMBEDDED_STYLE_CSS = """
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.8); border-radius: 9999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 1); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+.animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+.animate-scale-up { animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+tbody tr { transition: background-color 0.15s ease; }
+input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); }
+""".strip()
+
+EMBEDDED_MAIN_JS = """
+function formatNumber(num, decimals = 2) {
+    if (num === null || num === undefined || isNaN(num)) return '0,00';
+    return Number(num).toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.style.overflow = ''; }
+}
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('[id$="Modal"]').forEach(m => { if (!m.classList.contains('hidden')) closeModal(m.id); });
+    }
+});
+function initAutoDismissAlerts() {
+    document.querySelectorAll('.animate-fade-in').forEach(al => {
+        setTimeout(() => {
+            if (al && al.parentElement) {
+                al.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                al.style.opacity = '0';
+                al.style.transform = 'translateY(-10px)';
+                setTimeout(() => { if (al && al.parentElement) al.remove(); }, 500);
+            }
+        }, 6000);
+    });
+}
+document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
+(function () {
+    function showProgressBar() {
+        let bar = document.getElementById('turboProgressBar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'turboProgressBar';
+            bar.className = 'fixed top-0 left-0 h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 z-[999999] transition-all duration-200 pointer-events-none shadow-sm shadow-blue-500/50';
+            bar.style.width = '0%';
+            document.body.appendChild(bar);
+        }
+        bar.style.opacity = '1';
+        bar.style.width = '30%';
+        setTimeout(() => { if (bar) bar.style.width = '70%'; }, 50);
+        setTimeout(() => { if (bar) bar.style.width = '90%'; }, 200);
+    }
+    document.addEventListener('click', function (e) {
+        const a = e.target.closest('a');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || a.getAttribute('target') === '_blank' || a.hasAttribute('download')) return;
+        showProgressBar();
+    });
+    window.addEventListener('beforeunload', showProgressBar);
+})();
+""".strip()
+
+EMBEDDED_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80"><defs><linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#1E3A8A"/></linearGradient><linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#D97706"/></linearGradient></defs><g transform="translate(10, 10)"><polygon points="30,4 56,19 56,49 30,64 4,49 4,19" fill="none" stroke="url(#blueGrad)" stroke-width="5" stroke-linejoin="round"/><polygon points="30,14 46,24 46,44 30,54 14,44 14,24" fill="url(#blueGrad)" opacity="0.15"/><path d="M22 22 L38 22 M30 22 L30 46 M22 46 L38 46" stroke="url(#orangeGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></g><text x="80" y="44" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="900" letter-spacing="1.5" fill="#FFFFFF">ORDU<tspan fill="#3B82F6">MAK</tspan></text><text x="82" y="62" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700" letter-spacing="3.5" fill="#94A3B8">ÇELİK VE METAL İMALAT</text></svg>"""
+
+@app.route('/static/css/style.css')
+def serve_static_style_css():
+    css_path = os.path.join(BASE_DIR, 'static', 'css', 'style.css')
+    if os.path.exists(css_path):
+        return send_file(css_path, mimetype='text/css')
+    return EMBEDDED_STYLE_CSS, 200, {'Content-Type': 'text/css'}
+
+@app.route('/static/js/main.js')
+@app.route('/static/js/app.js')
+def serve_static_main_js():
+    js_path = os.path.join(BASE_DIR, 'static', 'js', 'main.js')
+    if os.path.exists(js_path):
+        return send_file(js_path, mimetype='application/javascript')
+    return EMBEDDED_MAIN_JS, 200, {'Content-Type': 'application/javascript'}
+
+@app.route('/static/img/ordumak_logo.svg')
+def serve_static_logo_svg():
+    svg_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.svg')
+    if os.path.exists(svg_path):
+        return send_file(svg_path, mimetype='image/svg+xml')
+    return EMBEDDED_LOGO_SVG, 200, {'Content-Type': 'image/svg+xml'}
+
+@app.route('/static/img/ordumak_logo.png')
+def serve_static_logo_png():
+    png_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.png')
+    if os.path.exists(png_path):
+        return send_file(png_path, mimetype='image/png')
+    return serve_company_logo()
+
 @app.after_request
 def add_cache_and_compression(response):
     """Statik dosyalar ve sayfalar için yüksek hızlı önbellekleme ve Gzip sıkıştırması."""
