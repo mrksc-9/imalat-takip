@@ -1,0 +1,123 @@
+{% extends "layout.html" %}
+
+{% block title %}Site Geliştirme & Düzenleme İstek Kutusu - ORDUMAK MES{% endblock %}
+{% block page_title %}💡 Sistem Geliştirme & Düzenleme İstek Kutusu{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- BİLGİLENDİRME KARTI -->
+    <div class="bg-gradient-to-r from-blue-950/80 via-slate-950 to-indigo-950/80 border border-blue-500/40 rounded-2xl p-6 shadow-xl space-y-2">
+        <h3 class="text-base font-black text-white flex items-center gap-2">
+            <i class="fa-solid fa-lightbulb text-yellow-400 text-lg"></i>
+            <span>Site İçin Düzenleme, Özellik & Tasarım İsteklerinizi Paylaşın</span>
+        </h3>
+        <p class="text-xs text-blue-200/90 leading-relaxed">
+            Kullanmakta olduğunuz ORDUMAK MES sisteminde görmek istediğiniz yeni özellikleri, rapor şablonlarını, hesaplama formüllerini veya arayüz düzeltmelerini buradan serbestçe iletebilirsiniz.
+        </p>
+    </div>
+
+    <!-- İSTEK GÖNDERME FORMU -->
+    <div class="bg-slate-950/90 border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-4">
+        <div class="border-b border-slate-800 pb-3">
+            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+                <span>Yeni Geliştirme / Düzenleme Talebi İlet</span>
+            </h4>
+        </div>
+
+        <form action="{{ url_for('api_sistem_istek_gonder') }}" method="POST" class="space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Talebinizin Başlığı / Kısa Konu *</label>
+                <input type="text" name="title" required placeholder="Örn: Kesim analizinde plaka ebatlarına göre gruplama eklensin" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white font-medium focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Talep Kategorisi</label>
+                <select name="category" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-semibold focus:outline-none focus:border-blue-500">
+                    <option value="Yeni Özellik">✨ Yeni Özellik & Modül İsteği</option>
+                    <option value="Arayüz & Tasarım">🎨 Sayfa Tasarımı & Kolay Kullanım</option>
+                    <option value="Hata / Düzeltme">🐛 Hata Düzeltme & Mantık Ayarı</option>
+                    <option value="Rapor & Excel">📊 Raporlama & Excel Çıktısı</option>
+                    <option value="Performans & Hız">⚡ Hız & Performans</option>
+                    <option value="Diğer">💡 Diğer Öneri</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Detaylı Açıklama & İstediğiniz Çalışma Şekli *</label>
+                <textarea name="description" required rows="4" placeholder="İstediğiniz özelliğin nasıl çalışmasını istersiniz, hangi verileri görmeliyiz veya hangi butonlar eklenmeli? Detaylıca anlatınız..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3.5 text-white focus:outline-none focus:border-blue-500 leading-relaxed"></textarea>
+            </div>
+
+            <div class="flex items-center justify-end pt-2">
+                <button type="submit" class="px-6 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs transition-all shadow-xl shadow-blue-600/30 flex items-center gap-2">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span>Talebi Sisteme İlet</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- SADECE ADMİN İÇİN: GELEN TALEPLER YÖNETİM PANELİ (KULLANICI İSTEĞİ: SADECE ADMİN GÖRÜR) -->
+    {% if is_admin %}
+    <div class="bg-slate-950/95 border-2 border-indigo-500/40 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h4 class="text-sm font-black text-indigo-300 flex items-center gap-2">
+                <i class="fa-solid fa-crown text-yellow-400"></i>
+                <span>Yönetici Paneli: Gelen Sistem Geliştirme Talepleri ({{ requests_list|length }})</span>
+            </h4>
+            <span class="text-[11px] text-slate-500">Bu alan yalnızca yöneticilere özeldir.</span>
+        </div>
+
+        <div class="space-y-3">
+            {% for req in requests_list %}
+            <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2.5">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                            {{ req.category }}
+                        </span>
+                        <h5 class="text-sm font-bold text-white mt-1">{{ req.title }}</h5>
+                    </div>
+                    <span class="text-[11px] font-mono text-slate-500">{{ req.created_at }}</span>
+                </div>
+
+                <p class="text-xs text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800/80 leading-relaxed whitespace-pre-line">
+                    {{ req.description }}
+                </p>
+
+                {% if req.admin_notes %}
+                <div class="text-[11px] text-indigo-300 bg-indigo-950/30 p-2.5 rounded-lg border border-indigo-500/30">
+                    <b>Yönetici Notu:</b> {{ req.admin_notes }}
+                </div>
+                {% endif %}
+
+                <!-- Durum Güncelleme ve Silme -->
+                <div class="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                    <form action="{{ url_for('api_sistem_istek_durum', req_id=req.id) }}" method="POST" class="flex items-center gap-2 flex-1">
+                        <select name="status" class="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-bold">
+                            <option value="Yeni" {% if req.status == 'Yeni' %}selected{% endif %}>🔵 Yeni Talep</option>
+                            <option value="İncelendi" {% if req.status == 'İncelendi' %}selected{% endif %}>🟡 İncelendi</option>
+                            <option value="Planlandı" {% if req.status == 'Planlandı' %}selected{% endif %}>🟠 Planlandı</option>
+                            <option value="Tamamlandı" {% if req.status == 'Tamamlandı' %}selected{% endif %}>🟢 Yapıldı / Tamamlandı</option>
+                        </select>
+                        <input type="text" name="admin_notes" value="{{ req.admin_notes or '' }}" placeholder="Yönetici Notu Ekle..." class="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1">
+                        <button type="submit" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold">Güncelle</button>
+                    </form>
+
+                    <form action="{{ url_for('api_sistem_istek_sil', req_id=req.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu talebi silmek istediğinizden emin misiniz?');">
+                        <button type="submit" class="p-1.5 bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700 text-xs" title="Sil">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <p class="text-xs text-slate-500 italic py-3 text-center">Henüz kayıtlı bir geliştirme talebi bulunmuyor.</p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

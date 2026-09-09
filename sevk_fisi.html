@@ -47,11 +47,7 @@
             <!-- 1. RESMİ BAŞLIK VE LOGO ALANI -->
             <div class="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
                 <div class="flex items-center gap-4">
-                    {% if settings.company_logo_url %}
-                    <img src="{{ settings.company_logo_url }}" alt="Firma Logosu" class="h-16 w-auto object-contain max-w-[130px]">
-                    {% else %}
-                    <img src="/static/img/ordumak_logo.png" alt="Firma Logosu" onerror="this.style.display='none'" class="h-16 w-auto object-contain max-w-[130px]">
-                    {% endif %}
+                    <img src="{{ settings.company_logo_url or '/api/company-logo' }}" alt="Firma Logosu" onerror="this.onerror=null; this.src='/api/company-logo';" class="h-16 w-auto object-contain max-w-[130px]">
                     <div>
                         <h1 class="text-xl font-black tracking-wider text-slate-950 uppercase">{{ settings.company_name or 'ÇELİK KONSTRÜKSİYON SAN. VE TİC. A.Ş.' }}</h1>
                         <p class="text-xs text-slate-600 font-semibold mt-0.5">{{ settings.company_sub_title or 'Endüstriyel Yapılar, Çelik İmalat & Montaj Tesisleri' }}</p>

@@ -1,0 +1,258 @@
+{% extends "layout.html" %}
+
+{% block title %}İSG & Saha Uygunsuzluk Takibi - ORDUMAK MES{% endblock %}
+{% block page_title %}İş Sağlığı, Güvenliği & Saha Uygunsuzluk Takip Sistemi{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BİLGİ & EYLEMLER KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-helmet-safety text-amber-400 text-lg"></i>
+                <span>İSG Bildirimleri, Ramak Kala & Düzeltici Önleyici Faaliyetler</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Saha ve fabrikadaki uygunsuzlukları, tehlikeli durumları veya ramak kala olayları fotoğraflı olarak kaydedin ve aksiyonları takip edin.</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            <!-- Durum Filtresi -->
+            <form method="GET" action="{{ url_for('isg_takip') }}" class="flex items-center gap-2">
+                <select name="status" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-medium">
+                    <option value="">-- Tüm Durumlar --</option>
+                    <option value="Açık" {% if selected_status == 'Açık' %}selected{% endif %}>🔴 Açık Uygunsuzluklar</option>
+                    <option value="İnceleniyor" {% if selected_status == 'İnceleniyor' %}selected{% endif %}>🟡 İnceleniyor</option>
+                    <option value="Düzeltildi" {% if selected_status == 'Düzeltildi' %}selected{% endif %}>🟢 Düzeltildi / Kapatıldı</option>
+                </select>
+            </form>
+
+            <button onclick="openModal('addIsgModal')" class="px-4 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-400 text-slate-950 rounded-xl text-xs font-black transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2">
+                <i class="fa-solid fa-plus text-sm"></i>
+                <span>+ Yeni İSG / Uygunsuzluk Bildir</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- İSG BİLDİRİM LİSTESİ -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {% for r in records %}
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl transition-all hover:border-slate-700 relative overflow-hidden flex flex-col justify-between">
+            <!-- Üst Renk Çizgisi -->
+            <div class="absolute top-0 left-0 right-0 h-1 {% if r.priority == 'Kritik' %}bg-rose-500{% elif r.priority == 'Yüksek' %}bg-amber-500{% else %}bg-blue-500{% endif %}"></div>
+
+            <div class="space-y-3">
+                <!-- Başlık & Öncelik -->
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded
+                            {% if r.category == 'Ramak Kala' %}bg-purple-500/20 text-purple-400 border border-purple-500/30
+                            {% elif r.category == 'Tehlikeli Durum' %}bg-rose-500/20 text-rose-400 border border-rose-500/30
+                            {% else %}bg-amber-500/20 text-amber-400 border border-amber-500/30{% endif %}">
+                            {{ r.category }}
+                        </span>
+                        <h4 class="text-sm font-bold text-white mt-1.5 leading-snug">{{ r.title }}</h4>
+                    </div>
+
+                    <span class="text-[10px] font-black px-2 py-0.5 rounded-full shrink-0
+                        {% if r.priority == 'Kritik' %}bg-rose-600 text-white animate-pulse
+                        {% elif r.priority == 'Yüksek' %}bg-amber-600 text-slate-950
+                        {% else %}bg-slate-800 text-slate-300{% endif %}">
+                        {{ r.priority }}
+                    </span>
+                </div>
+
+                <!-- Konum & Tarih & Bildiren -->
+                <div class="text-[11px] text-slate-400 space-y-1">
+                    {% if r.location %}
+                    <div class="flex items-center gap-1.5 text-slate-300">
+                        <i class="fa-solid fa-location-dot text-amber-400"></i>
+                        <span>{{ r.location }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="flex items-center gap-3 text-slate-500">
+                        <span><i class="fa-regular fa-calendar mr-1"></i>{{ r.created_at[:10] }}</span>
+                        <span><i class="fa-solid fa-user-shield mr-1"></i>{{ r.reported_by }}</span>
+                    </div>
+                </div>
+
+                <!-- Açıklama -->
+                <p class="text-xs text-slate-300 bg-slate-900/90 p-3 rounded-xl border border-slate-800/80 leading-relaxed">
+                    {{ r.description }}
+                </p>
+
+                <!-- Fotoğraf (Varsa) -->
+                {% if r.photo_url %}
+                <div class="rounded-xl overflow-hidden border border-slate-800 max-h-48 bg-slate-900">
+                    <a href="{{ r.photo_url }}" target="_blank">
+                        <img src="{{ r.photo_url }}" alt="İSG Fotoğrafı" class="w-full h-40 object-cover hover:scale-105 transition-transform">
+                    </a>
+                </div>
+                {% endif %}
+
+                <!-- Düzeltici Faaliyet / Aksiyon (Varsa) -->
+                {% if r.corrective_action %}
+                <div class="p-3 bg-emerald-950/20 border border-emerald-500/30 rounded-xl text-xs space-y-1">
+                    <span class="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
+                        <i class="fa-solid fa-check-double"></i> Alınan Önlem / DÖF:
+                    </span>
+                    <p class="text-slate-300">{{ r.corrective_action }}</p>
+                    {% if r.assigned_to %}
+                    <span class="text-[10px] text-slate-400 block mt-1">Sorumlu: <b>{{ r.assigned_to }}</b></span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Alt Durum & Güncelleme Çubuğu -->
+            <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                <form action="{{ url_for('api_isg_guncelle', record_id=r.id) }}" method="POST" class="flex items-center gap-1.5 flex-1">
+                    <select name="status" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs font-bold cursor-pointer flex-1
+                        {% if r.status == 'Düzeltildi' %}text-emerald-400 border-emerald-500/40
+                        {% elif r.status == 'İnceleniyor' %}text-amber-400 border-amber-500/40
+                        {% else %}text-rose-400 border-rose-500/40{% endif %}">
+                        <option value="Açık" {% if r.status == 'Açık' %}selected{% endif %}>🔴 Açık</option>
+                        <option value="İnceleniyor" {% if r.status == 'İnceleniyor' %}selected{% endif %}>🟡 İnceleniyor</option>
+                        <option value="Düzeltildi" {% if r.status == 'Düzeltildi' %}selected{% endif %}>🟢 Düzeltildi</option>
+                    </select>
+                </form>
+
+                <button onclick='openEditIsgModal({{ r | tojson | safe }})' class="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg border border-slate-700 text-xs" title="Önlem / DÖF Ekle">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+
+                <form action="{{ url_for('api_isg_sil', record_id=r.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu İSG kaydını silmek istediğinizden emin misiniz?');">
+                    <button type="submit" class="p-1.5 bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 rounded-lg border border-slate-700 text-xs" title="Sil">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full py-12 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            <i class="fa-solid fa-shield-halved text-4xl mb-3 text-amber-500/40 block"></i>
+            Kayıtlı İSG uygunsuzluk veya ramak kala bildirimi bulunmuyor. <br>
+            <span class="text-slate-400 font-bold mt-1 block">"+ Yeni İSG / Uygunsuzluk Bildir" butonu ile sahada tespit edilen durumları kaydedebilirsiniz.</span>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- 1. MODAL: YENİ İSG / UYGUNSUZLUK EKLE -->
+<div id="addIsgModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up text-xs max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                <span>Yeni İSG / Uygunsuzluk Bildirimi</span>
+            </h3>
+            <button onclick="closeModal('addIsgModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_isg_ekle') }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Bildirim Başlığı / Konu *</label>
+                <input type="text" name="title" required placeholder="Örn: 3 Nolu Kaynak Holünde Yangın Tüpü Önü Kapalı" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500 font-medium">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Bildirim Kategorisi</label>
+                    <select name="category" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-semibold focus:outline-none focus:border-amber-500">
+                        <option value="Uygunsuzluk">⚠️ Uygunsuzluk</option>
+                        <option value="Ramak Kala">⚡ Ramak Kala</option>
+                        <option value="Tehlikeli Durum">🛑 Tehlikeli Durum / Davranış</option>
+                        <option value="İSG Önerisi">💡 İSG İyileştirme Önerisi</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-semibold">Öncelik Seviyesi</label>
+                    <select name="priority" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-amber-500">
+                        <option value="Orta" selected>🟡 Orta Öncelik</option>
+                        <option value="Yüksek">🟠 Yüksek Öncelik</option>
+                        <option value="Kritik">🔴 Kritik / Acil Durdurma</option>
+                        <option value="Düşük">🟢 Düşük Öncelik</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Konum / Alan / İstasyon</label>
+                <input type="text" name="location" placeholder="Örn: Hol 2, Plazma Kesim İstasyonu Yanı" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Olay / Uygunsuzluk Açıklaması *</label>
+                <textarea name="description" required rows="3" placeholder="Gözlemlenen tehlikeli durum veya uygunsuzluğu detaylıca açıklayın..." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Fotoğraf Ekle (Opsiyonel)</label>
+                <input type="file" name="photo" accept="image/*" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-300 text-xs focus:outline-none focus:border-amber-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:bg-slate-800 file:text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addIsgModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black shadow-lg shadow-amber-500/20">Bildirimi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. MODAL: DÜZELTİCİ ÖNLEYİCİ FAALİYET & AKSİYON GÜNCELLE -->
+<div id="editIsgModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up text-xs">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-emerald-400"></i>
+                <span>İSG Önlem / DÖF Aksiyonu</span>
+            </h3>
+            <button onclick="closeModal('editIsgModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+        </div>
+
+        <form id="editIsgForm" method="POST" class="mt-4 space-y-3.5">
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Durum</label>
+                <select id="edit_isg_status" name="status" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold">
+                    <option value="Açık">🔴 Açık</option>
+                    <option value="İnceleniyor">🟡 İnceleniyor</option>
+                    <option value="Düzeltildi">🟢 Düzeltildi / Kapatıldı</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Alınan Düzeltici Önlem / Karar</label>
+                <textarea id="edit_isg_action" name="corrective_action" rows="3" placeholder="Örn: Alan temizlendi, malzeme istifleme kurallarına göre yeniden düzenlendi." class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-semibold">Aksiyon Sorumlusu</label>
+                <input type="text" id="edit_isg_assigned" name="assigned_to" placeholder="Örn: Saha Şefi / İSG Uzmanı" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editIsgModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black">Aksiyonu Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function openEditIsgModal(r) {
+        document.getElementById('edit_isg_status').value = r.status || 'Açık';
+        document.getElementById('edit_isg_action').value = r.corrective_action || '';
+        document.getElementById('edit_isg_assigned').value = r.assigned_to || '';
+        document.getElementById('editIsgForm').action = `/api/isg/${r.id}/guncelle`;
+        openModal('editIsgModal');
+    }
+</script>
+{% endblock %}

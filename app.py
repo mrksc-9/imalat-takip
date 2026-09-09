@@ -3,6 +3,9 @@ import re
 import math
 import socket
 import json
+import hashlib
+import urllib.request
+import urllib.parse
 import threading
 import traceback
 import functools
@@ -17,6 +20,11 @@ from flask import (
 )
 
 from database import (
+    get_isg_records, add_isg_record, update_isg_record, delete_isg_record,
+    get_shuttle_routes, add_shuttle_route, update_shuttle_route, delete_shuttle_route, add_shuttle_passenger, delete_shuttle_passenger,
+    get_consumables, add_consumable, update_consumable, delete_consumable, record_consumable_transaction, get_consumable_transactions,
+    get_anonymous_reports, add_anonymous_report, update_anonymous_report_status, delete_anonymous_report,
+    get_system_feature_requests, add_system_feature_request, update_system_feature_request, delete_system_feature_request,
     get_db, init_db, run_schema_migrations, ensure_column, log_activity, hash_password,
     get_global_metrics, get_project_summary, get_all_projects_summary, get_customers, set_project_status,
     get_system_settings, update_system_settings, invalidate_app_cache,
@@ -37,6 +45,7 @@ from database import (
     get_shipments_with_accounting, update_shipment_accounting, get_accounting_summary_stats,
     get_all_roles, get_roles_list, add_custom_role, delete_custom_role,
     get_design_tasks, get_design_task_by_id, save_design_task, update_design_task, delete_design_task, get_design_summary_stats,
+    get_cutting_batches, get_cutting_batch_details, update_cutting_batch_items, delete_cutting_batch,
     get_istanbul_now, get_istanbul_now_str,
     ROLES_LIST, MODULES_LIST
 )
@@ -277,22 +286,397 @@ def ensure_db_and_auth():
             except Exception:
                 pass
 
-    # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW, Manifest ve Push API hariç)
-    if request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe', 'serve_upload_fallback') or (request.path and (request.path.startswith('/static/') or request.path in ('/sw.js', '/manifest.json', '/api/push/vapid-public-key', '/api/push/subscribe'))):
+    # Zorunlu Giriş - Giriş yapmamış kullanıcıları login sayfasına yönlendir (Statik dosyalar, SW, Manifest, Logo ve Push API hariç)
+    if (
+        request.endpoint in ('login', 'static', 'service_worker', 'pwa_manifest', 'api_push_vapid_key', 'api_push_subscribe', 'serve_upload_fallback', 'serve_company_logo', 'serve_static_style_css', 'serve_static_main_js', 'serve_static_logo_svg', 'serve_static_logo_png')
+        or (request.path and (
+            request.path.startswith('/static/')
+            or request.path.startswith('/css/')
+            or request.path.startswith('/js/')
+            or request.path.startswith('/img/')
+            or request.path.endswith(('.css', '.js', '.png', '.svg', '.jpg', '.jpeg', '.webp', '.ico', '.json'))
+            or request.path in ('/favicon.ico', '/apple-touch-icon.png', '/logo', '/api/company-logo', '/sw.js', '/manifest.json', '/style.css', '/main.js', '/ordumak_logo.svg', '/ordumak_logo.png', '/api/push/vapid-public-key', '/api/push/subscribe')
+        ))
+    ):
         return
     if 'user' not in session:
         return redirect(url_for('login'))
 
+def fetch_company_logo_from_website(website_url):
+    """
+    Kullanıcının girdiği firma web sitesinden (örn. https://ordumak.com.tr)
+    kurumsal logoyu otomatik olarak tespit edip indirir ve static/uploads/ altına kaydeder.
+    """
+    if not website_url:
+        return None
+    
+    website_url = website_url.strip()
+    if not website_url.startswith(('http://', 'https://')):
+        website_url = 'https://' + website_url
+        
+    try:
+        parsed = urllib.parse.urlparse(website_url)
+        domain = parsed.netloc or parsed.path
+        domain = domain.replace('www.', '').strip('/')
+    except Exception:
+        return None
+
+    if not domain:
+        return None
+    
+    upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+    os.makedirs(upload_dir, exist_ok=True)
+    domain_hash = hashlib.md5(domain.lower().encode('utf-8')).hexdigest()[:8]
+    target_filename = f"web_logo_{domain_hash}.png"
+    target_path = os.path.join(upload_dir, target_filename)
+
+    # 1. Aşama: Web sitesinin ana sayfasını çekip <img> logo, og:image veya icon etiketlerini ara
+    try:
+        req = urllib.request.Request(
+            website_url,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+            
+            candidates = []
+            
+            # a) <img ... src="...logo...">
+            for m in re.finditer(r'<img[^>]+(?:class|id|alt)=[\'"][^\'"]*logo[^\'"]*[\'"][^>]+src=[\'"]([^\'"]+)[\'"]', html, re.I):
+                candidates.append(m.group(1))
+            for m in re.finditer(r'<img[^>]+src=[\'"]([^\'"]*logo[^\'"]*\.(?:png|svg|webp|jpg|jpeg))[\'"]', html, re.I):
+                candidates.append(m.group(1))
+                
+            # b) <meta property="og:image" content="...">
+            for m in re.finditer(r'<meta[^>]+property=[\'"]og:image[\'"][^>]+content=[\'"]([^\'"]+)[\'"]', html, re.I):
+                candidates.append(m.group(1))
+            for m in re.finditer(r'<meta[^>]+content=[\'"]([^\'"]+)[\'"][^>]+property=[\'"]og:image[\'"]', html, re.I):
+                candidates.append(m.group(1))
+                
+            # c) <link rel="apple-touch-icon" href="..."> veya <link rel="icon" href="...">
+            for m in re.finditer(r'<link[^>]+rel=[\'"](?:apple-touch-icon|icon|shortcut icon)[\'"][^>]+href=[\'"]([^\'"]+)[\'"]', html, re.I):
+                candidates.append(m.group(1))
+                
+            # Adayları indirip test et
+            for cand in candidates:
+                cand_url = urllib.parse.urljoin(website_url, cand)
+                try:
+                    img_req = urllib.request.Request(cand_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+                    with urllib.request.urlopen(img_req, timeout=4) as img_resp:
+                        data = img_resp.read()
+                        if len(data) > 500: # En az 500 bayt geçerli görsel
+                            ext = os.path.splitext(urllib.parse.urlparse(cand_url).path)[1].lower()
+                            if not ext or ext not in ('.png', '.svg', '.webp', '.jpg', '.jpeg'):
+                                ext = '.png'
+                            saved_name = f"web_logo_{domain_hash}{ext}"
+                            saved_path = os.path.join(upload_dir, saved_name)
+                            with open(saved_path, 'wb') as f:
+                                f.write(data)
+                            return f"/static/uploads/{saved_name}"
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Web sitesi HTML tarama uyarısı ({website_url}): {e}")
+        
+    # 2. Aşama: Google High-Res Favicon / Brand Logo API (256px)
+    try:
+        google_fav_url = f"https://www.google.com/s2/favicons?domain={domain}&sz=256"
+        req = urllib.request.Request(google_fav_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = resp.read()
+            if len(data) > 500:
+                with open(target_path, 'wb') as f:
+                    f.write(data)
+                return f"/static/uploads/{target_filename}"
+    except Exception as e:
+        print(f"Google Favicon API uyarısı ({domain}): {e}")
+        
+    return None
+
+EMBEDDED_STYLE_CSS = """
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.8); border-radius: 9999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 1); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleUp { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+.animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+.animate-scale-up { animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+tbody tr { transition: background-color 0.15s ease; }
+input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); }
+""".strip()
+
+EMBEDDED_MAIN_JS = """
+function formatNumber(num, decimals = 2) {
+    if (num === null || num === undefined || isNaN(num)) return '0,00';
+    return Number(num).toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+function openModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); document.body.style.overflow = 'hidden'; }
+}
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); document.body.style.overflow = ''; }
+}
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('[id$="Modal"]').forEach(m => { if (!m.classList.contains('hidden')) closeModal(m.id); });
+    }
+});
+function initAutoDismissAlerts() {
+    document.querySelectorAll('.animate-fade-in').forEach(al => {
+        setTimeout(() => {
+            if (al && al.parentElement) {
+                al.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                al.style.opacity = '0';
+                al.style.transform = 'translateY(-10px)';
+                setTimeout(() => { if (al && al.parentElement) al.remove(); }, 500);
+            }
+        }, 6000);
+    });
+}
+document.addEventListener('DOMContentLoaded', initAutoDismissAlerts);
+(function () {
+    function showProgressBar() {
+        let bar = document.getElementById('turboProgressBar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'turboProgressBar';
+            bar.className = 'fixed top-0 left-0 h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 z-[999999] transition-all duration-200 pointer-events-none shadow-sm shadow-blue-500/50';
+            bar.style.width = '0%';
+            document.body.appendChild(bar);
+        }
+        bar.style.opacity = '1';
+        bar.style.width = '30%';
+        setTimeout(() => { if (bar) bar.style.width = '70%'; }, 50);
+        setTimeout(() => { if (bar) bar.style.width = '90%'; }, 200);
+    }
+    document.addEventListener('click', function (e) {
+        const a = e.target.closest('a');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || a.getAttribute('target') === '_blank' || a.hasAttribute('download')) return;
+        showProgressBar();
+    });
+    window.addEventListener('beforeunload', showProgressBar);
+})();
+""".strip()
+
+EMBEDDED_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80"><defs><linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#2563EB"/><stop offset="100%" stop-color="#1E3A8A"/></linearGradient><linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#D97706"/></linearGradient></defs><g transform="translate(10, 10)"><polygon points="30,4 56,19 56,49 30,64 4,49 4,19" fill="none" stroke="url(#blueGrad)" stroke-width="5" stroke-linejoin="round"/><polygon points="30,14 46,24 46,44 30,54 14,44 14,24" fill="url(#blueGrad)" opacity="0.15"/><path d="M22 22 L38 22 M30 22 L30 46 M22 46 L38 46" stroke="url(#orangeGrad)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></g><text x="80" y="44" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="900" letter-spacing="1.5" fill="#FFFFFF">ORDU<tspan fill="#3B82F6">MAK</tspan></text><text x="82" y="62" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="9" font-weight="700" letter-spacing="3.5" fill="#94A3B8">ÇELİK VE METAL İMALAT</text></svg>"""
+
+EMBEDDED_SW_JS = """
+const CACHE_NAME = 'ordumak-mes-v2';
+self.addEventListener('install', (event) => { self.skipWaiting(); });
+self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
+self.addEventListener('fetch', (event) => {
+    if (event.request.method !== 'GET') return;
+    event.respondWith(
+        fetch(event.request).catch(() => caches.match(event.request))
+    );
+});
+""".strip()
+
+@app.route('/api/company-logo')
+@app.route('/logo')
+def serve_company_logo():
+    """
+    Firma logosunu dinamik ve akıllı sunar:
+    1. Yüklenmiş logo diskte varsa onu sunar.
+    2. Diskte yoksa veya web sitesi tanımlıysa web sitesinden logoyu indirip sunar.
+    3. Hiçbiri yoksa varsayılan kurumsal logoyu (SVG/PNG) 200 OK ile sunar (Asla 404 vermez).
+    """
+    settings = get_system_settings()
+    custom_url = settings.get('company_logo_url')
+    website_url = settings.get('company_website_url')
+    
+    # 1. Diskte var olan özel logo
+    if custom_url and custom_url.startswith('/static/'):
+        rel_path = custom_url.replace('/static/', '', 1).lstrip('/')
+        disk_path = os.path.join(BASE_DIR, 'static', rel_path)
+        if os.path.exists(disk_path):
+            resp = send_file(disk_path)
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            return resp
+            
+    # 2. Web sitesinden otomatik çekilmiş logo kontrolü
+    if website_url:
+        try:
+            parsed = urllib.parse.urlparse(website_url if website_url.startswith(('http://', 'https://')) else f"https://{website_url}")
+            domain = (parsed.netloc or parsed.path).replace('www.', '').strip('/')
+            if domain:
+                domain_hash = hashlib.md5(domain.lower().encode('utf-8')).hexdigest()[:8]
+                for ext in ('.png', '.svg', '.webp', '.jpg', '.jpeg'):
+                    cached_file = os.path.join(BASE_DIR, 'static', 'uploads', f"web_logo_{domain_hash}{ext}")
+                    if os.path.exists(cached_file):
+                        resp = send_file(cached_file)
+                        resp.headers['Cache-Control'] = 'public, max-age=86400'
+                        return resp
+                # Eğer diskte yoksa webden çek
+                web_logo_url = fetch_company_logo_from_website(website_url)
+                if web_logo_url:
+                    rel_p = web_logo_url.replace('/static/', '', 1).lstrip('/')
+                    d_p = os.path.join(BASE_DIR, 'static', rel_p)
+                    if os.path.exists(d_p):
+                        resp = send_file(d_p)
+                        resp.headers['Cache-Control'] = 'public, max-age=86400'
+                        return resp
+        except Exception as e:
+            print(f"Company logo web serve note: {e}")
+
+    # 3. Varsayılan Logo (Gömülü / Default)
+    png_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.png')
+    svg_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.svg')
+    if os.path.exists(png_path):
+        resp = send_file(png_path, mimetype='image/png')
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
+    if os.path.exists(svg_path):
+        resp = send_file(svg_path, mimetype='image/svg+xml')
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
+        
+    return EMBEDDED_LOGO_SVG, 200, {'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400'}
+
 @app.route('/static/uploads/<path:filename>')
+@app.route('/uploads/<path:filename>')
 def serve_upload_fallback(filename):
-    """Yüklenen logolar veya fotoğraflar sunucu diskinde yoksa varsayılan logoya yönlendirir (404 döngüsünü engeller)."""
+    """Yüklenen logolar veya fotoğraflar sunucu diskinde yoksa logoya yönlendirir (404 döngüsünü engeller)."""
     upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
     target_path = os.path.join(upload_dir, filename)
     if os.path.exists(target_path):
         return send_from_directory(upload_dir, filename)
-    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.svg', '.webp', '.ico')):
-        return send_from_directory(os.path.join(BASE_DIR, 'static', 'img'), 'ordumak_logo.svg')
-    return abort(404)
+    return serve_company_logo()
+
+@app.route('/style.css')
+@app.route('/static/style.css')
+@app.route('/static/css/style.css')
+@app.route('/css/style.css')
+def serve_static_style_css():
+    css_path = os.path.join(BASE_DIR, 'static', 'css', 'style.css')
+    if os.path.exists(css_path):
+        return send_file(css_path, mimetype='text/css')
+    return EMBEDDED_STYLE_CSS, 200, {'Content-Type': 'text/css'}
+
+@app.route('/main.js')
+@app.route('/static/main.js')
+@app.route('/static/js/main.js')
+@app.route('/static/js/app.js')
+@app.route('/js/main.js')
+def serve_static_main_js():
+    js_path = os.path.join(BASE_DIR, 'static', 'js', 'main.js')
+    if os.path.exists(js_path):
+        return send_file(js_path, mimetype='application/javascript')
+    return EMBEDDED_MAIN_JS, 200, {'Content-Type': 'application/javascript'}
+
+@app.route('/ordumak_logo.svg')
+@app.route('/static/ordumak_logo.svg')
+@app.route('/static/img/ordumak_logo.svg')
+@app.route('/img/ordumak_logo.svg')
+def serve_static_logo_svg():
+    svg_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.svg')
+    if os.path.exists(svg_path):
+        return send_file(svg_path, mimetype='image/svg+xml')
+    return EMBEDDED_LOGO_SVG, 200, {'Content-Type': 'image/svg+xml'}
+
+@app.route('/ordumak_logo.png')
+@app.route('/static/ordumak_logo.png')
+@app.route('/static/img/ordumak_logo.png')
+@app.route('/img/ordumak_logo.png')
+def serve_static_logo_png():
+    png_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_logo.png')
+    if os.path.exists(png_path):
+        return send_file(png_path, mimetype='image/png')
+    return serve_company_logo()
+
+@app.route('/sw.js')
+@app.route('/static/sw.js')
+def service_worker():
+    """Service Worker dosyasını doğru headerlar ile sunar."""
+    sw_path = os.path.join(BASE_DIR, 'static', 'sw.js')
+    if os.path.exists(sw_path):
+        resp = send_file(sw_path, mimetype='application/javascript')
+        resp.headers['Service-Worker-Allowed'] = '/'
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+    resp = app.response_class(EMBEDDED_SW_JS, mimetype='application/javascript')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return resp
+
+
+@app.route('/favicon.ico')
+@app.route('/static/favicon.ico')
+def serve_favicon():
+    """Masaüstü ve tarayıcı sekme ikonu (Favicon)."""
+    ico_path = os.path.join(BASE_DIR, 'static', 'favicon.ico')
+    if os.path.exists(ico_path):
+        resp = send_file(ico_path, mimetype='image/x-icon')
+    else:
+        resp = send_file(os.path.join(BASE_DIR, 'static', 'img', 'ordumak_icon_192.png'), mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/static/apple-touch-icon.png')
+def serve_apple_touch_icon():
+    """iOS Safari, Mac ve Mobil Masaüstü İkonu."""
+    icon_path = os.path.join(BASE_DIR, 'static', 'img', 'apple-touch-icon.png')
+    if not os.path.exists(icon_path):
+        icon_path = os.path.join(BASE_DIR, 'static', 'img', 'ordumak_icon_192.png')
+    resp = send_file(icon_path, mimetype='image/png')
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
+
+@app.route('/manifest.json')
+@app.route('/static/manifest.json')
+def pwa_manifest():
+    """PWA mobil ana ekrana ekleme ve masaüstü görev çubuğu kısayol manifest verisi döner."""
+    settings = get_system_settings()
+    company_title = settings.get('company_name', 'ORDUMAK DEMİR ÇELİK A.Ş.')
+    manifest = {
+        "name": company_title,
+        "short_name": "ORDUMAK MES",
+        "description": settings.get('app_subtitle', 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı'),
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#020617",
+        "theme_color": "#020617",
+        "icons": [
+            {
+                "src": "/api/company-logo",
+                "sizes": "192x192",
+                "type": "image/png",
+                "purpose": "any maskable"
+            },
+            {
+                "src": "/api/company-logo",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "any maskable"
+            }
+        ]
+    }
+    return jsonify(manifest)
+
+@app.errorhandler(404)
+def handle_404(e):
+    req_path = request.path.lower()
+    if req_path.endswith(('.png', '.svg', '.jpg', '.jpeg', '.webp', '.ico', '.gif')) or '/static/uploads/' in req_path or '/static/img/' in req_path or 'logo' in req_path:
+        return serve_company_logo()
+    if req_path.endswith('.css') or 'style' in req_path:
+        return EMBEDDED_STYLE_CSS, 200, {'Content-Type': 'text/css'}
+    if req_path.endswith('.js') or 'main' in req_path or 'sw.js' in req_path:
+        if 'sw.js' in req_path:
+            resp = app.response_class(EMBEDDED_SW_JS, mimetype='application/javascript')
+            resp.headers['Service-Worker-Allowed'] = '/'
+            return resp
+        return EMBEDDED_MAIN_JS, 200, {'Content-Type': 'application/javascript'}
+    if req_path.endswith('manifest.json'):
+        return pwa_manifest()
+    return render_template('404.html') if os.path.exists(os.path.join(BASE_DIR, 'templates', '404.html')) else ("Sayfa Bulunamadı", 404)
 
 @app.after_request
 def add_cache_and_compression(response):
@@ -1795,12 +2179,16 @@ def kesim_takip():
         except Exception:
             daily_summary, machine_summary, operator_summary = [], [], []
 
+    # Kesim Giriş Grupları & Paketleri (Giriş 1, Giriş 2...)
+    cutting_batches = get_cutting_batches(limit=100)
+
     conn.close()
     return render_template('kesim_takip.html',
                            projects=projects,
                            machines=machines,
                            operators=operators,
                            helpers=helpers,
+                           cutting_batches=cutting_batches,
                            cutting_logs=cutting_logs,
                            daily_summary=daily_summary,
                            machine_summary=machine_summary,
@@ -1850,7 +2238,7 @@ def api_kesim_proje_pozlar():
 
 @app.route('/api/kesim-takip/toplu-kaydet', methods=['POST'])
 def api_kesim_toplu_kaydet():
-    """Çoklu poz kesim girişini tek seferde kaydeder ve parça listesini günceller."""
+    """Çoklu poz kesim girişini 'Giriş #X' grubu altında tek seferde kaydeder ve parça listesini günceller."""
     data = request.get_json() or {}
     project_id = data.get('project_id')
     cut_date = data.get('cut_date') or datetime.now().strftime("%Y-%m-%d")
@@ -1858,6 +2246,7 @@ def api_kesim_toplu_kaydet():
     operator = data.get('operator', '').strip()
     helper = data.get('helper', '').strip()
     shift = data.get('shift', 'Gündüz')
+    notes = data.get('notes', '').strip()
     items = data.get('items', [])
 
     if not project_id or not items:
@@ -1874,6 +2263,24 @@ def api_kesim_toplu_kaydet():
     u = session.get('user', {})
     saved_count = 0
 
+    # 1. Proje için bir sonraki Giriş No'yu belirle (Örn: Giriş #1, Giriş #2)
+    cursor.execute("SELECT COALESCE(MAX(batch_no), 0) + 1 as next_no FROM cutting_batches WHERE project_id = ?", (project_id,))
+    b_row = cursor.fetchone()
+    next_batch_no = b_row['next_no'] if b_row else 1
+    batch_code = f"Giriş #{next_batch_no}"
+
+    # 2. cutting_batches kaydını oluştur
+    cursor.execute('''
+    INSERT INTO cutting_batches (batch_no, batch_code, project_id, project_code, project_name, cut_date, machine, operator, helper, shift, total_items, total_quantity, total_tonnage, notes, user_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
+    ''', (next_batch_no, batch_code, project_id, p_code, p_name, cut_date, machine, operator, helper, shift, notes, u.get('id'), u.get('username', 'Kullanıcı')))
+
+    batch_id = cursor.lastrowid
+    if not batch_id:
+        cursor.execute("SELECT id FROM cutting_batches WHERE project_id = ? AND batch_no = ? ORDER BY id DESC LIMIT 1", (project_id, next_batch_no))
+        br = cursor.fetchone()
+        batch_id = br['id'] if br else None
+
     for it in items:
         prefix = str(it.get('prefix', '')).strip()
         raw_pos = str(it.get('pos_no', '')).strip()
@@ -1886,14 +2293,34 @@ def api_kesim_toplu_kaydet():
         profile = str(it.get('profile', '')).strip()
         row_machine = str(it.get('machine', '')).strip() or machine
         row_operator = str(it.get('operator', '')).strip() or operator
-        notes = str(it.get('notes', '')).strip()
+        row_notes = str(it.get('notes', '')).strip() or notes
 
         if not pos_no or cut_quantity <= 0:
             continue
 
-        # Parça listesini güncelle ve birim ağırlığı al
-        cursor.execute("SELECT id, quantity, cut_quantity, profile_type, unit_weight FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+        # Parça listesini güncelle ve birim ağırlığı al (Poz prefixli veya prefixsiz aranır)
+        cursor.execute("""
+        SELECT id, pos_no, quantity, cut_quantity, profile_type, unit_weight 
+        FROM parts 
+        WHERE project_id = ? AND (
+            pos_no = ? 
+            OR pos_no = ? 
+            OR pos_no = ? 
+            OR LOWER(pos_no) = LOWER(?)
+            OR LOWER(pos_no) = LOWER(?)
+        )
+        ORDER BY CASE WHEN pos_no = ? THEN 1 WHEN pos_no = ? THEN 2 ELSE 3 END
+        LIMIT 1
+        """, (project_id, pos_no, raw_pos, (prefix + raw_pos) if prefix else raw_pos, pos_no, raw_pos, pos_no, raw_pos))
         part_row = cursor.fetchone()
+        if not part_row and profile:
+            cursor.execute("""
+            SELECT id, pos_no, quantity, cut_quantity, profile_type, unit_weight 
+            FROM parts 
+            WHERE project_id = ? AND profile_type = ? AND (pos_no LIKE ? OR pos_no LIKE ?)
+            LIMIT 1
+            """, (project_id, profile, f"%{raw_pos}%", f"%{pos_no}%"))
+            part_row = cursor.fetchone()
         unit_weight = 0.0
         if part_row:
             new_cut_total = part_row['cut_quantity'] + cut_quantity
@@ -1905,28 +2332,108 @@ def api_kesim_toplu_kaydet():
 
         cut_tonnage = round((cut_quantity * unit_weight) / 1000.0, 4)
 
-        # Log kaydet
+        # Log kaydet (batch_id ile bağlı)
         cursor.execute('''
-        INSERT INTO cutting_entries (project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, row_machine, row_operator, helper, shift, u.get('id'), notes))
+        INSERT INTO cutting_entries (batch_id, project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (batch_id, project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, row_machine, row_operator, helper, shift, u.get('id'), row_notes))
         saved_count += 1
+
+    # 3. Batch özet toplamlarını güncelle
+    if batch_id:
+        cursor.execute('''
+        SELECT COUNT(id) as cnt, COALESCE(SUM(cut_quantity), 0) as tot_qty, COALESCE(SUM(cut_tonnage), 0.0) as tot_ton
+        FROM cutting_entries WHERE batch_id = ?
+        ''', (batch_id,))
+        b_stat = cursor.fetchone()
+        if b_stat and b_stat['cnt'] > 0:
+            cursor.execute('''
+            UPDATE cutting_batches
+            SET total_items = ?, total_quantity = ?, total_tonnage = ?
+            WHERE id = ?
+            ''', (b_stat['cnt'], b_stat['tot_qty'], round(b_stat['tot_ton'], 4), batch_id))
+        else:
+            cursor.execute("DELETE FROM cutting_batches WHERE id = ?", (batch_id,))
 
     conn.commit()
     conn.close()
+    invalidate_app_cache()
 
     if saved_count > 0:
         log_activity(
             action="Toplu Kesim Girişi",
-            entity_type="cutting_entries",
-            entity_id=project_id,
-            details=f"{p_code} projesi için {saved_count} satır kesim kaydı işlendi ({machine} - {operator}).",
+            entity_type="cutting_batches",
+            entity_id=batch_id or project_id,
+            details=f"{p_code} projesi için {batch_code} oluşturuldu ({saved_count} satır kesim kaydı, {machine} - {operator}).",
             username=u.get('username', 'Kullanıcı'),
             user_id=u.get('id'),
             ip_address=request.remote_addr
         )
 
-    return jsonify({'status': 'success', 'saved_count': saved_count})
+    return jsonify({
+        'status': 'success',
+        'saved_count': saved_count,
+        'batch_id': batch_id,
+        'batch_code': batch_code,
+        'message': f"{p_code} için {saved_count} poz kesimi '{batch_code}' olarak kaydedildi ve ana listeye işlendi."
+    })
+
+@app.route('/api/kesim-takip/batch/<int:batch_id>/detay')
+def api_kesim_batch_detay(batch_id):
+    """Belirli bir kesim giriş grubunun (Giriş 1 vb.) detaylarını ve poz satırlarını döndürür."""
+    batch_data = get_cutting_batch_details(batch_id)
+    if not batch_data:
+        return jsonify({'status': 'error', 'message': 'Kesim giriş grubu bulunamadı.'}), 404
+    return jsonify({'status': 'success', 'batch': batch_data})
+
+@app.route('/api/kesim-takip/batch/<int:batch_id>/guncelle', methods=['POST'])
+def api_kesim_batch_guncelle(batch_id):
+    """Kesim giriş paketindeki poz miktarlarını günceller ve ana parçalar ile eşitler."""
+    u = session.get('user', {})
+    user_role = u.get('role', '')
+    if not (can_user_edit(user_role, 'kesim_takip') or can_user_edit(user_role, 'kesim') or user_role in ('admin', 'patron', 'genel müdür', 'imalat müdürü', 'imalat mühendisi', 'formen', 'usta', 'iş hazırlama')):
+        return jsonify({'status': 'error', 'message': 'Bu işlem için düzenleme yetkiniz bulunmamaktadır.'}), 403
+
+    data = request.get_json() or {}
+    items = data.get('items', [])
+    if not items:
+        return jsonify({'status': 'error', 'message': 'Güncellenecek poz bilgisi gönderilmedi.'}), 400
+
+    success, message = update_cutting_batch_items(batch_id, items, user_info=u)
+    if success:
+        log_activity(
+            action="Kesim Girişi Düzenlendi",
+            entity_type="cutting_batches",
+            entity_id=batch_id,
+            details=f"Kesim Giriş #{batch_id} poz miktarları güncellendi.",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'message': message})
+    return jsonify({'status': 'error', 'message': message}), 400
+
+@app.route('/api/kesim-takip/batch/<int:batch_id>/sil', methods=['POST'])
+def api_kesim_batch_sil(batch_id):
+    """Kesim giriş paketini tamamen geri alır ve parçaların kesilen adetlerini otomatik düşer."""
+    u = session.get('user', {})
+    user_role = u.get('role', '')
+    if not (can_user_edit(user_role, 'kesim_takip') or can_user_edit(user_role, 'kesim') or user_role in ('admin', 'patron', 'genel müdür', 'imalat müdürü', 'imalat mühendisi', 'formen', 'usta', 'iş hazırlama')):
+        return jsonify({'status': 'error', 'message': 'Bu işlem için silme yetkiniz bulunmamaktadır.'}), 403
+
+    success, message = delete_cutting_batch(batch_id, user_info=u)
+    if success:
+        log_activity(
+            action="Kesim Girişi Geri Alındı / Silindi",
+            entity_type="cutting_batches",
+            entity_id=batch_id,
+            details=f"Kesim Giriş #{batch_id} silindi ve adetler parçalardan geri düşüldü.",
+            username=u.get('username', 'Kullanıcı'),
+            user_id=u.get('id'),
+            ip_address=request.remote_addr
+        )
+        return jsonify({'status': 'success', 'message': message})
+    return jsonify({'status': 'error', 'message': message}), 400
 
 @app.route('/api/kesim-takip/kaydet', methods=['POST'])
 def api_kesim_kaydet():
@@ -1973,14 +2480,32 @@ def api_kesim_kaydet():
 
     cut_tonnage = round((cut_quantity * unit_weight) / 1000.0, 4)
 
-    # Kesim logunu ekle
+    # 1. Giriş Numarasını bul ve Batch oluştur
+    cursor.execute("SELECT COALESCE(MAX(batch_no), 0) + 1 as next_no FROM cutting_batches WHERE project_id = ?", (project_id,))
+    b_row = cursor.fetchone()
+    next_batch_no = b_row['next_no'] if b_row else 1
+    batch_code = f"Giriş #{next_batch_no}"
+
     u = session.get('user', {})
     cursor.execute('''
-    INSERT INTO cutting_entries (project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, u.get('id'), notes))
+    INSERT INTO cutting_batches (batch_no, batch_code, project_id, project_code, project_name, cut_date, machine, operator, helper, shift, total_items, total_quantity, total_tonnage, notes, user_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+    ''', (next_batch_no, batch_code, project_id, p_code, p_name, cut_date, machine, operator, helper, shift, cut_quantity, cut_tonnage, notes, u.get('id'), u.get('username', 'Kullanıcı')))
+
+    batch_id = cursor.lastrowid
+    if not batch_id:
+        cursor.execute("SELECT id FROM cutting_batches WHERE project_id = ? AND batch_no = ? ORDER BY id DESC LIMIT 1", (project_id, next_batch_no))
+        br = cursor.fetchone()
+        batch_id = br['id'] if br else None
+
+    # Kesim logunu ekle
+    cursor.execute('''
+    INSERT INTO cutting_entries (batch_id, project_id, project_code, project_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, user_id, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (batch_id, project_id, p_code, p_name, pos_no, profile, cut_quantity, unit_weight, cut_tonnage, cut_date, machine, operator, helper, shift, u.get('id'), notes))
     conn.commit()
     conn.close()
+    invalidate_app_cache()
 
     log_activity(
         action="Kesim Girişi Yapıldı",
@@ -1995,7 +2520,7 @@ def api_kesim_kaydet():
     if is_overcut:
         flash(f"Dikkat: '{pos_no}' pozu için girilen toplam kesim ({new_cut_total}), proje hedef miktarını ({part_row['quantity']}) aştı!", "warning")
     else:
-        flash(f"'{pos_no}' pozu için {cut_quantity} adet ({cut_tonnage:.3f} Ton) kesim başarıyla işlendi.", "success")
+        flash(f"'{pos_no}' pozu için {cut_quantity} adet ({cut_tonnage:.3f} Ton) kesim başarıyla işlendi ({batch_code}).", "success")
 
     return redirect(url_for('kesim_takip'))
 
@@ -3058,20 +3583,62 @@ def api_ayarlar_baslik_guncelle():
     app_subtitle = request.form.get('app_subtitle', '').strip()
     company_name = request.form.get('company_name', '').strip()
     company_website_url = request.form.get('company_website_url', '').strip()
+    auto_fetch_web = request.form.get('auto_fetch_web_logo') == '1'
 
     company_logo_url = None
-    if 'company_logo' in request.files:
+    if 'company_logo' in request.files and request.files['company_logo'].filename != '':
         logo_file = request.files['company_logo']
-        if logo_file and logo_file.filename != '':
-            ext = os.path.splitext(logo_file.filename)[1].lower()
-            filename = f"logo_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
-            os.makedirs(os.path.join(BASE_DIR, 'static', 'uploads'), exist_ok=True)
-            logo_file.save(os.path.join(BASE_DIR, 'static', 'uploads', filename))
-            company_logo_url = f"/static/uploads/{filename}"
+        ext = os.path.splitext(logo_file.filename)[1].lower()
+        filename = f"logo_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        os.makedirs(os.path.join(BASE_DIR, 'static', 'uploads'), exist_ok=True)
+        logo_file.save(os.path.join(BASE_DIR, 'static', 'uploads', filename))
+        company_logo_url = f"/static/uploads/{filename}"
+    elif company_website_url and (auto_fetch_web or not request.form.get('keep_manual_logo')):
+        # Firma web sitesinden logoyu otomatik çek
+        web_logo = fetch_company_logo_from_website(company_website_url)
+        if web_logo:
+            company_logo_url = web_logo
 
     update_system_settings(app_title, app_subtitle, company_name, company_logo_url, company_website_url)
-    flash("Firma başlık ve logo ayarları başarıyla güncellendi.", "success")
+    flash("Firma başlık, web sitesi ve logo ayarları başarıyla güncellendi.", "success")
     return redirect(url_for('raporlar'))
+
+@app.route('/api/ayarlar/fetch-logo-from-web', methods=['POST'])
+def api_ayarlar_fetch_logo_from_web():
+    """AJAX ile firma web sitesinden anlık logo çekip önizleme döner."""
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        return jsonify({'status': 'error', 'message': 'Yetkisiz işlem!'}), 403
+
+    data = request.get_json(silent=True) or {}
+    website_url = data.get('website_url') or request.form.get('website_url', '')
+    if not website_url:
+        settings = get_system_settings()
+        website_url = settings.get('company_website_url', '')
+
+    if not website_url:
+        return jsonify({'status': 'error', 'message': 'Lütfen önce geçerli bir web sitesi adresi girin.'}), 400
+
+    logo_url = fetch_company_logo_from_website(website_url)
+    if logo_url:
+        settings = get_system_settings()
+        update_system_settings(
+            settings.get('app_title'),
+            settings.get('app_subtitle'),
+            settings.get('company_name'),
+            logo_url,
+            website_url
+        )
+        return jsonify({
+            'status': 'success',
+            'message': 'Logo web sitesinden başarıyla çekildi ve sisteme uygulandı!',
+            'logo_url': logo_url
+        })
+    else:
+        return jsonify({
+            'status': 'error',
+            'message': 'Web sitesinden logo otomatik alınamadı. Lütfen adresi kontrol edin veya manuel yükleyin.'
+        }), 400
 
 @app.route('/api/ayarlar/guncelle', methods=['POST'])
 def api_ayarlar_guncelle():
@@ -3096,8 +3663,13 @@ def api_ayarlar_guncelle():
     ''', (company_name, company_sub_title, company_address, company_phone, company_email, company_tax_info))
     conn.commit()
     conn.close()
+    try:
+        get_system_settings.cache_clear()
+    except Exception:
+        pass
+    invalidate_app_cache()
 
-    flash("Firma bilgileri ve sistem ayarları güncellendi.", "success")
+    flash("Firma bilgileri ve sistem ayarları başarıyla güncellendi.", "success")
     return redirect(url_for('raporlar'))
 
 # =========================================================================
@@ -3864,56 +4436,6 @@ def api_veritabani_geri_yukle():
     
     return redirect(url_for('raporlar'))
 
-@app.route('/sw.js')
-def service_worker():
-    """Service Worker dosyasını doğru headerlar ile sunar."""
-    sw_path = os.path.join(BASE_DIR, 'static', 'sw.js')
-    if os.path.exists(sw_path):
-        resp = send_file(sw_path, mimetype='application/javascript')
-        resp.headers['Service-Worker-Allowed'] = '/'
-        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        return resp
-    return "/* Service worker not found */", 404
-
-@app.route('/manifest.json')
-def pwa_manifest():
-    """PWA mobil ana ekrana ekleme ve masaüstü görev çubuğu kısayol manifest verisi döner."""
-    settings = get_system_settings()
-    custom_logo = settings.get('company_logo_url')
-    png_logo = custom_logo if (custom_logo and custom_logo.endswith('.png')) else '/static/img/ordumak_logo.png'
-    svg_logo = custom_logo if (custom_logo and custom_logo.endswith('.svg')) else '/static/img/ordumak_logo.svg'
-    manifest = {
-        "name": settings.get('app_title', 'ORDUMAK ÇELİK İMALAT MES'),
-        "short_name": "ORDUMAK MES",
-        "description": settings.get('app_subtitle', 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı'),
-        "start_url": "/",
-        "scope": "/",
-        "display": "standalone",
-        "background_color": "#020617",
-        "theme_color": "#020617",
-        "icons": [
-            {
-                "src": png_logo,
-                "sizes": "192x192",
-                "type": "image/png",
-                "purpose": "any maskable"
-            },
-            {
-                "src": png_logo,
-                "sizes": "512x512",
-                "type": "image/png",
-                "purpose": "any maskable"
-            },
-            {
-                "src": svg_logo,
-                "sizes": "any",
-                "type": "image/svg+xml"
-            }
-        ]
-    }
-    return jsonify(manifest)
-
-
 # =========================================================================
 # 20. DUYURU VE UYARI SİSTEMİ
 # =========================================================================
@@ -4029,6 +4551,344 @@ def ai_muhendis():
 # =========================================================================
 # SUNUCU ÇALIŞTIRMA
 # =========================================================================
+
+
+# =========================================================================
+# 22. İSG & SAHA UYGUNSUZLUK MODÜLÜ
+# =========================================================================
+@app.route('/isg-takip')
+def isg_takip():
+    """İSG uygunsuzluk, ramak kala ve saha güvenlik bildirimleri sayfası."""
+    status_filter = request.args.get('status', '')
+    records = get_isg_records(status=status_filter if status_filter else None)
+    return render_template('isg_takip.html', records=records, selected_status=status_filter)
+
+@app.route('/api/isg/ekle', methods=['POST'])
+def api_isg_ekle():
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Uygunsuzluk')
+    location = request.form.get('location', '').strip()
+    description = request.form.get('description', '').strip()
+    priority = request.form.get('priority', 'Orta')
+    status = request.form.get('status', 'Açık')
+    corrective_action = request.form.get('corrective_action', '').strip()
+    assigned_to = request.form.get('assigned_to', '').strip()
+    
+    cur_user = session.get('user', {})
+    reported_by = cur_user.get('full_name') or cur_user.get('username') or 'Saha Personeli'
+    
+    photo_url = ''
+    if 'photo' in request.files and request.files['photo'].filename != '':
+        pfile = request.files['photo']
+        ext = os.path.splitext(pfile.filename)[1].lower()
+        fname = f"isg_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
+        upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        pfile.save(os.path.join(upload_dir, fname))
+        photo_url = f"/static/uploads/{fname}"
+        
+    add_isg_record(title, category, location, description, photo_url, priority, status, corrective_action, assigned_to, reported_by)
+    flash("İSG bildirimi başarıyla kaydedildi.", "success")
+    return redirect(url_for('isg_takip'))
+
+@app.route('/api/isg/<int:record_id>/guncelle', methods=['POST'])
+def api_isg_guncelle(record_id):
+    status = request.form.get('status', 'Açık')
+    corrective_action = request.form.get('corrective_action', '').strip()
+    assigned_to = request.form.get('assigned_to', '').strip()
+    update_isg_record(record_id, status, corrective_action, assigned_to)
+    flash("İSG kaydı güncellendi.", "success")
+    return redirect(url_for('isg_takip'))
+
+@app.route('/api/isg/<int:record_id>/sil', methods=['POST'])
+def api_isg_sil(record_id):
+    delete_isg_record(record_id)
+    flash("İSG kaydı silindi.", "success")
+    return redirect(url_for('isg_takip'))
+
+# =========================================================================
+# 23. SERVİS GÜZERGAHLARI VE YOLCU LİSTESİ MODÜLÜ
+# =========================================================================
+@app.route('/servis-guzergah')
+def servis_guzergah():
+    """Fabrika servis hatları, şoförler, duraklar ve yolcu listesi."""
+    shuttles = get_shuttle_routes()
+    return render_template('servis_guzergah.html', shuttles=shuttles)
+
+@app.route('/api/servis/ekle', methods=['POST'])
+def api_servis_ekle():
+    name = request.form.get('name', '').strip()
+    driver_name = request.form.get('driver_name', '').strip()
+    driver_phone = request.form.get('driver_phone', '').strip()
+    plate_number = request.form.get('plate_number', '').strip()
+    capacity = int(request.form.get('capacity', 16) or 16)
+    route_stops = request.form.get('route_stops', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    add_shuttle_route(name, driver_name, driver_phone, plate_number, capacity, route_stops, notes)
+    flash(f"'{name}' servis hattı başarıyla eklendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/guncelle', methods=['POST'])
+def api_servis_guncelle(shuttle_id):
+    name = request.form.get('name', '').strip()
+    driver_name = request.form.get('driver_name', '').strip()
+    driver_phone = request.form.get('driver_phone', '').strip()
+    plate_number = request.form.get('plate_number', '').strip()
+    capacity = int(request.form.get('capacity', 16) or 16)
+    route_stops = request.form.get('route_stops', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    update_shuttle_route(shuttle_id, name, driver_name, driver_phone, plate_number, capacity, route_stops, notes)
+    flash(f"'{name}' servisi güncellendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/sil', methods=['POST'])
+def api_servis_sil(shuttle_id):
+    delete_shuttle_route(shuttle_id)
+    flash("Servis hattı silindi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/<int:shuttle_id>/yolcu-ekle', methods=['POST'])
+def api_servis_yolcu_ekle(shuttle_id):
+    person_name = request.form.get('person_name', '').strip()
+    department = request.form.get('department', '').strip()
+    boarding_stop = request.form.get('boarding_stop', '').strip()
+    phone = request.form.get('phone', '').strip()
+    
+    if person_name:
+        add_shuttle_passenger(shuttle_id, person_name, department, boarding_stop, phone)
+        flash(f"'{person_name}' servise eklendi.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+@app.route('/api/servis/yolcu/<int:passenger_id>/sil', methods=['POST'])
+def api_servis_yolcu_sil(passenger_id):
+    delete_shuttle_passenger(passenger_id)
+    flash("Yolcu servisten çıkarıldı.", "success")
+    return redirect(url_for('servis_guzergah'))
+
+# =========================================================================
+# 24. DEPO & SARF MALZEME STOK TAKİBİ VE ÇIKIŞ İŞLEMLERİ
+# =========================================================================
+@app.route('/depo-sarf')
+def depo_sarf():
+    """Depo sarf malzeme stok durumu, kritik stok uyarıları ve sarf çıkış/giriş paneli."""
+    cat_filter = request.args.get('category', '')
+    crit_only = request.args.get('critical') == '1'
+    
+    consumables = get_consumables(category=cat_filter if cat_filter else None, critical_only=crit_only)
+    transactions = get_consumable_transactions(limit=60)
+    
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, code, name FROM projects WHERE status != 'Arşiv' ORDER BY name ASC")
+    projects = [dict(r) for r in cursor.fetchall()]
+    
+    # Kritik stoktaki ürün sayısı
+    cursor.execute("SELECT COUNT(*) as count FROM inventory_consumables WHERE current_qty <= critical_level")
+    critical_count = cursor.fetchone()['count'] or 0
+    conn.close()
+    
+    return render_template('depo_sarf.html',
+                           consumables=consumables,
+                           transactions=transactions,
+                           projects=projects,
+                           critical_count=critical_count,
+                           selected_category=cat_filter,
+                           critical_only=crit_only)
+
+@app.route('/api/depo/sarf-ekle', methods=['POST'])
+def api_depo_sarf_ekle():
+    code = request.form.get('code', '').strip()
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', 'Kaynak & Montaj')
+    unit = request.form.get('unit', 'Adet')
+    current_qty = float(request.form.get('current_qty', 0) or 0)
+    critical_level = float(request.form.get('critical_level', 10) or 10)
+    shelf_location = request.form.get('shelf_location', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    add_consumable(code, name, category, unit, current_qty, critical_level, shelf_location, notes)
+    flash(f"'{name}' sarf malzemesi başarıyla eklendi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf/<int:material_id>/guncelle', methods=['POST'])
+def api_depo_sarf_guncelle(material_id):
+    code = request.form.get('code', '').strip()
+    name = request.form.get('name', '').strip()
+    category = request.form.get('category', 'Kaynak & Montaj')
+    unit = request.form.get('unit', 'Adet')
+    critical_level = float(request.form.get('critical_level', 10) or 10)
+    shelf_location = request.form.get('shelf_location', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    update_consumable(material_id, code, name, category, unit, critical_level, shelf_location, notes)
+    flash(f"'{name}' sarf malzemesi güncellendi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf/<int:material_id>/sil', methods=['POST'])
+def api_depo_sarf_sil(material_id):
+    delete_consumable(material_id)
+    flash("Sarf malzemesi ve hareketleri silindi.", "success")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf-cikis', methods=['POST'])
+def api_depo_sarf_cikis():
+    material_id = int(request.form.get('material_id', 0))
+    qty = float(request.form.get('qty', 1) or 1)
+    recipient_person = request.form.get('recipient_person', '').strip()
+    project_id = request.form.get('project_id')
+    p_id = int(project_id) if project_id and project_id.isdigit() else None
+    machine_name = request.form.get('machine_name', '').strip()
+    foreman_name = request.form.get('foreman_name', '').strip()
+    notes = request.form.get('notes', '').strip()
+    
+    cur_user = session.get('user', {})
+    created_by = cur_user.get('full_name') or cur_user.get('username') or 'Depocu'
+    
+    ok, msg = record_consumable_transaction(
+        material_id=material_id,
+        trans_type='Çıkış',
+        qty=qty,
+        recipient_person=recipient_person,
+        project_id=p_id,
+        machine_name=machine_name,
+        foreman_name=foreman_name,
+        notes=notes,
+        created_by=created_by
+    )
+    if ok:
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+    return redirect(url_for('depo_sarf'))
+
+@app.route('/api/depo/sarf-giris', methods=['POST'])
+def api_depo_sarf_giris():
+    material_id = int(request.form.get('material_id', 0))
+    qty = float(request.form.get('qty', 1) or 1)
+    notes = request.form.get('notes', '').strip()
+    
+    cur_user = session.get('user', {})
+    created_by = cur_user.get('full_name') or cur_user.get('username') or 'Depocu'
+    
+    ok, msg = record_consumable_transaction(
+        material_id=material_id,
+        trans_type='Giriş',
+        qty=qty,
+        notes=notes,
+        created_by=created_by
+    )
+    if ok:
+        flash(f"Stok girişi kaydedildi. {msg}", "success")
+    else:
+        flash(msg, "danger")
+    return redirect(url_for('depo_sarf'))
+
+# =========================================================================
+# 25. %100 ANONİM SAHA & İŞYERİ BİLDİRİM KUTUSU
+# =========================================================================
+@app.route('/anonim-bildirim')
+def anonim_bildirim():
+    """Kaytarma, duyum ve uygunsuz davranışların %100 anonim paylaşıldığı alan."""
+    reports = get_anonymous_reports()
+    return render_template('anonim_bildirim.html', reports=reports)
+
+@app.route('/api/anonim-bildirim/gonder', methods=['POST'])
+def api_anonim_bildirim_gonder():
+    """%100 Kimliksiz Bildirim Uç Noktası."""
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Genel')
+    description = request.form.get('description', '').strip()
+    
+    if not title or not description:
+        flash("Lütfen başlık ve açıklama alanlarını doldurun.", "warning")
+        return redirect(url_for('anonim_bildirim'))
+        
+    media_url = ''
+    media_type = 'image'
+    if 'media_file' in request.files and request.files['media_file'].filename != '':
+        mfile = request.files['media_file']
+        ext = os.path.splitext(mfile.filename)[1].lower()
+        if ext in ('.mp4', '.mov', '.avi', '.webm', '.mkv'):
+            media_type = 'video'
+        else:
+            media_type = 'image'
+            
+        fname = f"anon_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{os.urandom(4).hex()}{ext}"
+        upload_dir = os.path.join(BASE_DIR, 'static', 'uploads')
+        os.makedirs(upload_dir, exist_ok=True)
+        mfile.save(os.path.join(upload_dir, fname))
+        media_url = f"/static/uploads/{fname}"
+        
+    add_anonymous_report(title, category, description, media_url, media_type)
+    flash("🛡️ Bildiriminiz %100 Anonim olarak iletildi. Kimlik veya IP bilginiz kesinlikle kaydedilmemiştir.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+@app.route('/api/anonim-bildirim/<int:report_id>/durum', methods=['POST'])
+def api_anonim_bildirim_durum(report_id):
+    status = request.form.get('status', 'İncelendi')
+    update_anonymous_report_status(report_id, status)
+    flash("Bildirim durumu güncellendi.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+@app.route('/api/anonim-bildirim/<int:report_id>/sil', methods=['POST'])
+def api_anonim_bildirim_sil(report_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('anonim_bildirim'))
+    delete_anonymous_report(report_id)
+    flash("Bildirim silindi.", "success")
+    return redirect(url_for('anonim_bildirim'))
+
+# =========================================================================
+# 26. SİSTEM GELİŞTİRME & ANONİM GERİ BİLDİRİM KUTUSU (ADMİN YÖNETİR)
+# =========================================================================
+@app.route('/sistem-istek')
+def sistem_istek():
+    """Site düzenleme ve geliştirme talepleri sayfası."""
+    cur_user = session.get('user', {})
+    is_admin = cur_user.get('role') in ('admin', 'patron')
+    requests_list = get_system_feature_requests() if is_admin else []
+    return render_template('sistem_istek.html', requests_list=requests_list, is_admin=is_admin)
+
+@app.route('/api/sistem-istek/gonder', methods=['POST'])
+def api_sistem_istek_gonder():
+    title = request.form.get('title', '').strip()
+    category = request.form.get('category', 'Yeni Özellik')
+    description = request.form.get('description', '').strip()
+    
+    if not title or not description:
+        flash("Lütfen başlık ve açıklama girin.", "warning")
+        return redirect(url_for('sistem_istek'))
+        
+    add_system_feature_request(title, category, description)
+    flash("💡 Sistem geliştirme öneriniz / geri bildiriminiz başarıyla iletildi. Teşekkür ederiz!", "success")
+    return redirect(url_for('sistem_istek'))
+
+@app.route('/api/sistem-istek/<int:req_id>/durum', methods=['POST'])
+def api_sistem_istek_durum(req_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('sistem_istek'))
+    status = request.form.get('status', 'İncelendi')
+    admin_notes = request.form.get('admin_notes', '').strip()
+    update_system_feature_request(req_id, status, admin_notes)
+    flash("Geliştirme talebi durumu güncellendi.", "success")
+    return redirect(url_for('sistem_istek'))
+
+@app.route('/api/sistem-istek/<int:req_id>/sil', methods=['POST'])
+def api_sistem_istek_sil(req_id):
+    cur_user = session.get('user', {})
+    if cur_user.get('role') not in ('admin', 'patron'):
+        flash("Yetkisiz işlem!", "danger")
+        return redirect(url_for('sistem_istek'))
+    delete_system_feature_request(req_id)
+    flash("Talep silindi.", "success")
+    return redirect(url_for('sistem_istek'))
+
 if __name__ == '__main__':
     local_ip = get_local_ip()
     print("=" * 70)

@@ -3,15 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Giriş Yap - Çelik İmalat & Montaj MES</title>
+    <script>
+        (function() {
+            var _w = console.warn;
+            console.warn = function() {
+                if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].indexOf('cdn.tailwindcss.com') !== -1) return;
+                _w.apply(console, arguments);
+            };
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="manifest" href="/manifest.json">
-    <link rel="icon" type="image/png" sizes="192x192" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
-    <link rel="icon" type="image/png" sizes="32x32" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
-    <link rel="icon" type="image/svg+xml" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.svg' }}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
-    <meta name="msapplication-TileImage" content="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ system_settings.company_logo_url or '/api/company-logo' }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ system_settings.company_logo_url or '/api/company-logo' }}">
+    <link rel="icon" type="image/svg+xml" href="{{ system_settings.company_logo_url or '/api/company-logo' }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ system_settings.company_logo_url or '/api/company-logo' }}">
+    <meta name="msapplication-TileImage" content="{{ system_settings.company_logo_url or '/api/company-logo' }}">
     <meta name="msapplication-TileColor" content="#020617">
     <meta name="theme-color" content="#020617">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -42,7 +52,7 @@
         <div class="relative flex flex-col items-center animate-expand-logo">
             <div class="absolute -inset-10 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 rounded-full blur-3xl opacity-60"></div>
             <div class="relative z-10 w-36 h-36 rounded-3xl bg-slate-900/90 border border-slate-700/80 p-5 shadow-2xl flex items-center justify-center">
-                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}" alt="Logo" class="max-h-full max-w-full object-contain filter drop-shadow-2xl" onerror="this.onerror=null; this.src='/static/img/ordumak_logo.svg'">
+                <img src="{{ system_settings.company_logo_url or '/api/company-logo' }}" alt="Logo" class="max-h-full max-w-full object-contain filter drop-shadow-2xl" onerror="this.onerror=null; this.src='/api/company-logo'">
             </div>
             <h2 class="relative z-10 mt-6 text-xl font-black tracking-wider text-white">
                 {{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}
@@ -60,8 +70,8 @@
 
         <!-- Logo & Başlık -->
         <div class="text-center mb-8 relative">
-            <a href="{{ system_settings.company_website_url or 'https://ordumak.com' }}" target="_blank" class="inline-block mb-3 hover:opacity-90 transition-opacity">
-                <img src="{{ system_settings.company_logo_url or '/static/img/ordumak_logo.png' }}" alt="Logo" class="h-14 w-auto mx-auto object-contain" onerror="this.onerror=null; this.src='/static/img/ordumak_logo.svg'">
+            <a href="{{ system_settings.company_website_url or 'https://ordumak.com.tr' }}" target="_blank" class="inline-block mb-3 hover:opacity-90 transition-opacity">
+                <img src="{{ system_settings.company_logo_url or '/api/company-logo' }}" alt="Logo" class="h-14 w-auto mx-auto object-contain" onerror="this.onerror=null; this.src='/api/company-logo'">
             </a>
             <h1 class="text-xl font-bold text-white tracking-wide">{{ system_settings.app_title or 'ORDUMAK ÇELİK İMALAT MES' }}</h1>
             <p class="text-xs text-slate-400 mt-1 font-medium">{{ system_settings.app_subtitle or 'İmalat, Montaj, Boya ve Sevkiyat Takip Portalı' }}</p>
@@ -122,7 +132,7 @@
         </form>
 
         <div class="mt-6 pt-4 border-t border-slate-800/80 text-center">
-            <p class="text-[11px] text-slate-500">© {{ now.year }} {{ system_settings.company_name or 'ORDUMAK ÇELİK SANAYİ' }}</p>
+            <p class="text-[11px] text-slate-500">© {{ now.year }} {{ system_settings.company_name or 'ORDUMAK DEMİR ÇELİK A.Ş.' }}</p>
         </div>
     </div>
 
