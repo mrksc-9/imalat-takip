@@ -1,0 +1,561 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ project.code }} - {{ project.name }} - Çelik İmalat MES{% endblock %}
+{% block page_title %}{{ project.code }} - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- 1. PROJE ÖZET BAŞLIK KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+        <div class="absolute top-0 left-0 right-0 h-1.5" style="background-color: {{ project.color or '#3b82f6' }};"></div>
+
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xs font-mono font-bold px-2.5 py-0.5 rounded-md bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                        {{ project.code }}
+                    </span>
+                    <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                        {{ project.status }}
+                    </span>
+                </div>
+                <h2 class="text-lg font-black text-white tracking-wide">{{ project.name }}</h2>
+                <p class="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span><i class="fa-solid fa-building text-slate-500 mr-1"></i> Müşteri: <b>{{ project.customer or '-' }}</b></span>
+                    <span><i class="fa-solid fa-location-dot text-slate-500 mr-1"></i> Şantiye: <b>{{ project.site_location or '-' }}</b></span>
+                    <span><i class="fa-solid fa-calendar text-slate-500 mr-1"></i> Termin: <b>{{ project.delivery_date | format_date }}</b></span>
+                </p>
+            </div>
+
+            <!-- Eylem Butonları -->
+            <div class="flex flex-wrap items-center gap-2">
+                {% if can_user_edit('projeler') %}
+                <button type="button" onclick="openModal('editProjectTonnageModal')" class="px-3 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Toplam Tonajı Düzenle">
+                    <i class="fa-solid fa-weight-hanging"></i>
+                    <span>Tonajı Düzenle</span>
+                </button>
+                <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki yüklenmiş tüm Montaj ve Parça listelerini temizlemek istediğinizden emin misiniz? (Yanlış liste yüklendiğinde yeni listeyi sıfırdan yüklemek için kullanılır)');" class="inline">
+                    <input type="hidden" name="target" value="all">
+                    <button type="submit" class="px-3 py-2 bg-amber-500/10 hover:bg-amber-600 text-amber-400 hover:text-white border border-amber-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Yüklenen Yanlış Listeleri Sıfırla">
+                        <i class="fa-solid fa-eraser"></i>
+                        <span>Listeleri Temizle</span>
+                    </button>
+                </form>
+                <form action="{{ url_for('api_proje_sil', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projeyi ve tüm parça/montaj kayıtlarını silmek istediğinizden emin misiniz?');" class="inline">
+                    <button type="submit" class="px-3 py-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5" title="Projeyi Sil">
+                        <i class="fa-solid fa-trash"></i>
+                        <span>Projeyi Sil</span>
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- KPI Tonaj Şeridi -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4 text-xs">
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl relative group">
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400 block text-[10px] uppercase font-semibold">Toplam Tonaj</span>
+                    {% if can_user_edit('projeler') %}
+                    <button type="button" onclick="openModal('editProjectTonnageModal')" class="text-blue-400 hover:text-blue-300 text-[10px] font-bold flex items-center gap-1" title="Tonajı Düzenle">
+                        <i class="fa-solid fa-pen-to-square"></i> Düzenle
+                    </button>
+                    {% endif %}
+                </div>
+                <span class="text-base font-black text-white font-mono mt-0.5 block">{{ project.total_tonnage | format_num }} Ton</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-yellow-400 block text-[10px] uppercase font-semibold">Kesilen Tonaj</span>
+                <span class="text-base font-black text-white font-mono">{{ project.cut_tonnage | format_num }} Ton (%{{ project.cut_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-amber-400 block text-[10px] uppercase font-semibold">İmalatı Biten</span>
+                <span class="text-base font-black text-white font-mono">{{ project.fab_completed_tonnage | format_num }} Ton (%{{ project.fab_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-purple-400 block text-[10px] uppercase font-semibold">Boyanan Tonaj</span>
+                <span class="text-base font-black text-white font-mono">{{ project.paint_completed_tonnage | format_num }} Ton (%{{ project.paint_pct }})</span>
+            </div>
+            <div class="p-2.5 bg-slate-900/80 border border-slate-800 rounded-xl">
+                <span class="text-emerald-400 block text-[10px] uppercase font-semibold">Sevk Edilen</span>
+                <span class="text-base font-black text-white font-mono">{{ project.shipped_tonnage | format_num }} Ton (%{{ project.ship_pct }})</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. TEKLA 3'LÜ LİSTE SEKMELERİ (Montaj Listesi, Montaj Parça Listesi, Tek Parça Listesi) -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        <!-- Sekme Başlıkları -->
+        <div class="flex items-center border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 overflow-x-auto text-xs font-bold">
+            <button onclick="switchTab('assembliesTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl bg-blue-600 text-white flex items-center gap-2 border-t-2 border-blue-400 transition-all">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>1. Montaj / Assembly Listesi ({{ assemblies|length }})</span>
+            </button>
+            <button onclick="switchTab('assemblyPartsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-cubes-stacked"></i>
+                <span>2. Montaj Eleman / Parça Listesi ({{ assembly_parts|length }})</span>
+            </button>
+            <button onclick="switchTab('partsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                <i class="fa-solid fa-puzzle-piece"></i>
+                <span>3. Tek Parça / Poz Listesi ({{ parts|length }})</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: MONTAJ / ASSEMBLY LİSTESİ -->
+        <div id="assembliesTab" class="tab-content p-4">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
+                <p class="text-slate-400">Ana imalat markaları (Kolon, Kiriş, Makas) ve canlı aşama adetleri:</p>
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input type="text" id="filterAssInput" onkeyup="filterTable('assembliesTable', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadAssemblyExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pasteAssemblyModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj (Assembly) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="assemblies">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="assembliesTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Marka / Montaj No</th>
+                            <th class="py-2.5 px-2">Eleman Açıklaması</th>
+                            <th class="py-2.5 px-2">Ana Profil</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Ton</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Çatım</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Kaynak</th>
+                            <th class="py-2.5 px-2 text-center text-amber-400">Temizlik</th>
+                            <th class="py-2.5 px-2 text-center text-teal-400">Kalite</th>
+                            <th class="py-2.5 px-2 text-center text-purple-400">Boya</th>
+                            <th class="py-2.5 px-2 text-center text-emerald-400">Sevk</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for a in assemblies %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-2.5 px-3 font-mono font-bold text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                <span>{{ a.assembly_pos }}</span>
+                            </td>
+                            <td class="py-2.5 px-2 text-slate-300 font-medium">{{ a.description or '-' }}</td>
+                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ a.profile_type or '-' }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ a.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ (a.total_weight / 1000.0) | format_num }} Ton</td>
+                            
+                            <!-- Aşamalar -->
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_fitup_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_welding_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_cleaning_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center">
+                                {% if a.qa_approved_qty >= a.quantity %}
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-teal-500/10 text-teal-400 border border-teal-500/20 font-bold">Onaylı</span>
+                                {% elif a.qa_pending_qty > 0 %}
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">{{ a.qa_pending_qty }} Bekliyor</span>
+                                {% else %}
+                                    <span class="text-slate-500">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-2.5 px-2 text-center font-mono">{{ a.paint_done_qty }} / {{ a.quantity }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono font-bold text-emerald-400">{{ a.shipped_qty }} / {{ a.quantity }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="12" class="py-8 text-center text-slate-500">Bu projeye henüz montaj listesi eklenmedi. Yukarıdaki 'Excel'den Yükle' veya 'Kopyala-Yapıştır ile Yükle' butonunu kullanabilirsiniz.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 2: MONTAJ ELEMAN / PARÇA LİSTESİ (Assembly Parts) -->
+        <div id="assemblyPartsTab" class="tab-content p-4 hidden">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
+                <p class="text-slate-400">Hangi montaj markasının hangi tekil plaka/profillerden oluştuğu listesi:</p>
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <div class="relative flex-1 sm:w-64">
+                        <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="🔍 Poz filtrele (Örn: D5, p1)..." class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500 font-medium placeholder-slate-500">
+                        <i class="fa-solid fa-filter absolute left-2.5 top-2 text-slate-500 text-xs"></i>
+                    </div>
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadAssemblyPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pasteAssemblyPartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj Parça (Assembly Parts) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="assembly_parts">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Parça Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="assemblyPartsTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Bağlı Olduğu Montaj (Marka)</th>
+                            <th class="py-2.5 px-2">Tek Parça / Poz No</th>
+                            <th class="py-2.5 px-2">Parça Tanımı</th>
+                            <th class="py-2.5 px-2">Profil / Sac Kesiti</th>
+                            <th class="py-2.5 px-2 text-right">Uzunluk (mm)</th>
+                            <th class="py-2.5 px-2 text-right">Montajdaki Adet</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Kg</th>
+                            <th class="py-2.5 px-2 text-center">Çelik Kalitesi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for ap in assembly_parts %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ ap.assembly_pos }}</td>
+                            <td class="py-2.5 px-2 font-mono font-bold text-white">{{ ap.part_pos }}</td>
+                            <td class="py-2.5 px-2 text-slate-300">{{ ap.description or '-' }}</td>
+                            <td class="py-2.5 px-2 font-mono text-emerald-300">{{ ap.profile_type or '-' }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ ap.length | int }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono">{{ ap.quantity_per_assembly }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ ap.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-center font-mono text-[11px] text-slate-400">{{ ap.material_grade or 'S275JR' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="py-8 text-center text-slate-500">Montaj eleman ilişkisi bulunmuyor.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TAB 3: TEK PARÇA / POZ LİSTESİ & KESİM TAKİBİ -->
+        <div id="partsTab" class="tab-content p-4 hidden">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
+                <p class="text-slate-400">Atölye kesim ve hammadde hazırlık poz listesi:</p>
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input type="text" onkeyup="filterTable('partsTable', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    {% if can_user_edit('projeler') %}
+                    <button onclick="openModal('uploadPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                        <span>Excel'den Yükle</span>
+                    </button>
+                    <button onclick="openModal('pastePartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-paste text-blue-400"></i>
+                        <span>Kopyala-Yapıştır ile Yükle</span>
+                    </button>
+                    <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Tek Parça (Parts) poz listesini temizlemek istediğinizden emin misiniz?');" class="inline">
+                        <input type="hidden" name="target" value="parts">
+                        <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Tek Parça Listesini Temizle">
+                            <i class="fa-solid fa-trash text-rose-400"></i>
+                            <span>Listeyi Temizle</span>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table id="partsTable" class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2.5 px-3">Poz No</th>
+                            <th class="py-2.5 px-2">Parça Tanımı</th>
+                            <th class="py-2.5 px-2">Profil / Sac Kesiti</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Adet</th>
+                            <th class="py-2.5 px-2 text-right text-yellow-400 font-bold">Kesilen Adet</th>
+                            <th class="py-2.5 px-2 text-right text-slate-300">Kalan Adet</th>
+                            <th class="py-2.5 px-2 text-right">Uzunluk (mm)</th>
+                            <th class="py-2.5 px-2 text-right">Birim Kg</th>
+                            <th class="py-2.5 px-2 text-right">Toplam Kg</th>
+                            <th class="py-2.5 px-2 text-center">Durum</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for p in parts %}
+                        {% set kalan = p.quantity - p.cut_quantity %}
+                        <tr class="hover:bg-slate-900/50 transition-colors {% if kalan <= 0 %}bg-emerald-950/20{% endif %}">
+                            <td class="py-2.5 px-3 font-mono font-bold text-white">{{ p.pos_no }}</td>
+                            <td class="py-2.5 px-2 text-slate-300">{{ p.name }}</td>
+                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ p.profile_type }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-yellow-400">{{ p.cut_quantity }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold {% if kalan <= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                {{ kalan if kalan > 0 else 0 }}
+                            </td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ p.length | int }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ p.unit_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.total_weight | format_num }}</td>
+                            <td class="py-2.5 px-2 text-center">
+                                {% if kalan <= 0 %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Kesim Tamam</span>
+                                {% elif p.cut_quantity > 0 %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Kesimde</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">Bekliyor</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="py-8 text-center text-slate-500">Parça poz listesi boş.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- TAB 1 MODALLER: MONTAJ / ASSEMBLY YÜKLEME -->
+<div id="uploadAssemblyExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Montaj Listesi (Excel Yükle)</span>
+            </h3>
+            <button onclick="closeModal('uploadAssemblyExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('assExcelFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="assExcelFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="assExcelFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('assExcelFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+            <div class="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl text-[11px] text-blue-300">
+                Sütunlar: Marka No, Eleman Tanımı, Profil, Adet, Birim Kg, Toplam Kg
+            </div>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadAssemblyExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pasteAssemblyModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Montaj Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pasteAssemblyModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="C-101	Kolon	HEB 300	12	1250	15000	S275JR&#10;B-201	Kiriş	IPE 360	16	680	10880	S355JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Marka / Poz No</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pasteAssemblyModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TAB 2 MODALLER: MONTAJ PARÇA LİSTESİ YÜKLEME -->
+<div id="uploadAssemblyPartsExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Montaj Parça Listesi (Excel Yükle)</span>
+            </h3>
+            <button onclick="closeModal('uploadAssemblyPartsExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_parts_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('assPartsFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="assPartsFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="assPartsFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('assPartsFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadAssemblyPartsExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pasteAssemblyPartsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Montaj Parça Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pasteAssemblyPartsModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_assembly_parts_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="C-101	p1	Gövde	HEB 300	1	12	8500	1000	12000	S275JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Montaj Poz</b> | <b>Parça Poz</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet/Montaj</b> | <b>Toplam Adet</b> | <b>Boy</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pasteAssemblyPartsModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TAB 3 MODALLER: TEK PARÇA LİSTESİ YÜKLEME -->
+<div id="uploadPartsExcelModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-file-excel text-emerald-400"></i>
+                <span>Tek Parça / Poz Listesi (Excel Yükle)</span>
+            </h3>
+            <button onclick="closeModal('uploadPartsExcelModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_parts_yukle', project_id=project.id) }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel Dosyası (.xlsx, .xls)</label>
+                <div class="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-950/60" onclick="document.getElementById('partsFileInput').click()">
+                    <i class="fa-solid fa-file-excel text-3xl text-emerald-400 mb-2"></i>
+                    <p class="text-xs font-semibold text-slate-200" id="partsFileName">Dosya seçmek için tıklayın</p>
+                    <input type="file" id="partsFileInput" name="excel_file" accept=".xlsx,.xls" required class="hidden" onchange="document.getElementById('partsFileName').innerText = this.files[0].name">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('uploadPartsExcelModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold">Yükle</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pastePartsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-paste text-blue-400"></i>
+                <span>Tek Parça / Poz Listesi (Kopyala - Yapıştır)</span>
+            </h3>
+            <button onclick="closeModal('pastePartsModal')" class="text-slate-400 hover:text-white p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <form action="{{ url_for('api_parts_yukle', project_id=project.id) }}" method="POST" class="mt-4 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1.5 font-medium">Excel'den Kopyaladığınız Satırları Buraya Yapıştırın:</label>
+                <textarea name="pasted_text" rows="8" required placeholder="p1	Kolon Gövde	HEB 300	12	8500	1000	12000	S275JR&#10;p2	Taban Flanşı	PL 25mm	12	450	45.2	542.4	S355JR" class="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 font-mono text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-400">Sütun Sırası: <b>Poz No</b> | <b>Tanım</b> | <b>Profil</b> | <b>Adet</b> | <b>Boy</b> | <b>Birim Kg</b> | <b>Toplam Kg</b> | <b>Kalite</b></p>
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('pastePartsModal')" class="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TONAJ DÜZENLEME MODALI -->
+<div id="editProjectTonnageModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-950/50">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                    <i class="fa-solid fa-weight-hanging"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-white">Proje Toplam Tonajını Düzenle</h3>
+                    <p class="text-[11px] text-slate-400 font-mono">{{ project.code }} - {{ project.name }}</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeModal('editProjectTonnageModal')" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_proje_tonaj_guncelle', project_id=project.id) }}" method="POST" class="p-5 space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-300 font-semibold mb-1.5">Hedef / Toplam Tonaj (Ton)</label>
+                <div class="relative">
+                    <input type="number" step="0.001" name="target_tonnage" value="{{ project.target_tonnage or project.total_tonnage }}" required class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl px-3.5 py-2.5 font-mono text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none">
+                    <span class="absolute right-3.5 top-2.5 text-slate-400 font-semibold">Ton</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    <i class="fa-solid fa-circle-info text-blue-400 mr-1"></i>
+                    Tekla montaj listesi yüklendiğinde tonaj otomatik hesaplanır. İsterseniz buradan manuel revize edebilirsiniz. Otomatik hesaplamaya dönmek için 0 yazabilirsiniz.
+                </p>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editProjectTonnageModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition-colors">
+                    Vazgeç
+                </button>
+                <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold shadow-lg shadow-blue-500/20 transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-check"></i>
+                    <span>Kaydet</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => {
+            el.classList.remove('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+            el.classList.add('text-slate-400');
+        });
+
+        const activeTab = document.getElementById(tabId);
+        if (activeTab) activeTab.classList.remove('hidden');
+
+        btn.classList.remove('text-slate-400');
+        btn.classList.add('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+    }
+
+    function filterTable(tableId, query) {
+        const q = query.toLowerCase();
+        const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+        rows.forEach(r => {
+            const text = r.innerText.toLowerCase();
+            r.style.display = text.includes(q) ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

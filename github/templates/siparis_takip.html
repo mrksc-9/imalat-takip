@@ -1,0 +1,923 @@
+{% extends "layout.html" %}
+
+{% block title %}2. Malzeme & Sipariş Takip - Çelik İmalat MES{% endblock %}
+{% block page_title %}2. Malzeme & Sipariş Takip (Satınalma Onayı & Gelen-Kalan Analizi){% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR: Proje Filtreleme, Özet Tonajlar ve Eylemler -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <!-- Proje Filtresi -->
+        <div class="flex items-center gap-3 w-full lg:w-auto">
+            <form method="GET" action="{{ url_for('siparis_takip') }}" class="flex items-center gap-2 w-full lg:w-auto">
+                <label class="text-xs font-bold text-slate-300 shrink-0">Proje Seç:</label>
+                <select name="proje_id" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-medium">
+                    <option value="">-- Tüm Projeler / Genel --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+
+        <!-- KPI Tonaj Kutuları -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full lg:w-auto">
+            <div class="px-3 py-1.5 bg-yellow-950/40 border border-yellow-800/60 rounded-xl font-mono">
+                <span class="text-yellow-400 text-[10px] uppercase block">Onay Bekleyen Talep</span>
+                <span class="text-sm font-black text-white">{{ pending_requests|length }} Kalem</span>
+            </div>
+            <div class="px-3 py-1.5 bg-blue-950/40 border border-blue-800/60 rounded-xl font-mono">
+                <span class="text-blue-400 text-[10px] uppercase block">Onaylanan Sipariş</span>
+                <span class="text-sm font-black text-white">{{ tot_ordered_ton }} Ton</span>
+            </div>
+            <div class="px-3 py-1.5 bg-emerald-950/40 border border-emerald-800/60 rounded-xl font-mono">
+                <span class="text-emerald-400 text-[10px] uppercase block">Gelen Malzeme</span>
+                <span class="text-sm font-black text-white">{{ tot_received_ton }} Ton</span>
+            </div>
+            <div class="px-3 py-1.5 bg-rose-950/40 border border-rose-800/60 rounded-xl font-mono">
+                <span class="text-rose-400 text-[10px] uppercase block">Kalan Sipariş</span>
+                <span class="text-sm font-black text-white">{{ tot_remaining_ton }} Ton</span>
+            </div>
+        </div>
+
+        <!-- Eylemler -->
+        <div class="flex items-center gap-2">
+            <a href="{{ url_for('api_siparis_teklif_excel', proje_id=selected_project_id) }}" class="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-file-excel"></i>
+                <span>Tedarikçi Teklif Formu Al</span>
+            </a>
+
+            {% if can_user_edit('siparis') %}
+            <button onclick="openModal('addRequestModal')" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5">
+                <i class="fa-solid fa-cart-plus"></i>
+                <span>Sipariş Talebi Oluştur</span>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 2 ANA SAYFA / SEKME GEÇİŞİ -->
+    <div class="flex items-center gap-3 border-b border-slate-800 pb-3 text-xs font-bold">
+        <button id="btnPageTalep" onclick="switchMainPage('pageTalep')" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all">
+            <i class="fa-solid fa-clipboard-check"></i>
+            <span>1. Sayfa: Sipariş Talepleri & Satınalma Onay Havuzu</span>
+            {% if pending_requests|length > 0 %}
+            <span class="px-2 py-0.5 rounded-full bg-yellow-400 text-slate-950 font-black text-[10px] animate-pulse">
+                {{ pending_requests|length }}
+            </span>
+            {% endif %}
+        </button>
+
+        <button id="btnPageTakip" onclick="switchMainPage('pageTakip')" class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center gap-2 transition-all">
+            <i class="fa-solid fa-boxes-packing"></i>
+            <span>2. Sayfa: Onaylanan Siparişler & Gelen-Kalan Takibi</span>
+            <span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold text-[10px]">
+                {{ ordered_items|length }} Kalem
+            </span>
+        </button>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- 1. SAYFA: SİPARİŞ TALEPLERİ VE SATINALMA ONAY HAVUZU -->
+    <!-- ========================================================================= -->
+    <div id="pageTalep" class="space-y-4">
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+            <div class="p-4 border-b border-slate-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                    <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-stamp text-amber-400"></i>
+                        <span>Satınalma Onayı Bekleyen Malzeme Sipariş Talepleri</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 mt-0.5">Üretim veya mühendislik tarafından açılan ve satınalma onayı bekleyen hammadde talepleri</p>
+                </div>
+
+                {% if can_user_edit('siparis') %}
+                <button onclick="openModal('addRequestModal')" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Yeni Sipariş Talebi Ver</span>
+                </button>
+                {% endif %}
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-3 px-3">Proje</th>
+                            <th class="py-3 px-3">Malzeme / Profil Cinsi</th>
+                            <th class="py-3 px-2 text-right">Kalınlık (mm)</th>
+                            <th class="py-3 px-2 text-right">En (mm)</th>
+                            <th class="py-3 px-2 text-right">Boy (mm)</th>
+                            <th class="py-3 px-2 text-right">Talep Adet</th>
+                            <th class="py-3 px-2 text-right">Ağırlık (kg)</th>
+                            <th class="py-3 px-3">Önerilen Tedarikçi</th>
+                            <th class="py-3 px-3">Açıklama / Not</th>
+                            <th class="py-3 px-3 text-center">Durum</th>
+                            <th class="py-3 px-4 text-center">Satınalma / Yönetici Kararı</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for req in pending_requests %}
+                        <tr class="hover:bg-slate-900/50 transition-colors">
+                            <td class="py-3 px-3 font-mono font-bold text-blue-400">{{ req.project_code or 'Genel' }}</td>
+                            <td class="py-3 px-3 font-mono font-bold text-white">{{ req.material }}</td>
+                            <td class="py-3 px-2 text-right font-mono">{{ req.thickness if req.thickness > 0 else '-' }}</td>
+                            <td class="py-3 px-2 text-right font-mono">{{ req.width if req.width > 0 else '-' }}</td>
+                            <td class="py-3 px-2 text-right font-mono">{{ req.length if req.length > 0 else '-' }}</td>
+                            <td class="py-3 px-2 text-right font-mono font-bold text-yellow-400">{{ req.quantity }}</td>
+                            <td class="py-3 px-2 text-right font-mono font-black text-white">{{ req.weight | format_num }}</td>
+                            <td class="py-3 px-3 text-slate-300">{{ req.supplier or '-' }}</td>
+                            <td class="py-3 px-3 text-slate-400">{{ req.notes or '-' }}</td>
+                            <td class="py-3 px-3 text-center">
+                                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 whitespace-nowrap">
+                                    <i class="fa-regular fa-clock mr-1"></i> Onay Bekliyor
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 text-center whitespace-nowrap">
+                                {% if is_purchasing_or_admin or can_user_edit('siparis') %}
+                                <div class="flex items-center justify-center gap-2">
+                                    <form action="{{ url_for('api_siparis_talep_onayla', order_id=req.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu malzeme sipariş talebini ONAYLAMAK istediğinizden emin misiniz? Onaylanan sipariş 2. Sayfaya aktarılacaktır.');">
+                                        <button type="submit" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs transition-all shadow-sm flex items-center gap-1">
+                                            <i class="fa-solid fa-check"></i>
+                                            <span>Onayla</span>
+                                        </button>
+                                    </form>
+
+                                    <form action="{{ url_for('api_siparis_talep_reddet', order_id=req.id) }}" method="POST" class="inline" onsubmit="return confirm('Bu sipariş talebini REDDETMEK istediğinizden emin misiniz?');">
+                                        <button type="submit" class="px-3 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg font-bold text-xs transition-all flex items-center gap-1">
+                                            <i class="fa-solid fa-xmark"></i>
+                                            <span>Reddet</span>
+                                        </button>
+                                    </form>
+                                </div>
+                                {% else %}
+                                <span class="text-slate-500 text-[11px]">Satınalma / Yönetici Onayı Bekleniyor</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="11" class="py-10 text-center text-slate-500 font-medium">
+                                <i class="fa-solid fa-circle-check text-2xl mb-2 text-emerald-500/50 block"></i>
+                                Şu anda satınalma onayı bekleyen açık bir talep bulunmuyor.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- ========================================================================= -->
+    <!-- 2. SAYFA: ONAYLANAN SİPARİŞLER VE GELEN - KALAN TAKİBİ -->
+    <!-- ========================================================================= -->
+    <div id="pageTakip" class="space-y-4 hidden">
+
+        <!-- 3 SEKMELİ YAPI (1- Onaylanan Siparişler, 2- Gelen Malzeme, 3- Kalan Malzeme Özeti) -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+            
+            <!-- Sekme Başlıkları -->
+            <div class="flex items-center border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 overflow-x-auto text-xs font-bold">
+                <button onclick="switchSipTab('tabVerilen', this)" class="sip-tab-btn px-4 py-2.5 rounded-t-xl bg-blue-600 text-white flex items-center gap-2 border-t-2 border-blue-400 transition-all">
+                    <i class="fa-solid fa-cart-flatbed"></i>
+                    <span>1) Onaylanan Siparişler ({{ ordered_items|length }})</span>
+                </button>
+                <button onclick="switchSipTab('tabGelen', this)" class="sip-tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-truck-ramp-box"></i>
+                    <span>2) Gelen Malzeme Girişleri ({{ received_items|length }})</span>
+                </button>
+                <button onclick="switchSipTab('tabKalan', this)" class="sip-tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+                    <i class="fa-solid fa-calculator"></i>
+                    <span>3) Kalan & Fark Analizi ({{ remaining_items|length }})</span>
+                </button>
+            </div>
+
+            <!-- 1. TAB: ONAYLANAN SİPARİŞ VERİLEN MALZEME -->
+            <div id="tabVerilen" class="sip-tab-content p-4">
+                <div class="flex items-center justify-between mb-3 text-xs">
+                    <p class="text-slate-400">Satınalma tarafından onaylanmış ve sipariş verilmiş hammadde dökümü:</p>
+                    {% if can_user_edit('siparis') %}
+                    <button onclick="openModal('addOrderModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i> Doğrudan Sipariş Kalemi Ekle
+                    </button>
+                    {% endif %}
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                                <th class="py-2.5 px-3">Proje</th>
+                                <th class="py-2.5 px-2">Malzeme / Profil Cinsi</th>
+                                <th class="py-2.5 px-2 text-right">Kalınlık (mm)</th>
+                                <th class="py-2.5 px-2 text-right">En (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Boy (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Sipariş Adet</th>
+                                <th class="py-2.5 px-2 text-right">Ağırlık (kg)</th>
+                                <th class="py-2.5 px-2">Tedarikçi</th>
+                                <th class="py-2.5 px-2">Onaylayan</th>
+                                <th class="py-2.5 px-2">Açıklama</th>
+                                {% if can_user_edit('siparis') %}
+                                <th class="py-2.5 px-3 text-center">İşlem</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                            {% for o in ordered_items %}
+                            <tr class="hover:bg-slate-900/50 transition-colors">
+                                <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ o.project_code or 'Genel' }}</td>
+                                <td class="py-2.5 px-2 font-mono font-bold text-white">{{ o.material }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ o.thickness if o.thickness > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ o.width if o.width > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ o.length if o.length > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ o.quantity }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-black text-emerald-400">{{ o.weight | format_num }}</td>
+                                <td class="py-2.5 px-2 text-slate-300">{{ o.supplier or '-' }}</td>
+                                <td class="py-2.5 px-2">
+                                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        {{ o.approved_by or 'Satınalma' }}
+                                    </span>
+                                </td>
+                                <td class="py-2.5 px-2 text-slate-400">{{ o.notes or '-' }}</td>
+                                {% if can_user_edit('siparis') %}
+                                <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                                    <button onclick="openEditOrderModal({{ o | tojson | forceescape }})" class="p-1 text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded transition-colors mr-1" title="Düzenle">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <form action="{{ url_for('api_siparis_verilen_sil') }}" method="POST" class="inline" onsubmit="return confirm('Bu sipariş kaydını silmek istediğinizden emin misiniz?');">
+                                        <input type="hidden" name="id" value="{{ o.id }}">
+                                        <button type="submit" class="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-900/30 rounded transition-colors" title="Sil">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="11" class="py-8 text-center text-slate-500">Kayıtlı onaylanmış sipariş bulunmuyor.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. TAB: GELEN MALZEME -->
+            <div id="tabGelen" class="sip-tab-content p-4 hidden">
+                <div class="flex items-center justify-between mb-3 text-xs">
+                    <p class="text-slate-400">Fabrikaya irsaliye ile teslim alınan hammadde girişleri:</p>
+                    {% if can_user_edit('siparis') %}
+                    <button onclick="openModal('addReceivedModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i> Gelen Malzeme Girişi Yap
+                    </button>
+                    {% endif %}
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                                <th class="py-2.5 px-3">Geliş Tarihi</th>
+                                <th class="py-2.5 px-2">İrsaliye No</th>
+                                <th class="py-2.5 px-2">Görsel</th>
+                                <th class="py-2.5 px-2">Proje</th>
+                                <th class="py-2.5 px-2">Malzeme Cinsi</th>
+                                <th class="py-2.5 px-2 text-right">Kalınlık (mm)</th>
+                                <th class="py-2.5 px-2 text-right">En (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Boy (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Gelen Adet</th>
+                                <th class="py-2.5 px-2 text-right text-emerald-400">Gelen Ağırlık (kg)</th>
+                                <th class="py-2.5 px-2">Not</th>
+                                {% if can_user_edit('siparis') %}
+                                <th class="py-2.5 px-3 text-center">İşlem</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                            {% for g in received_items %}
+                            <tr class="hover:bg-slate-900/50 transition-colors">
+                                <td class="py-2.5 px-3 font-mono text-slate-300">{{ g.received_date | format_date }}</td>
+                                <td class="py-2.5 px-2 font-mono font-bold text-yellow-400">{{ g.waybill_no or '-' }}</td>
+                                <td class="py-2.5 px-2 text-center">
+                                    {% if g.invoice_photo_url %}
+                                    <a href="{{ g.invoice_photo_url }}" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-500/30 transition-all font-semibold text-[10px]" title="İrsaliye Fotoğrafını Büyüt">
+                                        <i class="fa-solid fa-image"></i> Görsel
+                                    </a>
+                                    {% else %}
+                                    <span class="text-slate-600">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-2.5 px-2 font-mono font-bold text-blue-400">{{ g.project_code or 'Genel' }}</td>
+                                <td class="py-2.5 px-2 font-mono font-bold text-white">{{ g.material }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ g.thickness if g.thickness > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ g.width if g.width > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ g.length if g.length > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ g.quantity }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-black text-emerald-400">{{ g.weight | format_num }}</td>
+                                <td class="py-2.5 px-2 text-slate-400">{{ g.notes or '-' }}</td>
+                                {% if can_user_edit('siparis') %}
+                                <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                                    <button onclick="openEditReceivedModal({{ g | tojson | forceescape }})" class="p-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-900/30 rounded transition-colors mr-1" title="Düzenle">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <form action="{{ url_for('api_siparis_gelen_sil') }}" method="POST" class="inline" onsubmit="return confirm('Bu gelen malzeme kaydını silmek istediğinizden emin misiniz?');">
+                                        <input type="hidden" name="id" value="{{ g.id }}">
+                                        <button type="submit" class="p-1 text-rose-400 hover:text-rose-300 hover:bg-rose-900/30 rounded transition-colors" title="Sil">
+                                            <i class="fa-solid fa-trash-can"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="12" class="py-8 text-center text-slate-500">Henüz gelen malzeme kaydı girilmedi.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. TAB: KALAN & FARK ANALİZİ -->
+            <div id="tabKalan" class="sip-tab-content p-4 hidden">
+                <p class="text-xs text-slate-400 mb-3">Onaylanıp sipariş verilen ile teslim alınan hammadde karşılaştırma tablosu:</p>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                                <th class="py-2.5 px-3">Malzeme Cinsi</th>
+                                <th class="py-2.5 px-2 text-right">Kalınlık (mm)</th>
+                                <th class="py-2.5 px-2 text-right">En (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Boy (mm)</th>
+                                <th class="py-2.5 px-2 text-right">Sipariş Adet</th>
+                                <th class="py-2.5 px-2 text-right text-emerald-400">Gelen Adet</th>
+                                <th class="py-2.5 px-2 text-right text-yellow-400">Fazla Gelen</th>
+                                <th class="py-2.5 px-2 text-right text-rose-400">Kalan Adet</th>
+                                <th class="py-2.5 px-2 text-right font-bold text-white">Kalan Ağırlık (kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                            {% for r in remaining_items %}
+                            <tr class="hover:bg-slate-900/50 transition-colors {% if r.remaining_qty == 0 %}bg-emerald-950/20{% endif %}">
+                                <td class="py-2.5 px-3 font-mono font-bold text-white">{{ r.material }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ r.thickness if r.thickness > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ r.width if r.width > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono">{{ r.length if r.length > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold">{{ r.ordered_qty }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold text-emerald-400">{{ r.received_qty }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold text-yellow-400">{{ r.surplus_qty if r.surplus_qty > 0 else '-' }}</td>
+                                <td class="py-2.5 px-2 text-right font-mono font-bold {% if r.remaining_qty > 0 %}text-rose-400{% else %}text-slate-500{% endif %}">
+                                    {{ r.remaining_qty }}
+                                </td>
+                                <td class="py-2.5 px-2 text-right font-mono font-black text-white">{{ r.remaining_weight | format_num }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="py-8 text-center text-slate-500">Kıyaslanacak onaylı sipariş verisi yok.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- 1. MODAL: SİPARİŞ TALEBİ OLUŞTUR (SATINALMA ONAYINA GİDER) -->
+<div id="addRequestModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-clipboard-question text-blue-400"></i>
+                <span>Yeni Malzeme Sipariş Talebi Oluştur</span>
+            </h3>
+            <button onclick="closeModal('addRequestModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_siparis_verilen_ekle') }}" method="POST" class="mt-4 space-y-3.5 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Proje Seç</label>
+                <select name="project_id" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <option value="">-- Genel / Projesiz --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Malzeme / Profil Cinsi *</label>
+                <input type="text" id="req_material" name="material" required placeholder="Örn: HEA 240, Sac S275JR, RHS120x80, Boru D60.3"
+                       oninput="triggerAutoWeightCalc('req_material', 'req_thickness', 'req_width', 'req_length', 'req_quantity', 'req_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-blue-500">
+                <p class="text-[10px] text-slate-500 mt-0.5">HEA, HEB, IPE, UNP, SAC, KUTU (RHS), BORU vb. otomatik tanınır.</p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Kalınlık (mm)</label>
+                    <input type="number" step="0.01" id="req_thickness" name="thickness" placeholder="Örn: 20"
+                           oninput="triggerAutoWeightCalc('req_material', 'req_thickness', 'req_width', 'req_length', 'req_quantity', 'req_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">En (mm)</label>
+                    <input type="number" step="0.01" id="req_width" name="width" placeholder="Örn: 1500 (Sac)"
+                           oninput="triggerAutoWeightCalc('req_material', 'req_thickness', 'req_width', 'req_length', 'req_quantity', 'req_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Boy (mm)</label>
+                    <input type="number" step="0.01" id="req_length" name="length" placeholder="Örn: 6000"
+                           oninput="triggerAutoWeightCalc('req_material', 'req_thickness', 'req_width', 'req_length', 'req_quantity', 'req_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Talep Adedi *</label>
+                    <input type="number" id="req_quantity" name="quantity" value="1" min="1" required
+                           oninput="triggerAutoWeightCalc('req_material', 'req_thickness', 'req_width', 'req_length', 'req_quantity', 'req_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Toplam Ağırlık (kg)</label>
+                    <input type="number" step="0.01" id="req_weight" name="weight" placeholder="0.00"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Önerilen Tedarikçi</label>
+                    <input type="text" name="supplier" placeholder="Örn: Kardemir, Erdemir" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Açıklama / Not</label>
+                    <input type="text" name="notes" placeholder="Örn: Kolon tabanları için" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addRequestModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-md shadow-blue-600/30">Talebi Satınalmaya Gönder</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 2. MODAL: DOĞRUDAN ONAYLI SİPARİŞ VERİLEN MALZEME EKLE MODAL -->
+<div id="addOrderModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-cart-plus text-blue-400"></i>
+                <span>Sipariş Verilen Malzeme Ekle</span>
+            </h3>
+            <button onclick="closeModal('addOrderModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_siparis_verilen_ekle') }}" method="POST" class="mt-4 space-y-3.5 text-xs">
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Proje Seç</label>
+                <select name="project_id" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    <option value="">-- Genel / Projesiz --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Malzeme / Profil Cinsi *</label>
+                <input type="text" id="calc_material" name="material" required placeholder="Örn: HEA 240, Sac S275JR, RHS120x80, Boru D60.3"
+                       oninput="triggerAutoWeightCalc('calc_material', 'calc_thickness', 'calc_width', 'calc_length', 'calc_quantity', 'calc_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Kalınlık (mm)</label>
+                    <input type="number" step="0.01" id="calc_thickness" name="thickness" placeholder="Örn: 20"
+                           oninput="triggerAutoWeightCalc('calc_material', 'calc_thickness', 'calc_width', 'calc_length', 'calc_quantity', 'calc_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">En (mm)</label>
+                    <input type="number" step="0.01" id="calc_width" name="width" placeholder="Örn: 1500 (Sac)"
+                           oninput="triggerAutoWeightCalc('calc_material', 'calc_thickness', 'calc_width', 'calc_length', 'calc_quantity', 'calc_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Boy (mm)</label>
+                    <input type="number" step="0.01" id="calc_length" name="length" placeholder="Örn: 6000"
+                           oninput="triggerAutoWeightCalc('calc_material', 'calc_thickness', 'calc_width', 'calc_length', 'calc_quantity', 'calc_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Adet *</label>
+                    <input type="number" id="calc_quantity" name="quantity" value="1" min="1" required
+                           oninput="triggerAutoWeightCalc('calc_material', 'calc_thickness', 'calc_width', 'calc_length', 'calc_quantity', 'calc_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Toplam Ağırlık (kg)</label>
+                    <input type="number" step="0.01" id="calc_weight" name="weight" placeholder="0.00"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Tedarikçi Firma</label>
+                    <input type="text" name="supplier" placeholder="Örn: Kardemir, Erdemir" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Açıklama / Not</label>
+                    <input type="text" name="notes" placeholder="Örn: Kolon tabanları için" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addOrderModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-md shadow-blue-600/30">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- SİPARİŞ VERİLEN DÜZENLE MODAL -->
+<div id="editOrderModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-blue-400"></i>
+                <span>Sipariş Verilen Malzemeyi Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editOrderModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_siparis_verilen_guncelle') }}" method="POST" class="mt-4 space-y-3.5 text-xs">
+            <input type="hidden" id="edit_o_id" name="id">
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Malzeme / Profil Cinsi *</label>
+                <input type="text" id="edit_o_material" name="material" required
+                       oninput="triggerAutoWeightCalc('edit_o_material', 'edit_o_thickness', 'edit_o_width', 'edit_o_length', 'edit_o_quantity', 'edit_o_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-blue-500">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Kalınlık (mm)</label>
+                    <input type="number" step="0.01" id="edit_o_thickness" name="thickness"
+                           oninput="triggerAutoWeightCalc('edit_o_material', 'edit_o_thickness', 'edit_o_width', 'edit_o_length', 'edit_o_quantity', 'edit_o_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">En (mm)</label>
+                    <input type="number" step="0.01" id="edit_o_width" name="width"
+                           oninput="triggerAutoWeightCalc('edit_o_material', 'edit_o_thickness', 'edit_o_width', 'edit_o_length', 'edit_o_quantity', 'edit_o_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Boy (mm)</label>
+                    <input type="number" step="0.01" id="edit_o_length" name="length"
+                           oninput="triggerAutoWeightCalc('edit_o_material', 'edit_o_thickness', 'edit_o_width', 'edit_o_length', 'edit_o_quantity', 'edit_o_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Adet *</label>
+                    <input type="number" id="edit_o_quantity" name="quantity" min="1" required
+                           oninput="triggerAutoWeightCalc('edit_o_material', 'edit_o_thickness', 'edit_o_width', 'edit_o_length', 'edit_o_quantity', 'edit_o_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Toplam Ağırlık (kg)</label>
+                    <input type="number" step="0.01" id="edit_o_weight" name="weight"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-emerald-400 font-mono font-bold focus:outline-none focus:border-emerald-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Tedarikçi Firma</label>
+                    <input type="text" id="edit_o_supplier" name="supplier" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Açıklama / Not</label>
+                    <input type="text" id="edit_o_notes" name="notes" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editOrderModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold shadow-md shadow-blue-600/30">Güncellemeyi Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- GELEN MALZEME EKLE MODAL -->
+<div id="addReceivedModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-truck-ramp-box text-emerald-400"></i>
+                <span>Gelen Malzeme Girişi Yap</span>
+            </h3>
+            <button onclick="closeModal('addReceivedModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_siparis_gelen_ekle') }}" method="POST" enctype="multipart/form-data" class="mt-4 space-y-3.5 text-xs">
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Proje Seç</label>
+                    <select name="project_id" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                        <option value="">-- Genel / Projesiz --</option>
+                        {% for p in projects %}
+                        <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">İrsaliye No *</label>
+                    <input type="text" name="waybill_no" required placeholder="Örn: IRS-2026-99" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Malzeme / Profil Cinsi *</label>
+                    <input type="text" id="rec_material" name="material" required placeholder="Örn: HEA 240 veya Sac S275JR"
+                           oninput="triggerAutoWeightCalc('rec_material', 'rec_thickness', 'rec_width', 'rec_length', 'rec_quantity', 'rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Geliş Tarihi</label>
+                    <input type="date" name="received_date" value="{{ now.strftime('%Y-%m-%d') }}" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Kalınlık (mm)</label>
+                    <input type="number" step="0.01" id="rec_thickness" name="thickness" placeholder="mm"
+                           oninput="triggerAutoWeightCalc('rec_material', 'rec_thickness', 'rec_width', 'rec_length', 'rec_quantity', 'rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">En (mm)</label>
+                    <input type="number" step="0.01" id="rec_width" name="width" placeholder="mm"
+                           oninput="triggerAutoWeightCalc('rec_material', 'rec_thickness', 'rec_width', 'rec_length', 'rec_quantity', 'rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Boy (mm)</label>
+                    <input type="number" step="0.01" id="rec_length" name="length" placeholder="mm"
+                           oninput="triggerAutoWeightCalc('rec_material', 'rec_thickness', 'rec_width', 'rec_length', 'rec_quantity', 'rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Gelen Adet *</label>
+                    <input type="number" id="rec_quantity" name="quantity" value="1" min="1" required
+                           oninput="triggerAutoWeightCalc('rec_material', 'rec_thickness', 'rec_width', 'rec_length', 'rec_quantity', 'rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Gelen Ağırlık (kg)</label>
+                    <input type="number" step="0.01" id="rec_weight" name="weight" placeholder="0.00"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-emerald-400 font-mono font-bold">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">İrsaliye / Fatura Fotoğrafı</label>
+                    <input type="file" name="invoice_photo" accept="image/*" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Açıklama / Not</label>
+                    <input type="text" name="notes" placeholder="Örn: 1. parti teslimatı" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('addReceivedModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow-md shadow-emerald-600/30">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- GELEN MALZEME DÜZENLE MODAL -->
+<div id="editReceivedModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl animate-scale-up">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <h3 class="font-bold text-base text-white flex items-center gap-2">
+                <i class="fa-solid fa-pen-to-square text-emerald-400"></i>
+                <span>Gelen Malzemeyi Düzenle</span>
+            </h3>
+            <button onclick="closeModal('editReceivedModal')" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <form action="{{ url_for('api_siparis_gelen_guncelle') }}" method="POST" class="mt-4 space-y-3.5 text-xs">
+            <input type="hidden" id="edit_rec_id" name="id">
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">İrsaliye No *</label>
+                    <input type="text" id="edit_rec_waybill" name="waybill_no" required class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Geliş Tarihi</label>
+                    <input type="date" id="edit_rec_date" name="received_date" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Malzeme / Profil Cinsi *</label>
+                <input type="text" id="edit_rec_material" name="material" required
+                       oninput="triggerAutoWeightCalc('edit_rec_material', 'edit_rec_thickness', 'edit_rec_width', 'edit_rec_length', 'edit_rec_quantity', 'edit_rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono uppercase">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Kalınlık (mm)</label>
+                    <input type="number" step="0.01" id="edit_rec_thickness" name="thickness"
+                           oninput="triggerAutoWeightCalc('edit_rec_material', 'edit_rec_thickness', 'edit_rec_width', 'edit_rec_length', 'edit_rec_quantity', 'edit_rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">En (mm)</label>
+                    <input type="number" step="0.01" id="edit_rec_width" name="width"
+                           oninput="triggerAutoWeightCalc('edit_rec_material', 'edit_rec_thickness', 'edit_rec_width', 'edit_rec_length', 'edit_rec_quantity', 'edit_rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Boy (mm)</label>
+                    <input type="number" step="0.01" id="edit_rec_length" name="length"
+                           oninput="triggerAutoWeightCalc('edit_rec_material', 'edit_rec_thickness', 'edit_rec_width', 'edit_rec_length', 'edit_rec_quantity', 'edit_rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Gelen Adet *</label>
+                    <input type="number" id="edit_rec_quantity" name="quantity" min="1" required
+                           oninput="triggerAutoWeightCalc('edit_rec_material', 'edit_rec_thickness', 'edit_rec_width', 'edit_rec_length', 'edit_rec_quantity', 'edit_rec_weight')" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono">
+                </div>
+                <div>
+                    <label class="block text-slate-400 mb-1 font-medium">Gelen Ağırlık (kg)</label>
+                    <input type="number" step="0.01" id="edit_rec_weight" name="weight"
+                           class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-emerald-400 font-mono font-bold">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-slate-400 mb-1 font-medium">Açıklama / Not</label>
+                <input type="text" id="edit_rec_notes" name="notes" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-white">
+            </div>
+
+            <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeModal('editReceivedModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">İptal</button>
+                <button type="submit" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold shadow-md shadow-emerald-600/30">Kaydet</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // 1. ve 2. Sayfa Geçişi
+    function switchMainPage(pageId) {
+        const pTalep = document.getElementById('pageTalep');
+        const pTakip = document.getElementById('pageTakip');
+        const bTalep = document.getElementById('btnPageTalep');
+        const bTakip = document.getElementById('btnPageTakip');
+
+        if (pageId === 'pageTalep') {
+            pTalep.classList.remove('hidden');
+            pTakip.classList.add('hidden');
+            bTalep.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all';
+            bTakip.className = 'px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center gap-2 transition-all';
+        } else {
+            pTalep.classList.add('hidden');
+            pTakip.classList.remove('hidden');
+            bTakip.className = 'px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all';
+            bTalep.className = 'px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white flex items-center gap-2 transition-all';
+        }
+    }
+
+    // 2. Sayfa İçindeki Sekmeler (Verilen / Gelen / Kalan)
+    function switchSipTab(tabId, btn) {
+        document.querySelectorAll('.sip-tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.sip-tab-btn').forEach(el => {
+            el.classList.remove('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+            el.classList.add('text-slate-400', 'hover:text-slate-200', 'hover:bg-slate-900');
+        });
+
+        document.getElementById(tabId).classList.remove('hidden');
+        btn.classList.add('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
+        btn.classList.remove('text-slate-400', 'hover:text-slate-200', 'hover:bg-slate-900');
+    }
+
+    // Modal Doldurucular
+    function openEditOrderModal(order) {
+        document.getElementById('edit_o_id').value = order.id;
+        document.getElementById('edit_o_material').value = order.material || '';
+        document.getElementById('edit_o_thickness').value = order.thickness || '';
+        document.getElementById('edit_o_width').value = order.width || '';
+        document.getElementById('edit_o_length').value = order.length || '';
+        document.getElementById('edit_o_quantity').value = order.quantity || 1;
+        document.getElementById('edit_o_weight').value = order.weight || '';
+        document.getElementById('edit_o_supplier').value = order.supplier || '';
+        document.getElementById('edit_o_notes').value = order.notes || '';
+        openModal('editOrderModal');
+    }
+
+    function openEditReceivedModal(rec) {
+        document.getElementById('edit_rec_id').value = rec.id;
+        document.getElementById('edit_rec_waybill').value = rec.waybill_no || '';
+        document.getElementById('edit_rec_date').value = rec.received_date || '';
+        document.getElementById('edit_rec_material').value = rec.material || '';
+        document.getElementById('edit_rec_thickness').value = rec.thickness || '';
+        document.getElementById('edit_rec_width').value = rec.width || '';
+        document.getElementById('edit_rec_length').value = rec.length || '';
+        document.getElementById('edit_rec_quantity').value = rec.quantity || 1;
+        document.getElementById('edit_rec_weight').value = rec.weight || '';
+        document.getElementById('edit_rec_notes').value = rec.notes || '';
+        openModal('editReceivedModal');
+    }
+
+    // Profil Ağırlık Hesaplama Tabloları (kg/m)
+    const STANDARD_PROFILES = {
+        'HEA100': 16.7, 'HEA120': 19.9, 'HEA140': 24.7, 'HEA160': 30.4, 'HEA180': 35.5,
+        'HEA200': 42.3, 'HEA220': 50.5, 'HEA240': 60.3, 'HEA260': 68.2, 'HEA280': 76.4,
+        'HEA300': 88.3, 'HEA320': 97.6, 'HEA340': 105.0, 'HEA360': 112.0, 'HEA400': 125.0,
+        'HEA450': 140.0, 'HEA500': 155.0, 'HEA550': 166.0, 'HEA600': 178.0,
+        'HEB100': 20.4, 'HEB120': 26.7, 'HEB140': 33.7, 'HEB160': 42.6, 'HEB180': 51.2,
+        'HEB200': 61.3, 'HEB220': 71.5, 'HEB240': 83.2, 'HEB260': 93.0, 'HEB280': 103.0,
+        'HEB300': 117.0, 'HEB320': 127.0, 'HEB340': 134.0, 'HEB360': 142.0, 'HEB400': 155.0,
+        'HEB450': 171.0, 'HEB500': 187.0, 'HEB550': 199.0, 'HEB600': 212.0,
+        'IPE100': 8.1, 'IPE120': 10.4, 'IPE140': 12.9, 'IPE160': 15.8, 'IPE180': 18.8,
+        'IPE200': 22.4, 'IPE220': 26.2, 'IPE240': 30.7, 'IPE270': 36.1, 'IPE300': 42.2,
+        'IPE330': 49.1, 'IPE360': 57.1, 'IPE400': 66.3, 'IPE450': 77.6, 'IPE500': 90.7,
+        'IPE550': 106.0, 'IPE600': 122.0,
+        'UNP80': 8.64, 'UNP100': 10.6, 'UNP120': 13.4, 'UNP140': 16.0, 'UNP160': 18.8,
+        'UNP180': 22.0, 'UNP200': 25.3, 'UNP220': 29.4, 'UNP240': 33.2, 'UNP260': 37.9,
+        'UNP280': 41.8, 'UNP300': 46.2
+    };
+
+    function triggerAutoWeightCalc(matId, thkId, wId, lenId, qtyId, outId) {
+        const mat = (document.getElementById(matId).value || '').trim().toUpperCase().replace(/\s+/g, '');
+        const thk = parseFloat(document.getElementById(thkId).value) || 0;
+        const w = parseFloat(document.getElementById(wId).value) || 0;
+        const len = parseFloat(document.getElementById(lenId).value) || 0;
+        const qty = parseFloat(document.getElementById(qtyId).value) || 1;
+        const out = document.getElementById(outId);
+
+        let unitWeight = 0;
+
+        // 1. Standart Profil Arama (HEA, HEB, IPE, UNP)
+        for (const [pName, kgPerM] of Object.entries(STANDARD_PROFILES)) {
+            if (mat.startsWith(pName)) {
+                if (len > 0) {
+                    unitWeight = (len / 1000.0) * kgPerM;
+                }
+                break;
+            }
+        }
+
+        // 2. Sac Hesabı (Yoğunluk: 7.85 kg/dm3 = 0.00000785 kg/mm3)
+        if (unitWeight === 0 && (mat.includes('SAC') || mat.startsWith('PL') || (thk > 0 && w > 0 && len > 0))) {
+            if (thk > 0 && w > 0 && len > 0) {
+                const volMm3 = thk * w * len;
+                unitWeight = volMm3 * 0.00000785;
+            }
+        }
+
+        // 3. Kutu Profil (RHS / SHS) örn: 100X100X4
+        if (unitWeight === 0) {
+            const rhsMatch = mat.match(/(\d+)X(\d+)X(\d+(\.\d+)?)/);
+            if (rhsMatch && len > 0) {
+                const h = parseFloat(rhsMatch[1]);
+                const b = parseFloat(rhsMatch[2]);
+                const t = parseFloat(rhsMatch[3]);
+                const crossArea = 2 * t * (h + b - 2 * t);
+                const kgM = crossArea * 0.00785;
+                unitWeight = (len / 1000.0) * kgM;
+            }
+        }
+
+        if (unitWeight > 0) {
+            const totalKg = unitWeight * qty;
+            out.value = totalKg.toFixed(2);
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+
+{% block title %}Denetim & Aktivite Günlüğü - Çelik İmalat MES{% endblock %}
+{% block page_title %}10. Canlı Sistem Denetim Günlüğü (Audit Trail){% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BAR -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-rose-400"></i>
+                <span>Tüm Kullanıcı İşlemleri ve Denetim Akışı</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Sistemde kimin hangi projede ne zaman ne işlem yaptığı, IP adresleriyle şeffaf olarak kayıt altındadır.</p>
+        </div>
+
+        <input type="text" id="logFilterInput" onkeyup="filterAuditLogs(this.value)" placeholder="Kullanıcı veya işlem ara..." class="bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-full sm:w-64">
+    </div>
+
+    <!-- AKTİVİTE LOGLARI TABLOSU -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl p-4 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table id="auditLogsTable" class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                        <th class="py-2.5 px-3">Tarih & Saat</th>
+                        <th class="py-2.5 px-2">Kullanıcı</th>
+                        <th class="py-2.5 px-2">Yapılan Eylem</th>
+                        <th class="py-2.5 px-2">İşlem Detayları & Açıklama</th>
+                        <th class="py-2.5 px-3 text-right">IP Adresi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                    {% for l in logs %}
+                    <tr class="hover:bg-slate-900/50 transition-colors">
+                        <td class="py-2.5 px-3 font-mono text-slate-400 text-[11px] whitespace-nowrap">{{ l.created_at }}</td>
+                        <td class="py-2.5 px-2 font-bold text-white whitespace-nowrap flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span>{{ l.username or 'Sistem' }}</span>
+                        </td>
+                        <td class="py-2.5 px-2 font-semibold text-blue-400 whitespace-nowrap">{{ l.action }}</td>
+                        <td class="py-2.5 px-2 text-slate-300">{{ l.details }}</td>
+                        <td class="py-2.5 px-3 text-right font-mono text-slate-500 text-[11px] whitespace-nowrap">{{ l.ip_address or '127.0.0.1' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="py-8 text-center text-slate-500">Henüz denetim kaydı bulunmuyor.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function filterAuditLogs(query) {
+        const q = query.toLowerCase();
+        const rows = document.querySelectorAll('#auditLogsTable tbody tr');
+        rows.forEach(r => {
+            const text = r.innerText.toLowerCase();
+            r.style.display = text.includes(q) ? '' : 'none';
+        });
+    }
+</script>
+{% endblock %}

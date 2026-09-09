@@ -1,0 +1,208 @@
+{% extends "layout.html" %}
+
+{% block title %}Ön İmalat - Kesim Takip & Plaka/Profil Analizi - Çelik İmalat MES{% endblock %}
+{% block page_title %}Ön İmalat / Kesim Takip & İlerleme Analizi{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    <!-- ÜST FİLTRE VE ÖZET METRİK BARI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400">
+                <i class="fa-solid fa-chart-pie text-lg"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <span>Plaka ve Profil Kesim İlerleme Analizi</span>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-yellow-400 font-mono">{{ analysis_list|length }} Proje</span>
+                </h3>
+                <p class="text-[11px] text-slate-400">Sac/Plaka ve Profil bazında anlık kesim yüzdeleri ve poz durumları</p>
+            </div>
+        </div>
+
+        <!-- Hızlı Arama & Filtre -->
+        <div class="flex items-center gap-2.5 w-full md:w-auto">
+            <div class="relative flex-1 md:w-56">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+                <input type="text" id="projectSearchInput" placeholder="Proje ara..." oninput="filterProjectCards()" class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-yellow-500">
+            </div>
+
+            <form method="GET" action="{{ url_for('kesim_analiz') }}" class="flex items-center">
+                <select name="proje_id" onchange="this.form.submit()" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-yellow-500 font-medium">
+                    <option value="">Tüm Projeler</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if selected_project_id == p.id|string %}selected{% endif %}>{{ p.code }} - {{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <!-- KOMPAKT PROJE LİSTESİ -->
+    <div class="space-y-2.5" id="projectCardsContainer">
+        {% for item in analysis_list %}
+        {% set p = item.project %}
+        <div class="project-analysis-card bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 rounded-xl p-3.5 shadow-lg transition-all relative overflow-hidden group" data-filter-text="{{ p.code }} {{ p.name }} {{ p.customer or '' }}">
+            <!-- Sol Renk Çizgisi -->
+            <div class="absolute top-0 left-0 bottom-0 w-1" style="background-color: {{ p.color or '#eab308' }};"></div>
+
+            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pl-1.5">
+                
+                <!-- 1. Proje Kimliği & Müşteri (Kompakt) -->
+                <div class="min-w-[220px] max-w-xs">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-900 text-yellow-400 border border-yellow-500/20 shrink-0">
+                            {{ p.code }}
+                        </span>
+                        <h4 class="text-xs font-bold text-white truncate group-hover:text-yellow-400 transition-colors">
+                            <a href="{{ url_for('proje_detay', project_id=p.id) }}">{{ p.name }}</a>
+                        </h4>
+                    </div>
+                    <div class="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                        <span class="truncate">{{ p.customer or 'Müşteri Belirtilmedi' }}</span>
+                        <span class="text-slate-600">•</span>
+                        <span class="font-mono font-bold text-slate-300 shrink-0">{{ item.total_tonnage | format_num }} Ton</span>
+                    </div>
+                </div>
+
+                <!-- 2. Dual Progress: Genel & Sac & Profil (Inline Kompakt Çubuklar) -->
+                <div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2.5 w-full bg-slate-900/50 p-2 rounded-lg border border-slate-800/60">
+                    
+                    <!-- Genel Kesim -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-[10px]">
+                            <span class="text-slate-400 font-bold uppercase tracking-wider">Genel Kesim</span>
+                            <span class="font-mono font-black text-yellow-400">%{{ item.overall_cut_pct }} <span class="text-[9px] text-slate-500 font-normal">({{ item.total_cut_tonnage | format_num }}T)</span></span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-yellow-400 h-full rounded-full transition-all duration-500" style="width: {{ item.overall_cut_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Plaka / Sac -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-[10px]">
+                            <span class="text-cyan-400 font-bold flex items-center gap-1"><i class="fa-solid fa-layer-group text-[8px]"></i> Plaka/Sac</span>
+                            <span class="font-mono font-bold text-cyan-300">%{{ item.plate.cut_pct }} <span class="text-[9px] text-slate-500 font-normal">({{ item.plate.cut_qty }}/{{ item.plate.total_qty }})</span></span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-cyan-400 h-full rounded-full transition-all duration-500" style="width: {{ item.plate.cut_pct }}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Profil / Çelik -->
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-[10px]">
+                            <span class="text-amber-400 font-bold flex items-center gap-1"><i class="fa-solid fa-shapes text-[8px]"></i> Profil</span>
+                            <span class="font-mono font-bold text-amber-300">%{{ item.profile.cut_pct }} <span class="text-[9px] text-slate-500 font-normal">({{ item.profile.cut_qty }}/{{ item.profile.total_qty }})</span></span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: {{ item.profile.cut_pct }}%"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- 3. Eylemler (Aç/Kapa Tablo & Hızlı Kesim Butonu) -->
+                <div class="flex items-center gap-1.5 shrink-0 self-end lg:self-center">
+                    <button type="button" onclick="toggleProjectBreakdown('breakdown_{{ p.id }}', this)" class="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-lg text-xs font-semibold transition-all flex items-center gap-1">
+                        <i class="fa-solid fa-table-list text-[10px] text-yellow-400"></i>
+                        <span>Pozlar ({{ item.parts_breakdown|length }})</span>
+                        <i class="fa-solid fa-chevron-down text-[9px] ml-0.5 transition-transform duration-200"></i>
+                    </button>
+
+                    <a href="{{ url_for('kesim_takip') }}?proje_id={{ p.id }}" class="px-2.5 py-1.5 bg-yellow-500/10 hover:bg-yellow-500 text-yellow-400 hover:text-slate-950 border border-yellow-500/30 rounded-lg text-xs font-bold transition-all flex items-center gap-1" title="Hızlı Kesim Girişi Yap">
+                        <i class="fa-solid fa-bolt text-[10px]"></i>
+                        <span>Kesim Gir</span>
+                    </a>
+                </div>
+
+            </div>
+
+            <!-- AKORDİYON POZ DETAY TABLOSU (Varsayılan Gizli) -->
+            <div id="breakdown_{{ p.id }}" class="hidden mt-3 pt-3 border-t border-slate-800/80 overflow-x-auto animate-fadeIn">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                            <th class="py-2 px-3">Poz No</th>
+                            <th class="py-2 px-2">Parça Adı</th>
+                            <th class="py-2 px-2">Profil / Sac Tipi</th>
+                            <th class="py-2 px-2">Kategori</th>
+                            <th class="py-2 px-2 text-right">Top. Adet</th>
+                            <th class="py-2 px-2 text-right text-yellow-400 font-bold">Kesilen</th>
+                            <th class="py-2 px-2 text-right text-rose-400 font-bold">Kalan</th>
+                            <th class="py-2 px-2 text-right">Top. Tonaj (kg)</th>
+                            <th class="py-2 px-2 text-right">Kesilen (kg)</th>
+                            <th class="py-2 px-3 text-right">İlerleme %</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200 font-mono text-[11px]">
+                        {% for pt in item.parts_breakdown %}
+                        <tr class="hover:bg-slate-900/60 transition-colors {% if pt.cut_pct >= 100 %}bg-emerald-950/10{% endif %}">
+                            <td class="py-1.5 px-3 font-bold text-white">{{ pt.pos_no }}</td>
+                            <td class="py-1.5 px-2 font-sans text-slate-300">{{ pt.name or '-' }}</td>
+                            <td class="py-1.5 px-2 font-bold text-yellow-400">{{ pt.profile_type }}</td>
+                            <td class="py-1.5 px-2 font-sans">
+                                <span class="px-1.5 py-0.2 rounded text-[9px] {% if 'Plaka' in pt.category %}bg-cyan-500/10 text-cyan-300 border border-cyan-500/20{% else %}bg-amber-500/10 text-amber-300 border border-amber-500/20{% endif %}">
+                                    {{ pt.category }}
+                                </span>
+                            </td>
+                            <td class="py-1.5 px-2 text-right font-bold text-white">{{ pt.quantity }}</td>
+                            <td class="py-1.5 px-2 text-right font-bold text-yellow-400">{{ pt.cut_quantity }}</td>
+                            <td class="py-1.5 px-2 text-right font-bold {% if pt.remaining_quantity > 0 %}text-rose-400{% else %}text-slate-500{% endif %}">{{ pt.remaining_quantity }}</td>
+                            <td class="py-1.5 px-2 text-right">{{ pt.total_weight | format_num }}</td>
+                            <td class="py-1.5 px-2 text-right text-yellow-300">{{ pt.cut_weight | format_num }}</td>
+                            <td class="py-1.5 px-3 text-right">
+                                <span class="px-1.5 py-0.2 rounded font-bold text-[10px] {% if pt.cut_pct >= 100 %}bg-emerald-500/20 text-emerald-400{% elif pt.cut_pct > 0 %}bg-yellow-500/20 text-yellow-400{% else %}text-slate-500{% endif %}">
+                                    %{{ pt.cut_pct }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="py-4 text-center text-slate-500 font-sans text-xs">Bu projeye ait parça/poz verisi bulunmuyor.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+        {% else %}
+        <div class="py-12 text-center bg-slate-950/60 border border-slate-800 rounded-2xl text-slate-500 text-xs">
+            <i class="fa-solid fa-circle-info text-2xl mb-2 text-slate-600 block"></i>
+            Analiz edilecek aktif proje bulunmuyor.
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<script>
+function toggleProjectBreakdown(elemId, btn) {
+    var el = document.getElementById(elemId);
+    if (!el) return;
+    var icon = btn.querySelector('.fa-chevron-down');
+    if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        if (icon) icon.style.transform = 'rotate(180deg)';
+    } else {
+        el.classList.add('hidden');
+        if (icon) icon.style.transform = 'rotate(0deg)';
+    }
+}
+
+function filterProjectCards() {
+    var query = (document.getElementById('projectSearchInput').value || '').toLowerCase().trim();
+    var cards = document.querySelectorAll('.project-analysis-card');
+    cards.forEach(function(card) {
+        var text = (card.getAttribute('data-filter-text') || '').toLowerCase();
+        if (!query || text.indexOf(query) !== -1) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+</script>
+{% endblock %}
+

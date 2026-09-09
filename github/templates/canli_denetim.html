@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+
+{% block title %}Canlı Denetim & İşlem Günlüğü - Çelik İmalat MES{% endblock %}
+{% block page_title %}Canlı Denetim & Gerçek Zamanlı Güvenlik Günlüğü{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ÜST BİLGİ KARTI -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i class="fa-solid fa-tower-broadcast text-rose-500 animate-pulse"></i>
+                <span>Canlı Sistem Denetimi & Aktivite Takibi</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">Sistemde hangi kullanıcının ne zaman hangi projede veya parça üzerinde işlem yaptığının anlık dökümü</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="window.location.reload()" class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-arrows-rotate"></i>
+                <span>Günlüğü Yenile</span>
+            </button>
+            {% if user_role in ('admin', 'patron', 'genel müdür') or session.get('role') in ('admin', 'patron', 'genel müdür') %}
+            <form action="{{ url_for('api_canli_denetim_temizle') }}" method="POST" onsubmit="return confirm('Tüm geçmiş denetim ve işlem kayıtlarını kalıcı olarak temizlemek istediğinizden emin misiniz?');" class="inline">
+                <button type="submit" class="px-3.5 py-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Günlüğü Temizle</span>
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- TABLO -->
+    <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
+        <div class="p-4 border-b border-slate-800/80 flex items-center justify-between">
+            <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <i class="fa-solid fa-list text-slate-500"></i>
+                <span>Son 200 Sistem Hareketi</span>
+            </h4>
+            <span class="text-[11px] font-mono text-slate-400">Toplam <b>{{ logs|length }}</b> kayıt listeleniyor</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+                <thead>
+                    <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] bg-slate-900/60">
+                        <th class="py-3 px-4">Tarih & Saat</th>
+                        <th class="py-3 px-3">Kullanıcı</th>
+                        <th class="py-3 px-3">Eylem / İşlem</th>
+                        <th class="py-3 px-3">Modül / Varlık</th>
+                        <th class="py-3 px-3">Detaylar</th>
+                        <th class="py-3 px-4 text-right">IP Adresi</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 text-slate-200 font-sans">
+                    {% for l in logs %}
+                    <tr class="hover:bg-slate-900/50 transition-colors">
+                        <td class="py-2.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                            <i class="fa-regular fa-clock mr-1 text-slate-500"></i>
+                            {{ l.created_at | format_datetime }}
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <span class="inline-flex items-center gap-1.5 font-bold text-white">
+                                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                {{ l.username or 'Sistem' }}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3">
+                            <span class="px-2.5 py-1 rounded-md text-[11px] font-bold {% if 'Sil' in l.action or 'Red' in l.action %}bg-rose-500/10 text-rose-400 border border-rose-500/20{% elif 'Onay' in l.action or 'Ekle' in l.action or 'Yükle' in l.action %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/20{% else %}bg-blue-500/10 text-blue-400 border border-blue-500/20{% endif %}">
+                                {{ l.action }}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300 text-[11px]">
+                            {{ l.entity_type or '-' }}
+                            {% if l.entity_id %} <span class="text-slate-500">#{{ l.entity_id }}</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 px-3 text-slate-300 max-w-md break-words">
+                            {{ l.details or '-' }}
+                        </td>
+                        <td class="py-2.5 px-4 text-right font-mono text-[11px] text-slate-400">
+                            {{ l.ip_address or '-' }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="py-10 text-center text-slate-500">
+                            Henüz kayıtlı bir denetim hareketi bulunmuyor.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

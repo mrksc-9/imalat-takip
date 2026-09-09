@@ -1,0 +1,427 @@
+{% extends "layout.html" %}
+
+{% block title %}Kontrol Paneli - Çelik İmalat MES{% endblock %}
+{% block page_title %}Genel Üretim ve Tonaj Kontrol Paneli{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- MÜŞTERİ FİLTRESİ VE HIZLI BİLGİ BARI -->
+    <div class="bg-slate-900/80 backdrop-blur-sm border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                <i class="fa-solid fa-filter text-lg"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-bold text-white">Müşteri / İşveren Filtresi</h3>
+                <p class="text-xs text-slate-400">Tüm metrikleri ve üretim aşamalarını müşteri bazında filtreleyin</p>
+            </div>
+        </div>
+        <form method="GET" action="{{ url_for('index') }}" class="flex items-center gap-2 w-full sm:w-auto">
+            <div class="relative w-full sm:w-72">
+                <i class="fa-solid fa-building text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 text-xs"></i>
+                <select name="musteri" onchange="this.form.submit()" class="w-full bg-slate-950 border border-slate-700 text-white rounded-xl pl-9 pr-8 py-2 text-xs font-semibold focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer">
+                    <option value="">🏢 Tüm Müşteriler (Genel Toplam)</option>
+                    {% for c in customers %}
+                        <option value="{{ c }}" {% if selected_customer == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if selected_customer %}
+                <a href="{{ url_for('index') }}" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap" title="Filtreyi Temizle">
+                    <i class="fa-solid fa-xmark"></i> Temizle
+                </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- 1. TEMEL KPI TONAJ KARTLARI -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        
+        <!-- Toplam Tonaj -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">Toplam Tonaj</span>
+                <span class="p-2 rounded-xl bg-blue-500/10 text-blue-400"><i class="fa-solid fa-weight-hanging"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.total_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-slate-400 mt-1">{{ metrics.active_projects }} Aktif Proje ({{ metrics.total_assemblies_count }} Marka)</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-blue-500 h-full w-full"></div>
+            </div>
+        </div>
+
+        <!-- Kesilen Tonaj -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">Kesilen Parça</span>
+                <span class="p-2 rounded-xl bg-yellow-500/10 text-yellow-400"><i class="fa-solid fa-bolt"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.cut_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-yellow-400 font-semibold mt-1">%{{ metrics.cut_pct }} Kesim Tamam</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-yellow-400 h-full rounded-full transition-all duration-500" style="width: {{ metrics.cut_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- İmalatı Biten Tonaj -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">İmalatı Biten</span>
+                <span class="p-2 rounded-xl bg-amber-500/10 text-amber-400"><i class="fa-solid fa-hammer"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.fab_completed_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-amber-400 font-semibold mt-1">%{{ metrics.fab_pct }} Çatım/Kaynak</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: {{ metrics.fab_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Boyanan Tonaj -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">Boyanan</span>
+                <span class="p-2 rounded-xl bg-purple-500/10 text-purple-400"><i class="fa-solid fa-paint-roller"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.paint_completed_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-purple-400 font-semibold mt-1">%{{ metrics.paint_pct }} Boya/Kumlama</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-purple-500 h-full rounded-full transition-all duration-500" style="width: {{ metrics.paint_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Sevk Edilen Tonaj -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">Sevk Edilen</span>
+                <span class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><i class="fa-solid fa-truck-moving"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.shipped_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-emerald-400 font-semibold mt-1">%{{ metrics.ship_pct }} Şantiyeye Sevk</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: {{ metrics.ship_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Atölye / Fabrika Stoğu -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
+            <div class="flex items-center justify-between text-slate-400 mb-2">
+                <span class="text-xs font-semibold uppercase tracking-wider">Atölye Stoğu</span>
+                <span class="p-2 rounded-xl bg-sky-500/10 text-sky-400"><i class="fa-solid fa-warehouse"></i></span>
+            </div>
+            <div>
+                <h3 class="text-xl sm:text-2xl font-black text-white font-mono">{{ metrics.factory_stock_tonnage | format_num }} <span class="text-xs font-medium text-slate-400">Ton</span></h3>
+                <p class="text-[11px] text-sky-400 font-semibold mt-1">İmalatı Bitip Sevk Bekleyen</p>
+            </div>
+            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                <div class="bg-sky-500 h-full rounded-full transition-all duration-500" style="width: {{ metrics.stock_pct }}%"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 2. HIZLI ERİŞİM VE AKSİYON BAR -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <a href="{{ url_for('kesim_takip') }}" class="p-4 bg-slate-950/60 border border-slate-800 hover:border-yellow-500/50 rounded-2xl flex items-center gap-3 transition-all hover:bg-slate-900 shadow-md group">
+            <div class="w-10 h-10 rounded-xl bg-yellow-500/10 group-hover:bg-yellow-500 group-hover:text-slate-950 text-yellow-400 flex items-center justify-center text-lg transition-all">
+                <i class="fa-solid fa-bolt"></i>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-white">Hızlı Kesim Girişi</h4>
+                <p class="text-[11px] text-slate-400">Kesilen pozları anında işle</p>
+            </div>
+        </a>
+
+        <a href="{{ url_for('siparis_takip') }}" class="p-4 bg-slate-950/60 border border-slate-800 hover:border-emerald-500/50 rounded-2xl flex items-center gap-3 transition-all hover:bg-slate-900 shadow-md group">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 group-hover:bg-emerald-500 group-hover:text-white text-emerald-400 flex items-center justify-center text-lg transition-all">
+                <i class="fa-solid fa-calculator"></i>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-white">Profil Hesaplayıcı</h4>
+                <p class="text-[11px] text-slate-400">Sipariş & Sac/Profil kg hesabı</p>
+            </div>
+        </a>
+
+        <a href="{{ url_for('kalite_kontrol') }}" class="p-4 bg-slate-950/60 border border-slate-800 hover:border-teal-500/50 rounded-2xl flex items-center gap-3 transition-all hover:bg-slate-900 shadow-md group">
+            <div class="w-10 h-10 rounded-xl bg-teal-500/10 group-hover:bg-teal-500 group-hover:text-white text-teal-400 flex items-center justify-center text-lg transition-all">
+                <i class="fa-solid fa-clipboard-check"></i>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-white">Kalite Kontrol</h4>
+                <p class="text-[11px] text-slate-400">İmalatı bitenleri muayene et</p>
+            </div>
+        </a>
+
+        <a href="{{ url_for('sevk') }}" class="p-4 bg-slate-950/60 border border-slate-800 hover:border-blue-500/50 rounded-2xl flex items-center gap-3 transition-all hover:bg-slate-900 shadow-md group">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/10 group-hover:bg-blue-500 group-hover:text-white text-blue-400 flex items-center justify-center text-lg transition-all">
+                <i class="fa-solid fa-file-invoice"></i>
+            </div>
+            <div>
+                <h4 class="text-xs font-bold text-white">Yeni Sevk İrsaliyesi</h4>
+                <p class="text-[11px] text-slate-400">A4 çeki listesi hazırla</p>
+            </div>
+        </a>
+    </div>
+
+    <!-- 3. GRAFİKLER VE AKTİVİTE AKIŞI -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Çubuk Grafik: Projeler İlerleme Durumu -->
+        <div class="lg:col-span-2 bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-blue-400"></i>
+                        <span>Projeler Bazında Aşama Tonaj Dağılımı</span>
+                    </h3>
+                    <p class="text-xs text-slate-400">Toplam, İmalat, Boya ve Sevk edilen tonaj karşılaştırması</p>
+                </div>
+                <span class="text-xs font-semibold px-2.5 py-1 bg-slate-800 text-slate-300 rounded-lg">Canlı Tonaj</span>
+            </div>
+            <div class="relative h-64 sm:h-72 w-full">
+                <canvas id="projectsChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Pasta Grafik: Genel Durum Dağılımı -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+            <div class="mb-2">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-chart-pie text-indigo-400"></i>
+                    <span>Üretim Durum Özeti</span>
+                </h3>
+                <p class="text-xs text-slate-400">Fabrika genelindeki süreç yüzdesi</p>
+            </div>
+            <div class="relative h-56 w-full flex items-center justify-center">
+                <canvas id="statusDoughnutChart"></canvas>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-xs pt-3 border-t border-slate-800 text-slate-300 font-medium">
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> İmalat: %{{ metrics.fab_pct }} ({{ metrics.fab_completed_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Boya: %{{ metrics.paint_pct }} ({{ metrics.paint_completed_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Sevk: %{{ metrics.ship_pct }} ({{ metrics.shipped_tonnage | format_num }} T)</div>
+                <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span> Stok: %{{ metrics.stock_pct }} ({{ metrics.factory_stock_tonnage | format_num }} T)</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 4. AKTİF PROJELER VE CANLI AKTİVİTE DENETİM GÜNLÜĞÜ -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Aktif Projeler Tablosu -->
+        <div class="lg:col-span-2 bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-blue-400"></i>
+                    <span>Aktif İmalat Projeleri</span>
+                </h3>
+                <a href="{{ url_for('projeler') }}" class="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">
+                    <span>Tümünü Gör</span> <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px]">
+                            <th class="py-2.5 px-3">Proje Kodu & Adı</th>
+                            <th class="py-2.5 px-2 text-right">Hedef Tonaj</th>
+                            <th class="py-2.5 px-2 text-center">İmalat</th>
+                            <th class="py-2.5 px-2 text-center">Boya</th>
+                            <th class="py-2.5 px-2 text-center">Sevk</th>
+                            <th class="py-2.5 px-2 text-center">Termin</th>
+                            <th class="py-2.5 px-3 text-right">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
+                        {% for p in projects %}
+                        <tr class="hover:bg-slate-900/60 transition-colors">
+                            <td class="py-3 px-3">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: {{ p.color or '#3b82f6' }};"></span>
+                                    <div>
+                                        <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="font-bold text-white hover:text-blue-400 transition-colors">
+                                             {{ p.code }}
+                                        </a>
+                                        <p class="text-[11px] text-slate-400 truncate max-w-xs">{{ p.name }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3 px-2 text-right font-mono font-bold text-white">
+                                {{ p.total_tonnage | format_num }} Ton
+                            </td>
+                            <td class="py-3 px-2 text-center">
+                                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                    %{{ p.fab_pct }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-2 text-center">
+                                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                    %{{ p.paint_pct }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-2 text-center">
+                                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    %{{ p.ship_pct }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-2 text-center text-slate-400 font-mono text-[11px]">
+                                {{ p.delivery_date | format_date }}
+                            </td>
+                            <td class="py-3 px-3 text-right">
+                                <a href="{{ url_for('proje_detay', project_id=p.id) }}" class="px-2.5 py-1 bg-slate-800 hover:bg-blue-600 hover:text-white rounded-lg text-slate-300 font-medium transition-colors">
+                                    Detay
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="py-6 text-center text-slate-500">Henüz kayıtlı aktif proje bulunmuyor.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Canlı Aktivite / Denetim Günlüğü -->
+        <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-rose-400"></i>
+                        <span>Son Yapılan İşlemler</span>
+                    </h3>
+                    <a href="{{ url_for('aktivite_loglari') }}" class="text-xs text-blue-400 hover:text-blue-300 font-medium">Tümü</a>
+                </div>
+
+                <div class="space-y-3">
+                    {% for act in recent_activities %}
+                    <div class="p-2.5 bg-slate-900/60 border border-slate-800/80 rounded-xl text-xs flex items-start gap-2.5">
+                        <div class="w-6 h-6 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0 mt-0.5 text-[10px]">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="font-semibold text-slate-200 truncate">{{ act.username or 'Sistem' }}</span>
+                                <span class="text-[10px] text-slate-400 font-mono shrink-0">{{ act.created_at | format_datetime }}</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{{ act.details }}</p>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-slate-500 text-center py-6">Henüz işlem kaydı yok.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Chart.js Verileri Hazırla
+    const projectLabels = [{% for p in projects %}'{{ p.code }}',{% endfor %}];
+    const totalTonnages = [{% for p in projects %}{{ p.total_tonnage }},{% endfor %}];
+    const fabTonnages = [{% for p in projects %}{{ p.fab_completed_tonnage }},{% endfor %}];
+    const paintTonnages = [{% for p in projects %}{{ p.paint_completed_tonnage }},{% endfor %}];
+    const shipTonnages = [{% for p in projects %}{{ p.shipped_tonnage }},{% endfor %}];
+
+    // 1. Projeler Çubuk Grafiği
+    const ctxBar = document.getElementById('projectsChart').getContext('2d');
+    new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+            labels: projectLabels,
+            datasets: [
+                {
+                    label: 'Toplam Tonaj',
+                    data: totalTonnages,
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 6
+                },
+                {
+                    label: 'İmalatı Biten',
+                    data: fabTonnages,
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 6
+                },
+                {
+                    label: 'Boyanan',
+                    data: paintTonnages,
+                    backgroundColor: '#a855f7',
+                    borderRadius: 6
+                },
+                {
+                    label: 'Sevk Edilen',
+                    data: shipTonnages,
+                    backgroundColor: '#10b981',
+                    borderRadius: 6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#94a3b8', font: { family: 'Segoe UI', size: 11 } }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: '#1e293b' },
+                    ticks: { color: '#94a3b8', font: { size: 11 } }
+                },
+                y: {
+                    grid: { color: '#1e293b' },
+                    ticks: { color: '#94a3b8', font: { size: 11 } }
+                }
+            }
+        }
+    });
+
+    // 2. Pasta Grafik (Doughnut) - İmalat, Boya, Sevk ve Stok
+    const ctxDoughnut = document.getElementById('statusDoughnutChart').getContext('2d');
+    new Chart(ctxDoughnut, {
+        type: 'doughnut',
+        data: {
+            labels: ['İmalatı Biten', 'Boyanan', 'Sevk Edilen', 'Atölye Stoğu', 'Kalan İmalat'],
+            datasets: [{
+                data: [
+                    {{ metrics.fab_completed_tonnage or 0.01 }},
+                    {{ metrics.paint_completed_tonnage or 0 }},
+                    {{ metrics.shipped_tonnage or 0 }},
+                    {{ metrics.factory_stock_tonnage or 0 }},
+                    {{ metrics.pending_fab_tonnage or 0 }}
+                ],
+                backgroundColor: ['#f59e0b', '#a855f7', '#10b981', '#0ea5e9', '#334155'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            cutout: '65%'
+        }
+    });
+</script>
+
+{% endblock %}
