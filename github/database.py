@@ -324,10 +324,35 @@ def run_schema_migrations():
     use_pg = is_postgres()
     pk_type = "SERIAL PRIMARY KEY" if use_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
     try:
-        # 1. cutting_entries tablosu eksik sütunları
+        # 1. cutting_entries ve cutting_batches tablosu eksik sütunları
+        ensure_column(cursor, "cutting_entries", "batch_id", "INTEGER", "NULL", conn=conn)
         ensure_column(cursor, "cutting_entries", "unit_weight", "REAL", "0.0", conn=conn)
         ensure_column(cursor, "cutting_entries", "cut_tonnage", "REAL", "0.0", conn=conn)
         ensure_column(cursor, "cutting_entries", "project_name", "TEXT", "''", conn=conn)
+
+        # 1.1 KESİM GİRİŞ GRUPLARI / PAKETLERİ (GİRİŞ #1, GİRİŞ #2...) TABLOSU
+        cursor.execute(f'''
+        CREATE TABLE IF NOT EXISTS cutting_batches (
+            id {pk_type},
+            batch_no INTEGER,
+            batch_code TEXT NOT NULL,
+            project_id INTEGER NOT NULL,
+            project_code TEXT,
+            project_name TEXT,
+            cut_date TEXT NOT NULL,
+            machine TEXT,
+            operator TEXT,
+            helper TEXT,
+            shift TEXT DEFAULT 'Gündüz',
+            total_items INTEGER DEFAULT 0,
+            total_quantity INTEGER DEFAULT 0,
+            total_tonnage REAL DEFAULT 0.0,
+            notes TEXT,
+            user_id INTEGER,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
         
         # 2. projects tablosu eksik sütunları
         ensure_column(cursor, "projects", "manual_tonnage", "REAL", "NULL", conn=conn)
@@ -725,10 +750,35 @@ def init_db():
     )
     ''')
 
-    # 12. HIZLI KESİLENLER GİRİŞİ LOGLARI
+    # 12. KESİM GİRİŞ GRUPLARI / PAKETLERİ (GİRİŞ #1, GİRİŞ #2...)
+    cursor.execute(f'''
+    CREATE TABLE IF NOT EXISTS cutting_batches (
+        id {pk_type},
+        batch_no INTEGER,
+        batch_code TEXT NOT NULL,
+        project_id INTEGER NOT NULL,
+        project_code TEXT,
+        project_name TEXT,
+        cut_date TEXT NOT NULL,
+        machine TEXT,
+        operator TEXT,
+        helper TEXT,
+        shift TEXT DEFAULT 'Gündüz',
+        total_items INTEGER DEFAULT 0,
+        total_quantity INTEGER DEFAULT 0,
+        total_tonnage REAL DEFAULT 0.0,
+        notes TEXT,
+        user_id INTEGER,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 12.1 HIZLI KESİLENLER GİRİŞİ LOGLARI & POZ SATIRLARI
     cursor.execute(f'''
     CREATE TABLE IF NOT EXISTS cutting_entries (
         id {pk_type},
+        batch_id INTEGER,
         project_id INTEGER,
         project_code TEXT NOT NULL,
         pos_no TEXT NOT NULL,
@@ -745,6 +795,7 @@ def init_db():
     )
     ''')
 
+    ensure_column(cursor, "cutting_entries", "batch_id", "INTEGER", "NULL")
     ensure_column(cursor, "cutting_entries", "unit_weight", "REAL", "0.0")
     ensure_column(cursor, "cutting_entries", "cut_tonnage", "REAL", "0.0")
     ensure_column(cursor, "cutting_entries", "project_name", "TEXT", "''")
@@ -868,14 +919,14 @@ def init_db():
         id {pk_type},
         app_title TEXT DEFAULT 'ORDUMAK ÇELİK İMALAT MES',
         app_subtitle TEXT DEFAULT 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi',
-        company_name TEXT DEFAULT 'ORDUMAK ÇELİK VE METAL İMALAT SAN. TİC. A.Ş.',
+        company_name TEXT DEFAULT 'ORDUMAK DEMİR ÇELİK A.Ş.',
         company_sub_title TEXT DEFAULT 'Endüstriyel Çelik Konstrüksiyon & İmalat Tesisleri',
         company_address TEXT DEFAULT 'Dilovası İMES Organize Sanayi Bölgesi Kocaeli',
         company_phone TEXT DEFAULT '+90 (262) 555 01 23',
         company_email TEXT DEFAULT 'info@ordumak.com',
         company_tax_info TEXT DEFAULT 'Dilovası V.D. - 1234567890',
-        company_logo_url TEXT DEFAULT '/static/img/ordumak_logo.png',
-        company_website_url TEXT DEFAULT 'https://ordumak.com'
+        company_logo_url TEXT DEFAULT '/api/company-logo',
+        company_website_url TEXT DEFAULT 'https://ordumak.com.tr'
     )
     ''')
 
@@ -888,19 +939,24 @@ def init_db():
     if cursor.fetchone()['count'] == 0:
         cursor.execute('''
         INSERT INTO system_settings (app_title, app_subtitle, company_name, company_sub_title, company_address, company_phone, company_email, company_tax_info, company_logo_url, company_website_url)
-        VALUES ('ORDUMAK ÇELİK İMALAT MES', 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi', 'ORDUMAK ÇELİK VE METAL İMALAT SAN. TİC. A.Ş.', 'Endüstriyel Çelik Konstrüksiyon & İmalat Tesisleri', 'Dilovası İMES Organize Sanayi Bölgesi Kocaeli', '+90 (262) 555 01 23', 'info@ordumak.com', 'Dilovası V.D. - 1234567890', '/api/company-logo', 'https://ordumak.com.tr')
+        VALUES ('ORDUMAK ÇELİK İMALAT MES', 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi', 'ORDUMAK DEMİR ÇELİK A.Ş.', 'Endüstriyel Çelik Konstrüksiyon & İmalat Tesisleri', 'Dilovası İMES Organize Sanayi Bölgesi Kocaeli', '+90 (262) 555 01 23', 'info@ordumak.com', 'Dilovası V.D. - 1234567890', '/api/company-logo', 'https://ordumak.com.tr')
         ''')
     else:
         # Eski veya silinmiş logo referanslarını temizle ve doğru web sitesine güncelle
         cursor.execute('''
         UPDATE system_settings
         SET company_logo_url = '/api/company-logo'
-        WHERE company_logo_url LIKE '%logo_2026%' OR company_logo_url IS NULL OR company_logo_url = '' OR company_logo_url = '/static/img/ordumak_logo.png'
+        WHERE company_logo_url LIKE '%logo_2026%' OR company_logo_url IS NULL OR company_logo_url = '' OR company_logo_url = '/api/company-logo'
         ''')
         cursor.execute('''
         UPDATE system_settings
         SET company_website_url = 'https://ordumak.com.tr'
-        WHERE company_website_url = 'https://ordumak.com' OR company_website_url IS NULL OR company_website_url = ''
+        WHERE company_website_url = 'https://ordumak.com.tr' OR company_website_url IS NULL OR company_website_url = ''
+        ''')
+        cursor.execute('''
+        UPDATE system_settings
+        SET company_name = 'ORDUMAK DEMİR ÇELİK A.Ş.'
+        WHERE company_name LIKE '%ORDUMAK%' OR company_name IS NULL OR company_name = '' OR company_name LIKE '%ÇELİK VE METAL%'
         ''')
 
     # 18. OPERATÖRLER TABLOSU
@@ -1065,9 +1121,9 @@ def get_system_settings():
     return dict(row) if row else {
         'app_title': 'ORDUMAK ÇELİK İMALAT MES',
         'app_subtitle': 'İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi',
-        'company_name': 'ORDUMAK ÇELİK VE METAL İMALAT SAN. TİC. A.Ş.',
-        'company_logo_url': '/static/img/ordumak_logo.png',
-        'company_website_url': 'https://ordumak.com'
+        'company_name': 'ORDUMAK DEMİR ÇELİK A.Ş.',
+        'company_logo_url': '/api/company-logo',
+        'company_website_url': 'https://ordumak.com.tr'
     }
 
 def get_next_dispatch_no(project_id):
@@ -2795,6 +2851,180 @@ def get_design_summary_stats():
         'completed_count': completed_count,
         'active_count': active_count
     }
+
+# =========================================================================
+# 28. KESİM GİRİŞ GRUPLARI & GEÇMİŞ DÜZENLEME (GİRİŞ #1, GİRİŞ #2...)
+# =========================================================================
+def get_cutting_batches(project_id=None, limit=50):
+    """Son kesim giriş gruplarını (Giriş 1, Giriş 2...) listeler."""
+    conn = get_db()
+    cursor = conn.cursor()
+    query = '''
+    SELECT b.*, p.name as proj_name, p.code as proj_code
+    FROM cutting_batches b
+    LEFT JOIN projects p ON b.project_id = p.id
+    WHERE 1=1
+    '''
+    params = []
+    if project_id:
+        query += " AND b.project_id = ?"
+        params.append(project_id)
+    query += " ORDER BY b.id DESC LIMIT ?"
+    params.append(limit)
+    
+    cursor.execute(query, params)
+    batches = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return batches
+
+def get_cutting_batch_details(batch_id):
+    """Belirli bir kesim giriş paketinin (Giriş 1 vb.) başlık ve poz detaylarını getirir."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT b.*, p.name as proj_name, p.code as proj_code
+    FROM cutting_batches b
+    LEFT JOIN projects p ON b.project_id = p.id
+    WHERE b.id = ?
+    ''', (batch_id,))
+    batch_row = cursor.fetchone()
+    if not batch_row:
+        conn.close()
+        return None
+
+    batch = dict(batch_row)
+    
+    cursor.execute('''
+    SELECT e.*, 
+           p.quantity as part_total_qty, 
+           p.cut_quantity as part_current_cut,
+           p.material_grade as part_material,
+           p.profile_type as part_profile
+    FROM cutting_entries e
+    LEFT JOIN parts p ON (p.project_id = e.project_id AND p.pos_no = e.pos_no)
+    WHERE e.batch_id = ?
+    ORDER BY e.id ASC
+    ''', (batch_id,))
+    items = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    
+    for it in items:
+        tot = it.get('part_total_qty') or 0
+        cur_cut = it.get('part_current_cut') or 0
+        it['part_remaining'] = max(0, tot - cur_cut)
+        
+    batch['items'] = items
+    return batch
+
+def update_cutting_batch_items(batch_id, updated_items, user_info=None):
+    """
+    Kullanıcının 'Giriş 1' içindeki poz adetlerini düzenlemesini sağlar.
+    Fark miktarlarını (diff) hesaplayıp ana parça (parts) listesini senkronize eder.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM cutting_batches WHERE id = ?", (batch_id,))
+    batch = cursor.fetchone()
+    if not batch:
+        conn.close()
+        return False, "Kesim giriş paketi bulunamadı."
+        
+    project_id = batch['project_id']
+    
+    for item in updated_items:
+        entry_id = item.get('entry_id')
+        new_qty = int(item.get('cut_quantity', 0))
+        is_deleted = item.get('is_deleted', False)
+        
+        cursor.execute("SELECT * FROM cutting_entries WHERE id = ? AND batch_id = ?", (entry_id, batch_id))
+        entry = cursor.fetchone()
+        if not entry:
+            continue
+            
+        old_qty = entry['cut_quantity']
+        pos_no = entry['pos_no']
+        unit_weight = float(entry['unit_weight'] or 0.0)
+        
+        if is_deleted or new_qty <= 0:
+            diff = -old_qty
+            cursor.execute("DELETE FROM cutting_entries WHERE id = ?", (entry_id,))
+        else:
+            diff = new_qty - old_qty
+            new_tonnage = round((new_qty * unit_weight) / 1000.0, 4)
+            cursor.execute('''
+            UPDATE cutting_entries
+            SET cut_quantity = ?, cut_tonnage = ?
+            WHERE id = ?
+            ''', (new_qty, new_tonnage, entry_id))
+            
+        # Parts tablosunu güncelle
+        cursor.execute("SELECT id, quantity, cut_quantity FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+        part_row = cursor.fetchone()
+        if part_row:
+            updated_cut = max(0, part_row['cut_quantity'] + diff)
+            cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
+                           (updated_cut, max(0, part_row['quantity'] - updated_cut), part_row['id']))
+
+    # Batch özetini yeniden hesapla
+    cursor.execute('''
+    SELECT COUNT(id) as total_items, COALESCE(SUM(cut_quantity), 0) as total_qty, COALESCE(SUM(cut_tonnage), 0.0) as total_ton
+    FROM cutting_entries
+    WHERE batch_id = ?
+    ''', (batch_id,))
+    summary = cursor.fetchone()
+    
+    if summary and summary['total_items'] > 0:
+        cursor.execute('''
+        UPDATE cutting_batches
+        SET total_items = ?, total_quantity = ?, total_tonnage = ?
+        WHERE id = ?
+        ''', (summary['total_items'], summary['total_qty'], round(summary['total_ton'], 4), batch_id))
+    else:
+        # Tüm satırlar silindiyse batch'i de temizle
+        cursor.execute("DELETE FROM cutting_batches WHERE id = ?", (batch_id,))
+
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return True, "Giriş ve ana parça adetleri başarıyla güncellendi."
+
+def delete_cutting_batch(batch_id, user_info=None):
+    """
+    Belirli bir kesim girişini (Giriş #1 vb.) tamamen geri alır ve siler.
+    Bu girişteki adetler ana parça listesinden otomatik düşülür.
+    """
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM cutting_batches WHERE id = ?", (batch_id,))
+    batch = cursor.fetchone()
+    if not batch:
+        conn.close()
+        return False, "Kayıt bulunamadı."
+        
+    project_id = batch['project_id']
+    
+    cursor.execute("SELECT id, pos_no, cut_quantity FROM cutting_entries WHERE batch_id = ?", (batch_id,))
+    entries = cursor.fetchall()
+    
+    for e in entries:
+        pos_no = e['pos_no']
+        qty = e['cut_quantity']
+        cursor.execute("SELECT id, quantity, cut_quantity FROM parts WHERE project_id = ? AND pos_no = ?", (project_id, pos_no))
+        part_row = cursor.fetchone()
+        if part_row:
+            new_cut = max(0, part_row['cut_quantity'] - qty)
+            cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
+                           (new_cut, max(0, part_row['quantity'] - new_cut), part_row['id']))
+
+    cursor.execute("DELETE FROM cutting_entries WHERE batch_id = ?", (batch_id,))
+    cursor.execute("DELETE FROM cutting_batches WHERE id = ?", (batch_id,))
+    
+    conn.commit()
+    conn.close()
+    invalidate_app_cache()
+    return True, f"{batch['batch_code']} başarıyla geri alındı ve parçaların kesim adetleri düzeltildi."
 
 
 

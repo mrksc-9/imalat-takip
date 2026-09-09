@@ -58,7 +58,7 @@
                     <!-- Mevcut & Çekilen Logo Önizleme Kartı -->
                     <div class="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center gap-3.5">
                         <div class="w-14 h-14 rounded-xl bg-slate-950 border border-slate-700 p-2 flex items-center justify-center shrink-0 shadow-inner">
-                            <img id="logoPreviewImg" src="/api/company-logo" alt="Logo" class="max-h-full max-w-full object-contain" onerror="this.onerror=null; this.src='/static/img/ordumak_logo.svg'">
+                            <img id="logoPreviewImg" src="/api/company-logo" alt="Logo" class="max-h-full max-w-full object-contain" onerror="this.onerror=null; this.src='/api/company-logo'">
                         </div>
                         <div class="min-w-0 flex-1 text-xs">
                             <p class="font-bold text-white flex items-center gap-1.5">
@@ -98,7 +98,7 @@
                 <form action="{{ url_for('api_ayarlar_guncelle') }}" method="POST" class="space-y-4 text-xs">
                     <div>
                         <label class="block text-slate-400 mb-1 font-semibold">Firma Ticari Unvanı *</label>
-                        <input type="text" name="company_name" value="{{ settings.company_name or 'ORDUMAK ÇELİK YAPI ENDÜSTRİ' }}" required
+                        <input type="text" name="company_name" value="{{ settings.company_name or 'ORDUMAK DEMİR ÇELİK A.Ş.' }}" required
                                {% if current_user.role not in ('admin', 'patron') %}readonly{% endif %}
                                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-bold">
                     </div>

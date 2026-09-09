@@ -1,7 +1,7 @@
 {
-  "name": "ORDUMAK ÇELİK İMALAT MES",
+  "name": "ORDUMAK DEMİR ÇELİK MES",
   "short_name": "ORDUMAK MES",
-  "description": "Çelik İmalat, Montaj, Boya ve Sevkiyat Takip Sistemi",
+  "description": "Çelik İmalat, Montaj, Boya ve Sevkiyat Takip Portalı",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,21 +10,16 @@
   "orientation": "any",
   "icons": [
     {
-      "src": "/static/img/ordumak_logo.png",
+      "src": "/api/company-logo",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/static/img/ordumak_logo.png",
+      "src": "/api/company-logo",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    },
-    {
-      "src": "/static/img/ordumak_logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
     }
   ]
 }
