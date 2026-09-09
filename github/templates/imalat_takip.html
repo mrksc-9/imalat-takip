@@ -231,19 +231,44 @@
 
     function openStageUpdateModal(id, pos, total, fitup, weld, clean, done) {
         document.getElementById('stage_assembly_id').value = id;
-        document.getElementById('stageModalTitle').innerText = `${pos} - Aşama Adetleri`;
+        document.getElementById('stageModalTitle').innerText = `${pos} - Aşama Adetleri (Maks: ${total})`;
         document.getElementById('stageTotalQty').innerText = total;
-        document.getElementById('stage_fitup_qty').value = fitup;
-        document.getElementById('stage_welding_qty').value = weld;
-        document.getElementById('stage_cleaning_qty').value = clean;
-        document.getElementById('stage_done_qty').value = done;
+        
+        ['stage_fitup_qty', 'stage_welding_qty', 'stage_cleaning_qty', 'stage_done_qty'].forEach(idName => {
+            const inp = document.getElementById(idName);
+            if (inp) {
+                inp.max = total;
+                inp.min = 0;
+                inp.oninput = function() {
+                    const val = parseInt(this.value) || 0;
+                    if (val > total) this.value = total;
+                    if (val < 0) this.value = 0;
+                };
+            }
+        });
+        
+        document.getElementById('stage_fitup_qty').value = Math.min(total, fitup);
+        document.getElementById('stage_welding_qty').value = Math.min(total, weld);
+        document.getElementById('stage_cleaning_qty').value = Math.min(total, clean);
+        document.getElementById('stage_done_qty').value = Math.min(total, done);
         openModal('stageUpdateModal');
     }
 
     function openSendQaModal(id, pos, maxQty) {
+        const safeMax = Math.max(1, parseInt(maxQty) || 1);
         document.getElementById('qa_assembly_id').value = id;
-        document.getElementById('qaModalTitle').innerText = `${pos} -> Kalite Kontrole Gönder`;
-        document.getElementById('qa_send_qty').value = maxQty > 0 ? maxQty : 1;
+        document.getElementById('qaModalTitle').innerText = `${pos} -> Kalite Kontrole Gönder (Maks: ${safeMax} Adet)`;
+        const inp = document.getElementById('qa_send_qty');
+        if (inp) {
+            inp.max = safeMax;
+            inp.min = 1;
+            inp.value = safeMax;
+            inp.oninput = function() {
+                const val = parseInt(this.value) || 1;
+                if (val > safeMax) this.value = safeMax;
+                if (val < 1) this.value = 1;
+            };
+        }
         openModal('sendQaModal');
     }
 </script>

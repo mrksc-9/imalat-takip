@@ -1515,10 +1515,14 @@ def get_project_summary(project_id):
     conn.close()
 
     target_ton = float(proj_dict.get('target_tonnage', 0.0) or 0.0)
-    if target_ton > 0:
+    if a_stats['total_assembly_tonnage'] > 0:
+        total_ton = a_stats['total_assembly_tonnage']
+    elif p_stats['total_parts_tonnage'] > 0:
+        total_ton = p_stats['total_parts_tonnage']
+    elif target_ton > 0:
         total_ton = target_ton
     else:
-        total_ton = a_stats['total_assembly_tonnage'] if a_stats['total_assembly_tonnage'] > 0 else (p_stats['total_parts_tonnage'] if p_stats['total_parts_tonnage'] > 0 else 0.0)
+        total_ton = 0.0
     tot = total_ton or 0.0001
 
     cut_ton = p_stats['total_cut_tonnage']
@@ -1671,10 +1675,14 @@ def get_all_projects_summary(customer=None, status_filter=None, exclude_status=(
         
         if manual_ton > 0:
             total_ton = manual_ton
+        elif a_stats['total_assembly_tonnage'] > 0:
+            total_ton = a_stats['total_assembly_tonnage']
+        elif p_stats['total_parts_tonnage'] > 0:
+            total_ton = p_stats['total_parts_tonnage']
         elif target_ton > 0:
             total_ton = target_ton
         else:
-            total_ton = a_stats['total_assembly_tonnage'] if a_stats['total_assembly_tonnage'] > 0 else (p_stats['total_parts_tonnage'] if p_stats['total_parts_tonnage'] > 0 else 0.0)
+            total_ton = 0.0
             
         tot = total_ton or 0.0001
         cut_ton = p_stats['total_cut_tonnage']

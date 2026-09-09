@@ -198,6 +198,43 @@
                     </a>
                 </div>
 
+                <!-- 6. FABRİKA & SAHA YÖNETİMİ (1 ANA BAŞLIK ALTINDA 3 ALT BAŞLIK: İSG, SERVİS, SARF STOK) -->
+                <div class="pt-2.5 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <i class="fa-solid fa-industry text-amber-400"></i> Fabrika & Saha Yönetimi
+                </div>
+                <div class="space-y-0.5 pl-2 border-l border-slate-800/80 ml-3">
+                    <!-- 1. ALT BAŞLIK: İSG -->
+                    <a href="{{ url_for('isg_takip') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'isg_takip' %}bg-amber-600/30 text-amber-300 font-semibold border-l-2 border-amber-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-helmet-safety w-3.5 text-center text-amber-400"></i>
+                        <span>İSG & Saha Uygunsuzluk</span>
+                    </a>
+                    <!-- 2. ALT BAŞLIK: SERVİS GÜZERGAHLARI -->
+                    <a href="{{ url_for('servis_guzergah') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'servis_guzergah' %}bg-blue-600/30 text-blue-300 font-semibold border-l-2 border-blue-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-bus w-3.5 text-center text-blue-400"></i>
+                        <span>Servis & Güzergahlar</span>
+                    </a>
+                    <!-- 3. ALT BAŞLIK: DEPO SARF STOK -->
+                    <a href="{{ url_for('depo_sarf') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'depo_sarf' %}bg-emerald-600/30 text-emerald-300 font-semibold border-l-2 border-emerald-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-boxes-stacked w-3.5 text-center text-emerald-400"></i>
+                        <span>Depo & Sarf Stok Takibi</span>
+                    </a>
+                </div>
+
+                <!-- 7. ANONİM BİLDİRİM & İSTEK -->
+                <div class="pt-2.5 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-emerald-400"></i> Anonim Bildirim & İstek
+                </div>
+                <div class="space-y-0.5 pl-2 border-l border-slate-800/80 ml-3">
+                    <a href="{{ url_for('anonim_bildirim') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'anonim_bildirim' %}bg-emerald-600/30 text-emerald-300 font-semibold border-l-2 border-emerald-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-user-secret w-3.5 text-center text-emerald-400"></i>
+                        <span>Anonim Bildirim Kutusu</span>
+                    </a>
+                    <a href="{{ url_for('sistem_istek') }}" class="nav-link flex items-center gap-2.5 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'sistem_istek' %}bg-indigo-600/30 text-indigo-300 font-semibold border-l-2 border-indigo-500{% else %}text-slate-400 hover:text-white hover:bg-slate-800/40{% endif %}">
+                        <i class="fa-solid fa-lightbulb w-3.5 text-center text-indigo-400"></i>
+                        <span>Sistem İstek & Geri Bildirim</span>
+                    </a>
+                </div>
+
                 <!-- 6. YÖNETİM & DİĞER -->
                 <div class="pt-2.5 pb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Yönetim</div>
                 <a href="{{ url_for('kullanicilar') }}" class="nav-link flex items-center gap-3 px-3 py-1.5 rounded-lg font-medium transition-all {% if request.endpoint == 'kullanicilar' %}bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/30{% else %}text-slate-400 hover:text-white hover:bg-slate-800/60{% endif %}">

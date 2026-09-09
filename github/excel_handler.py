@@ -218,13 +218,13 @@ def match_columns(norm_headers):
         words = h.split()
         
         # 1. Toplam Ağırlık
-        if has_any(h, ['toplam arlk', 'toplam agirlik', 'toplam kg', 'toplam tonaj', 'total weight', 't weight']) or ('toplam' in words and any(w in words for w in ['arlk', 'agirlik', 'kg', 'weight'])):
+        if has_any(h, ['toplam arlk', 'toplam agirlik', 'toplam kg', 'toplam tonaj', 'total weight', 't weight', 't arlk', 't agirlik', 'toplam agirligi']) or ('toplam' in words and any(w in words for w in ['arlk', 'agirlik', 'kg', 'weight'])):
             if not has_any(h, ['alan', 'area', 'm2', 'm3', 'fiyat', 'tutar']):
                 tot_wt_idx = idx
                 continue
 
         # 2. Birim Ağırlık
-        if has_any(h, ['birim arlk', 'birim agirlik', 'birim kg', 'unit weight', 'u weight', 'tek arlk', 'tek agirlik', 'kg m']) or ('birim' in words and any(w in words for w in ['arlk', 'agirlik', 'kg', 'weight'])):
+        if has_any(h, ['birim arlk', 'birim agirlik', 'birim kg', 'unit weight', 'u weight', 'tek arlk', 'tek agirlik', 'kg m', 'b arlk', 'b agirlik', 'birim agirligi']) or ('birim' in words and any(w in words for w in ['arlk', 'agirlik', 'kg', 'weight'])):
             if not has_any(h, ['alan', 'area', 'm2', 'm3', 'fiyat', 'tutar']):
                 u_wt_idx = idx
                 continue
@@ -235,12 +235,12 @@ def match_columns(norm_headers):
             continue
 
         # 4. Montaj Poz / Marka No
-        if any(w in words for w in ['assembly', 'montaj']) or has_any(h, ['main part', 'ana poz', 'marka no', 'markasi', 'marka']):
+        if any(w in words for w in ['assembly', 'montaj']) or has_any(h, ['main part', 'ana poz', 'marka no', 'markasi', 'marka', 'assembly no', 'assembly ad']):
             ass_idx = idx
             continue
 
         # 5. Parça Poz No
-        if any(w in words for w in ['poz', 'pos', 'parca', 'part']):
+        if any(w in words for w in ['poz', 'pos', 'parca', 'part', 'poz no', 'parca no']):
             part_idx = idx
             continue
 
@@ -250,12 +250,12 @@ def match_columns(norm_headers):
             continue
 
         # 7. Profil / Kesit
-        if any(w in words for w in ['profil', 'kesit', 'section', 'profile']):
+        if any(w in words for w in ['profil', 'kesit', 'section', 'profile', 'kesiti']):
             prof_idx = idx
             continue
 
         # 8. Uzunluk / Boy
-        if any(w in words for w in ['uzunluk', 'boy', 'length', 'len']):
+        if any(w in words for w in ['uzunluk', 'boy', 'length', 'len', 'uzunluk mm', 'boy mm']):
             len_idx = idx
             continue
 
@@ -278,7 +278,7 @@ def match_columns(norm_headers):
 
 def is_summary_row(row):
     """Tekla ve Excel raporlarının altındaki 'Toplam', 'Total', 'parts:', 'assemblies:' özet satırlarını filtreler."""
-    joined = ' '.join(str(c).lower() for c in row)
+    joined = ' '.join(str(c).lower() for c in row if c is not None)
     return any(k in joined for k in ['toplam', 'total', 'grand total', 'genel toplam', 'summary', 'assemblies:', 'parts:'])
 
 
@@ -337,7 +337,7 @@ def parse_tekla_excel(file_stream):
         current_assembly_grade = 'S235JR'
 
         for row in grid[header_row_idx + 1:]:
-            if not row or not any(str(c).strip() for c in row):
+            if not row or not any(str(c).strip() for c in row if c is not None):
                 continue
             if is_summary_row(row):
                 continue
@@ -386,7 +386,9 @@ def parse_tekla_excel(file_stream):
                     # Montajın Alt Parça Satırı
                     qty_per_ass = parsed_qty
                     tot_q = qty_per_ass * current_assembly_qty
-                    part_row_tot_wt = round(parsed_uwt * tot_q, 2) if parsed_uwt > 0 else round(parsed_twt * current_assembly_qty, 2)
+                    # Tekla hiyerarşik raporda sub-part satırındaki parsed_twt değeri 1 montaj içindeki toplam ağırlıktır
+                    subpart_ass_wt = parsed_twt if parsed_twt > 0 else (parsed_uwt * qty_per_ass)
+                    part_row_tot_wt = round(subpart_ass_wt * current_assembly_qty, 2)
 
                     parsed_assembly_parts.append({
                         'assembly_pos': current_assembly,

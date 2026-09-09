@@ -248,9 +248,20 @@
     }
 
     function openPaintModal(id, pos, maxQty, ral, dft) {
+        const safeMax = Math.max(1, parseInt(maxQty) || 1);
         document.getElementById('paint_assembly_id').value = id;
-        document.getElementById('paintModalTitle').innerText = `${pos} - Boya / Yüzey İşlemi`;
-        document.getElementById('paint_qty').value = maxQty > 0 ? maxQty : 1;
+        document.getElementById('paintModalTitle').innerText = `${pos} - Boya / Yüzey İşlemi (Kalan: ${safeMax} Adet)`;
+        const inp = document.getElementById('paint_qty');
+        if (inp) {
+            inp.max = safeMax;
+            inp.min = 1;
+            inp.value = safeMax;
+            inp.oninput = function() {
+                const val = parseInt(this.value) || 1;
+                if (val > safeMax) this.value = safeMax;
+                if (val < 1) this.value = 1;
+            };
+        }
         document.getElementById('paint_ral_input').value = ral || 'RAL 7016';
         document.getElementById('paint_dft_input').value = dft || '120 µm';
         openModal('paintModal');

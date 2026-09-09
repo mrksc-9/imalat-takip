@@ -1,10 +1,11 @@
 // ORDUMAK MES Service Worker (PWA & Background Push)
-const CACHE_NAME = 'ordumak-mes-v3';
+const CACHE_NAME = 'ordumak-mes-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
   '/static/manifest.json',
-  '/api/company-logo',
+  '/static/img/ordumak_icon_192.png',
+  '/static/img/ordumak_icon_512.png',
   '/static/css/style.css'
 ];
 
@@ -42,13 +43,13 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// 3. Web Push Bildirimlerini Yakalama (Site / Tarayıcı Kapalıyken Çalışır)
+// 3. Web Push Bildirimlerini Yakalama (Site / Tarayıcı Kapalıyken Gerçek Telefon/Masaüstü Bildirimi)
 self.addEventListener('push', (event) => {
   let data = {
     title: 'ORDUMAK DEMİR ÇELİK MES',
-    body: 'Yeni bir işlem veya güncelleme kaydedildi.',
-    icon: '/api/company-logo',
-    badge: '/api/company-logo',
+    body: 'Yeni bir işlem veya sistem güncellemesi kaydedildi.',
+    icon: '/static/img/ordumak_icon_192.png',
+    badge: '/static/img/ordumak_icon_192.png',
     url: '/'
   };
 
@@ -63,8 +64,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/api/company-logo',
-    badge: data.badge || '/api/company-logo',
+    icon: data.icon || '/static/img/ordumak_icon_192.png',
+    badge: data.badge || '/static/img/ordumak_icon_192.png',
     vibrate: [300, 150, 300, 150, 300],
     data: {
       url: data.url || '/'
@@ -104,18 +105,19 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// 5. Sayfa İçi Mesajlaşma Dinleyicisi
+// 5. Sayfa İçi Canlı Mesajlaşma Dinleyicisi (OS Bildirimi Olarak Gösterir)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const d = event.data;
     const options = {
       body: d.body || '',
-      icon: d.icon || '/api/company-logo',
-      badge: d.badge || '/api/company-logo',
-      vibrate: [200, 100, 200],
+      icon: d.icon || '/static/img/ordumak_icon_192.png',
+      badge: d.badge || '/static/img/ordumak_icon_192.png',
+      vibrate: [300, 150, 300, 150, 300],
       data: { url: d.url || '/' },
-      requireInteraction: d.requireInteraction || false,
-      tag: d.tag || ('ordumak-' + Date.now())
+      requireInteraction: true,
+      tag: d.tag || ('ordumak-' + Date.now()),
+      renotify: true
     };
     self.registration.showNotification(d.title || 'ORDUMAK DEMİR ÇELİK MES', options);
   }

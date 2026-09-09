@@ -88,17 +88,17 @@
     <div class="bg-slate-950/80 border border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
         <!-- Sekme Başlıkları -->
         <div class="flex items-center border-b border-slate-800 bg-slate-950/90 px-4 pt-3 gap-2 overflow-x-auto text-xs font-bold">
-            <button onclick="switchTab('assembliesTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl bg-blue-600 text-white flex items-center gap-2 border-t-2 border-blue-400 transition-all">
+            <button id="tabBtn_assembliesTab" onclick="switchTab('assembliesTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl bg-blue-600 text-white flex items-center gap-2 border-t-2 border-blue-400 transition-all">
                 <i class="fa-solid fa-layer-group"></i>
-                <span>1. Montaj / Assembly Listesi ({{ assemblies|length }})</span>
+                <span>1. Montaj / Assembly Listesi (<span id="count_assemblies">{{ assemblies|length }}</span>)</span>
             </button>
-            <button onclick="switchTab('assemblyPartsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+            <button id="tabBtn_assemblyPartsTab" onclick="switchTab('assemblyPartsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
                 <i class="fa-solid fa-cubes-stacked"></i>
-                <span>2. Montaj Eleman / Parça Listesi ({{ assembly_parts|length }})</span>
+                <span>2. Montaj Eleman / Parça Listesi (<span id="count_assemblyParts">{{ assembly_parts|length }}</span>)</span>
             </button>
-            <button onclick="switchTab('partsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
+            <button id="tabBtn_partsTab" onclick="switchTab('partsTab', this)" class="tab-btn px-4 py-2.5 rounded-t-xl text-slate-400 hover:text-slate-200 hover:bg-slate-900 flex items-center gap-2 transition-all">
                 <i class="fa-solid fa-puzzle-piece"></i>
-                <span>3. Tek Parça / Poz Listesi ({{ parts|length }})</span>
+                <span>3. Tek Parça / Poz Listesi (<span id="count_parts">{{ parts|length }}</span>)</span>
             </button>
         </div>
 
@@ -107,7 +107,13 @@
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Ana imalat markaları (Kolon, Kiriş, Makas) ve canlı aşama adetleri:</p>
                 <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <input type="text" id="filterAssInput" onkeyup="filterTable('assembliesTable', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    <input type="text" id="filterAssInput" oninput="onFilterChange('assemblies', this.value)" placeholder="Marka veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48 outline-none focus:border-blue-500">
+                    <select id="pageSize_assemblies" onchange="onPageSizeChange('assemblies', this.value)" class="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none">
+                        <option value="50">50 / sayfa</option>
+                        <option value="100">100 / sayfa</option>
+                        <option value="250">250 / sayfa</option>
+                        <option value="999999">Tümü</option>
+                    </select>
                     {% if can_user_edit('projeler') %}
                     <button onclick="openModal('uploadAssemblyExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -115,13 +121,13 @@
                     </button>
                     <button onclick="openModal('pasteAssemblyModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-paste text-blue-400"></i>
-                        <span>Kopyala-Yapıştır ile Yükle</span>
+                        <span>Kopyala-Yapıştır</span>
                     </button>
                     <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj (Assembly) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
                         <input type="hidden" name="target" value="assemblies">
                         <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Listesini Temizle">
                             <i class="fa-solid fa-trash text-rose-400"></i>
-                            <span>Listeyi Temizle</span>
+                            <span>Temizle</span>
                         </button>
                     </form>
                     {% endif %}
@@ -146,42 +152,13 @@
                             <th class="py-2.5 px-2 text-center text-emerald-400">Sevk</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
-                        {% for a in assemblies %}
-                        <tr class="hover:bg-slate-900/50 transition-colors">
-                            <td class="py-2.5 px-3 font-mono font-bold text-white flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
-                                <span>{{ a.assembly_pos }}</span>
-                            </td>
-                            <td class="py-2.5 px-2 text-slate-300 font-medium">{{ a.description or '-' }}</td>
-                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ a.profile_type or '-' }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ a.quantity }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ a.unit_weight | format_num }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ (a.total_weight / 1000.0) | format_num }} Ton</td>
-                            
-                            <!-- Aşamalar -->
-                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_fitup_qty }} / {{ a.quantity }}</td>
-                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_welding_qty }} / {{ a.quantity }}</td>
-                            <td class="py-2.5 px-2 text-center font-mono">{{ a.fab_cleaning_qty }} / {{ a.quantity }}</td>
-                            <td class="py-2.5 px-2 text-center">
-                                {% if a.qa_approved_qty >= a.quantity %}
-                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-teal-500/10 text-teal-400 border border-teal-500/20 font-bold">Onaylı</span>
-                                {% elif a.qa_pending_qty > 0 %}
-                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">{{ a.qa_pending_qty }} Bekliyor</span>
-                                {% else %}
-                                    <span class="text-slate-500">-</span>
-                                {% endif %}
-                            </td>
-                            <td class="py-2.5 px-2 text-center font-mono">{{ a.paint_done_qty }} / {{ a.quantity }}</td>
-                            <td class="py-2.5 px-2 text-center font-mono font-bold text-emerald-400">{{ a.shipped_qty }} / {{ a.quantity }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="12" class="py-8 text-center text-slate-500">Bu projeye henüz montaj listesi eklenmedi. Yukarıdaki 'Excel'den Yükle' veya 'Kopyala-Yapıştır ile Yükle' butonunu kullanabilirsiniz.</td>
-                        </tr>
-                        {% endfor %}
+                    <tbody id="assembliesTableBody" class="divide-y divide-slate-800/60 text-slate-200">
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Sayfalama Kontrolü -->
+            <div id="pagination_assemblies" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-800/60 text-xs text-slate-400">
             </div>
         </div>
 
@@ -191,9 +168,15 @@
                 <p class="text-slate-400">Hangi montaj markasının hangi tekil plaka/profillerden oluştuğu listesi:</p>
                 <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <div class="relative flex-1 sm:w-64">
-                        <input type="text" onkeyup="filterTable('assemblyPartsTable', this.value)" placeholder="🔍 Poz filtrele (Örn: D5, p1)..." class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500 font-medium placeholder-slate-500">
+                        <input type="text" id="filterAssemblyPartsInput" oninput="onFilterChange('assemblyParts', this.value)" placeholder="🔍 Poz veya profil filtrele..." class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs focus:outline-none focus:border-blue-500 font-medium placeholder-slate-500">
                         <i class="fa-solid fa-filter absolute left-2.5 top-2 text-slate-500 text-xs"></i>
                     </div>
+                    <select id="pageSize_assemblyParts" onchange="onPageSizeChange('assemblyParts', this.value)" class="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none">
+                        <option value="50">50 / sayfa</option>
+                        <option value="100">100 / sayfa</option>
+                        <option value="250">250 / sayfa</option>
+                        <option value="999999">Tümü</option>
+                    </select>
                     {% if can_user_edit('projeler') %}
                     <button onclick="openModal('uploadAssemblyPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -201,13 +184,13 @@
                     </button>
                     <button onclick="openModal('pasteAssemblyPartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-paste text-blue-400"></i>
-                        <span>Kopyala-Yapıştır ile Yükle</span>
+                        <span>Kopyala-Yapıştır</span>
                     </button>
                     <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Montaj Parça (Assembly Parts) listesini temizlemek istediğinizden emin misiniz?');" class="inline">
                         <input type="hidden" name="target" value="assembly_parts">
                         <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Montaj Parça Listesini Temizle">
                             <i class="fa-solid fa-trash text-rose-400"></i>
-                            <span>Listeyi Temizle</span>
+                            <span>Temizle</span>
                         </button>
                     </form>
                     {% endif %}
@@ -230,27 +213,13 @@
                             <th class="py-2.5 px-2 text-center">Çelik Kalitesi</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
-                        {% for ap in assembly_parts %}
-                        <tr class="hover:bg-slate-900/50 transition-colors">
-                            <td class="py-2.5 px-3 font-mono font-bold text-blue-400">{{ ap.assembly_pos }}</td>
-                            <td class="py-2.5 px-2 font-mono font-bold text-white">{{ ap.part_pos }}</td>
-                            <td class="py-2.5 px-2 text-slate-300">{{ ap.description or '-' }}</td>
-                            <td class="py-2.5 px-2 font-mono text-emerald-300">{{ ap.profile_type or '-' }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ ap.length | int }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono">{{ ap.quantity_per_assembly }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_quantity }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ ap.unit_weight | format_num }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ ap.total_weight | format_num }}</td>
-                            <td class="py-2.5 px-2 text-center font-mono text-[11px] text-slate-400">{{ ap.material_grade or 'S275JR' }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="10" class="py-8 text-center text-slate-500">Montaj eleman ilişkisi bulunmuyor.</td>
-                        </tr>
-                        {% endfor %}
+                    <tbody id="assemblyPartsTableBody" class="divide-y divide-slate-800/60 text-slate-200">
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Sayfalama Kontrolü -->
+            <div id="pagination_assemblyParts" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-800/60 text-xs text-slate-400">
             </div>
         </div>
 
@@ -259,7 +228,13 @@
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 text-xs">
                 <p class="text-slate-400">Atölye kesim ve hammadde hazırlık poz listesi:</p>
                 <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <input type="text" onkeyup="filterTable('partsTable', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48">
+                    <input type="text" id="filterPartsInput" oninput="onFilterChange('parts', this.value)" placeholder="Poz veya profil ara..." class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-xs flex-1 sm:w-48 outline-none focus:border-blue-500">
+                    <select id="pageSize_parts" onchange="onPageSizeChange('parts', this.value)" class="bg-slate-900 border border-slate-700 text-slate-300 rounded-lg px-2 py-1.5 text-xs outline-none">
+                        <option value="50">50 / sayfa</option>
+                        <option value="100">100 / sayfa</option>
+                        <option value="250">250 / sayfa</option>
+                        <option value="999999">Tümü</option>
+                    </select>
                     {% if can_user_edit('projeler') %}
                     <button onclick="openModal('uploadPartsExcelModal')" class="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-file-excel text-emerald-400"></i>
@@ -267,13 +242,13 @@
                     </button>
                     <button onclick="openModal('pastePartsModal')" class="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
                         <i class="fa-solid fa-paste text-blue-400"></i>
-                        <span>Kopyala-Yapıştır ile Yükle</span>
+                        <span>Kopyala-Yapıştır</span>
                     </button>
                     <form action="{{ url_for('api_proje_listeleri_temizle', project_id=project.id) }}" method="POST" onsubmit="return confirm('Bu projedeki Tek Parça (Parts) poz listesini temizlemek istediğinizden emin misiniz?');" class="inline">
                         <input type="hidden" name="target" value="parts">
                         <button type="submit" class="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5" title="Tek Parça Listesini Temizle">
                             <i class="fa-solid fa-trash text-rose-400"></i>
-                            <span>Listeyi Temizle</span>
+                            <span>Temizle</span>
                         </button>
                     </form>
                     {% endif %}
@@ -296,38 +271,13 @@
                             <th class="py-2.5 px-2 text-center">Durum</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-800/60 text-slate-200">
-                        {% for p in parts %}
-                        {% set kalan = p.quantity - p.cut_quantity %}
-                        <tr class="hover:bg-slate-900/50 transition-colors {% if kalan <= 0 %}bg-emerald-950/20{% endif %}">
-                            <td class="py-2.5 px-3 font-mono font-bold text-white">{{ p.pos_no }}</td>
-                            <td class="py-2.5 px-2 text-slate-300">{{ p.name }}</td>
-                            <td class="py-2.5 px-2 font-mono text-blue-300">{{ p.profile_type }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.quantity }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-yellow-400">{{ p.cut_quantity }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold {% if kalan <= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
-                                {{ kalan if kalan > 0 else 0 }}
-                            </td>
-                            <td class="py-2.5 px-2 text-right font-mono text-slate-400">{{ p.length | int }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono text-slate-300">{{ p.unit_weight | format_num }}</td>
-                            <td class="py-2.5 px-2 text-right font-mono font-bold text-white">{{ p.total_weight | format_num }}</td>
-                            <td class="py-2.5 px-2 text-center">
-                                {% if kalan <= 0 %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Kesim Tamam</span>
-                                {% elif p.cut_quantity > 0 %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Kesimde</span>
-                                {% else %}
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">Bekliyor</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="10" class="py-8 text-center text-slate-500">Parça poz listesi boş.</td>
-                        </tr>
-                        {% endfor %}
+                    <tbody id="partsTableBody" class="divide-y divide-slate-800/60 text-slate-200">
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Sayfalama Kontrolü -->
+            <div id="pagination_parts" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-800/60 text-xs text-slate-400">
             </div>
         </div>
     </div>
@@ -535,6 +485,26 @@
 
 {% block extra_scripts %}
 <script>
+    // Ham veriler (JSON olarak hafif veri adacığı)
+    const rawData = {
+        assemblies: {{ assemblies | tojson }},
+        assemblyParts: {{ assembly_parts | tojson }},
+        parts: {{ parts | tojson }}
+    };
+
+    // Tablo durumları (sayfalama & arama)
+    const tableState = {
+        assemblies: { page: 1, pageSize: 50, filter: '', filtered: [] },
+        assemblyParts: { page: 1, pageSize: 50, filter: '', filtered: [] },
+        parts: { page: 1, pageSize: 50, filter: '', filtered: [] }
+    };
+
+    // Sayı formatlayıcı
+    function fmtNum(val) {
+        if (val === null || val === undefined || isNaN(val)) return '0';
+        return Number(val).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    }
+
     function switchTab(tabId, btn) {
         document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
         document.querySelectorAll('.tab-btn').forEach(el => {
@@ -549,13 +519,230 @@
         btn.classList.add('bg-blue-600', 'text-white', 'border-t-2', 'border-blue-400');
     }
 
-    function filterTable(tableId, query) {
-        const q = query.toLowerCase();
-        const rows = document.querySelectorAll(`#${tableId} tbody tr`);
-        rows.forEach(r => {
-            const text = r.innerText.toLowerCase();
-            r.style.display = text.includes(q) ? '' : 'none';
+    // 1. Assemblies Tablosu Oluşturma
+    function renderAssemblies() {
+        const state = tableState.assemblies;
+        const q = state.filter.toLowerCase().trim();
+        state.filtered = rawData.assemblies.filter(a => {
+            if (!q) return true;
+            return (a.assembly_pos || '').toLowerCase().includes(q) ||
+                   (a.description || '').toLowerCase().includes(q) ||
+                   (a.profile_type || '').toLowerCase().includes(q);
         });
+
+        const totalItems = state.filtered.length;
+        const totalPages = Math.ceil(totalItems / state.pageSize) || 1;
+        if (state.page > totalPages) state.page = totalPages;
+        if (state.page < 1) state.page = 1;
+
+        const startIdx = (state.page - 1) * state.pageSize;
+        const pageItems = state.filtered.slice(startIdx, startIdx + state.pageSize);
+
+        const tbody = document.getElementById('assembliesTableBody');
+        if (pageItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="12" class="py-8 text-center text-slate-500">${rawData.assemblies.length === 0 ? "Bu projeye henüz montaj listesi eklenmedi." : "Arama kriterine uygun montaj kaydı bulunamadı."}</td></tr>`;
+        } else {
+            tbody.innerHTML = pageItems.map(a => {
+                let qaBadge = '<span class="text-slate-500">-</span>';
+                if ((a.qa_approved_qty || 0) >= a.quantity) {
+                    qaBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] bg-teal-500/10 text-teal-400 border border-teal-500/20 font-bold">Onaylı</span>';
+                } else if ((a.qa_pending_qty || 0) > 0) {
+                    qaBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">${a.qa_pending_qty} Bekliyor</span>`;
+                }
+
+                return `
+                <tr class="hover:bg-slate-900/50 transition-colors">
+                    <td class="py-2.5 px-3 font-mono font-bold text-white flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>${a.assembly_pos}</span>
+                    </td>
+                    <td class="py-2.5 px-2 text-slate-300 font-medium">${a.description || '-'}</td>
+                    <td class="py-2.5 px-2 font-mono text-blue-300">${a.profile_type || '-'}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${a.quantity}</td>
+                    <td class="py-2.5 px-2 text-right font-mono text-slate-300">${fmtNum(a.unit_weight)}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${fmtNum(a.total_weight / 1000.0)} Ton</td>
+                    <td class="py-2.5 px-2 text-center font-mono">${a.fab_fitup_qty || 0} / ${a.quantity}</td>
+                    <td class="py-2.5 px-2 text-center font-mono">${a.fab_welding_qty || 0} / ${a.quantity}</td>
+                    <td class="py-2.5 px-2 text-center font-mono">${a.fab_cleaning_qty || 0} / ${a.quantity}</td>
+                    <td class="py-2.5 px-2 text-center">${qaBadge}</td>
+                    <td class="py-2.5 px-2 text-center font-mono">${a.paint_done_qty || 0} / ${a.quantity}</td>
+                    <td class="py-2.5 px-2 text-center font-mono font-bold text-emerald-400">${a.shipped_qty || 0} / ${a.quantity}</td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        renderPaginationControls('assemblies', totalItems, totalPages);
     }
+
+    // 2. Assembly Parts Tablosu Oluşturma
+    function renderAssemblyParts() {
+        const state = tableState.assemblyParts;
+        const q = state.filter.toLowerCase().trim();
+        state.filtered = rawData.assemblyParts.filter(ap => {
+            if (!q) return true;
+            return (ap.assembly_pos || '').toLowerCase().includes(q) ||
+                   (ap.part_pos || '').toLowerCase().includes(q) ||
+                   (ap.description || '').toLowerCase().includes(q) ||
+                   (ap.profile_type || '').toLowerCase().includes(q);
+        });
+
+        const totalItems = state.filtered.length;
+        const totalPages = Math.ceil(totalItems / state.pageSize) || 1;
+        if (state.page > totalPages) state.page = totalPages;
+        if (state.page < 1) state.page = 1;
+
+        const startIdx = (state.page - 1) * state.pageSize;
+        const pageItems = state.filtered.slice(startIdx, startIdx + state.pageSize);
+
+        const tbody = document.getElementById('assemblyPartsTableBody');
+        if (pageItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-slate-500">${rawData.assemblyParts.length === 0 ? "Montaj eleman ilişkisi bulunmuyor." : "Arama kriterine uygun montaj parçası bulunamadı."}</td></tr>`;
+        } else {
+            tbody.innerHTML = pageItems.map(ap => `
+                <tr class="hover:bg-slate-900/50 transition-colors">
+                    <td class="py-2.5 px-3 font-mono font-bold text-blue-400">${ap.assembly_pos}</td>
+                    <td class="py-2.5 px-2 font-mono font-bold text-white">${ap.part_pos}</td>
+                    <td class="py-2.5 px-2 text-slate-300">${ap.description || '-'}</td>
+                    <td class="py-2.5 px-2 font-mono text-emerald-300">${ap.profile_type || '-'}</td>
+                    <td class="py-2.5 px-2 text-right font-mono text-slate-400">${parseInt(ap.length || 0)}</td>
+                    <td class="py-2.5 px-2 text-right font-mono">${ap.quantity_per_assembly}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${ap.total_quantity}</td>
+                    <td class="py-2.5 px-2 text-right font-mono text-slate-300">${fmtNum(ap.unit_weight)}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${fmtNum(ap.total_weight)}</td>
+                    <td class="py-2.5 px-2 text-center font-mono text-[11px] text-slate-400">${ap.material_grade || 'S275JR'}</td>
+                </tr>
+            `).join('');
+        }
+
+        renderPaginationControls('assemblyParts', totalItems, totalPages);
+    }
+
+    // 3. Parts Tablosu Oluşturma
+    function renderParts() {
+        const state = tableState.parts;
+        const q = state.filter.toLowerCase().trim();
+        state.filtered = rawData.parts.filter(p => {
+            if (!q) return true;
+            return (p.pos_no || '').toLowerCase().includes(q) ||
+                   (p.name || '').toLowerCase().includes(q) ||
+                   (p.profile_type || '').toLowerCase().includes(q);
+        });
+
+        const totalItems = state.filtered.length;
+        const totalPages = Math.ceil(totalItems / state.pageSize) || 1;
+        if (state.page > totalPages) state.page = totalPages;
+        if (state.page < 1) state.page = 1;
+
+        const startIdx = (state.page - 1) * state.pageSize;
+        const pageItems = state.filtered.slice(startIdx, startIdx + state.pageSize);
+
+        const tbody = document.getElementById('partsTableBody');
+        if (pageItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-slate-500">${rawData.parts.length === 0 ? "Parça poz listesi boş." : "Arama kriterine uygun poz bulunamadı."}</td></tr>`;
+        } else {
+            tbody.innerHTML = pageItems.map(p => {
+                const kalan = p.quantity - (p.cut_quantity || 0);
+                const isComplete = kalan <= 0;
+                let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400">Bekliyor</span>';
+                if (isComplete) {
+                    statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Kesim Tamam</span>';
+                } else if ((p.cut_quantity || 0) > 0) {
+                    statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">Kesimde</span>';
+                }
+
+                return `
+                <tr class="hover:bg-slate-900/50 transition-colors ${isComplete ? 'bg-emerald-950/20' : ''}">
+                    <td class="py-2.5 px-3 font-mono font-bold text-white">${p.pos_no}</td>
+                    <td class="py-2.5 px-2 text-slate-300">${p.name || '-'}</td>
+                    <td class="py-2.5 px-2 font-mono text-blue-300">${p.profile_type || '-'}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${p.quantity}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-yellow-400">${p.cut_quantity || 0}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold ${isComplete ? 'text-emerald-400' : 'text-rose-400'}">
+                        ${kalan > 0 ? kalan : 0}
+                    </td>
+                    <td class="py-2.5 px-2 text-right font-mono text-slate-400">${parseInt(p.length || 0)}</td>
+                    <td class="py-2.5 px-2 text-right font-mono text-slate-300">${fmtNum(p.unit_weight)}</td>
+                    <td class="py-2.5 px-2 text-right font-mono font-bold text-white">${fmtNum(p.total_weight)}</td>
+                    <td class="py-2.5 px-2 text-center">${statusBadge}</td>
+                </tr>
+                `;
+            }).join('');
+        }
+
+        renderPaginationControls('parts', totalItems, totalPages);
+    }
+
+    // Ortak Sayfalama Kontrolleri HTML
+    function renderPaginationControls(type, totalItems, totalPages) {
+        const state = tableState[type];
+        const container = document.getElementById(`pagination_${type}`);
+        if (!container) return;
+
+        if (totalItems <= state.pageSize && state.page === 1) {
+            container.innerHTML = `<span>Toplam <b class="text-white font-mono">${totalItems}</b> kayıt listeleniyor.</span>`;
+            return;
+        }
+
+        const start = (state.page - 1) * state.pageSize + 1;
+        const end = Math.min(state.page * state.pageSize, totalItems);
+
+        container.innerHTML = `
+            <div>
+                Gösterilen: <b class="text-white font-mono">${totalItems > 0 ? start : 0} - ${end}</b> / Toplam <b class="text-white font-mono">${totalItems}</b> kayıt
+            </div>
+            <div class="flex items-center gap-1">
+                <button onclick="goToPage('${type}', 1)" ${state.page === 1 ? 'disabled class="px-2.5 py-1 rounded bg-slate-900 text-slate-600 cursor-not-allowed"' : 'class="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"'} title="İlk Sayfa">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
+                <button onclick="goToPage('${type}', ${state.page - 1})" ${state.page === 1 ? 'disabled class="px-2.5 py-1 rounded bg-slate-900 text-slate-600 cursor-not-allowed"' : 'class="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"'} title="Önceki Sayfa">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="px-3 py-1 bg-slate-900 border border-slate-800 rounded font-mono font-bold text-white">
+                    ${state.page} / ${totalPages}
+                </span>
+                <button onclick="goToPage('${type}', ${state.page + 1})" ${state.page >= totalPages ? 'disabled class="px-2.5 py-1 rounded bg-slate-900 text-slate-600 cursor-not-allowed"' : 'class="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"'} title="Sonraki Sayfa">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <button onclick="goToPage('${type}', ${totalPages})" ${state.page >= totalPages ? 'disabled class="px-2.5 py-1 rounded bg-slate-900 text-slate-600 cursor-not-allowed"' : 'class="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800"'} title="Son Sayfa">
+                    <i class="fa-solid fa-angles-right"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    function goToPage(type, pageNum) {
+        tableState[type].page = pageNum;
+        if (type === 'assemblies') renderAssemblies();
+        else if (type === 'assemblyParts') renderAssemblyParts();
+        else if (type === 'parts') renderParts();
+    }
+
+    function onPageSizeChange(type, newSize) {
+        tableState[type].pageSize = parseInt(newSize);
+        tableState[type].page = 1;
+        if (type === 'assemblies') renderAssemblies();
+        else if (type === 'assemblyParts') renderAssemblyParts();
+        else if (type === 'parts') renderParts();
+    }
+
+    let searchTimeouts = {};
+    function onFilterChange(type, query) {
+        if (searchTimeouts[type]) clearTimeout(searchTimeouts[type]);
+        searchTimeouts[type] = setTimeout(() => {
+            tableState[type].filter = query;
+            tableState[type].page = 1;
+            if (type === 'assemblies') renderAssemblies();
+            else if (type === 'assemblyParts') renderAssemblyParts();
+            else if (type === 'parts') renderParts();
+        }, 120);
+    }
+
+    // Sayfa Yüklendiğinde Tabloları Çiz
+    document.addEventListener('DOMContentLoaded', () => {
+        renderAssemblies();
+        renderAssemblyParts();
+        renderParts();
+    });
 </script>
 {% endblock %}

@@ -629,7 +629,10 @@
                     <input type="text" id="b_profile_${rowCounter}" placeholder="Profil (Örn: SHS50*3)" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-blue-500 px-3 py-2 text-blue-300 font-mono font-bold text-xs rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 2)">
                 </td>
                 <td class="p-1 border-r border-slate-800 bg-yellow-500/5">
-                    <input type="text" id="b_qty_${rowCounter}" placeholder="Adet (Örn: 20 veya 4*5)" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-yellow-500 px-3 py-2 text-yellow-400 font-mono font-black text-xs text-right rounded-lg focus:outline-none focus:ring-1 focus:ring-yellow-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 3)">
+                    <div class="relative">
+                        <input type="text" id="b_qty_${rowCounter}" placeholder="Adet (Örn: 20 veya 4*5)" oninput="onBatchRowQtyTyped(${rowCounter})" class="excel-cell-input w-full bg-slate-900/60 hover:bg-slate-900 focus:bg-slate-900 border border-slate-700/60 focus:border-yellow-500 px-3 py-2 text-yellow-400 font-mono font-black text-xs text-right rounded-lg focus:outline-none focus:ring-1 focus:ring-yellow-400 transition-all" onkeydown="handleExcelGridKeys(event, ${rowCounter}, 3)">
+                        <div id="qty_err_${rowCounter}" class="hidden"></div>
+                    </div>
                 </td>
                 <td class="p-1 text-center bg-slate-950/80">
                     <button type="button" onclick="removeBatchRow(${rowCounter})" class="text-rose-500 hover:text-rose-300 hover:bg-rose-950/60 p-2 rounded-lg transition-colors" title="Satırı Sil">
@@ -661,16 +664,77 @@
         document.getElementById('totalRowCountBadge').innerText = rows.length;
     }
 
-    function onBatchRowPosTyped(idx) {
-        let posVal = document.getElementById(`b_pos_${idx}`).value.trim();
-        if (!posVal) return;
+    function parseMathOrInt(valStr) {
+        if (!valStr) return 0;
+        let s = String(valStr).trim().replace(',', '.');
+        if (/^[0-9]+(\s*\*\s*[0-9]+)+$/.test(s)) {
+            try {
+                return s.split('*').map(x => parseInt(x.trim()) || 0).reduce((a, b) => a * b, 1);
+            } catch (e) { return 0; }
+        }
+        return parseInt(s) || 0;
+    }
 
-        let match = projectPartsCache.find(p => 
+    function findMatchingPart(posVal) {
+        if (!posVal) return null;
+        return projectPartsCache.find(p => 
             p.pos_no === posVal || 
             (currentProjectPrefix && p.pos_no === (currentProjectPrefix + posVal)) ||
             (currentProjectPrefix && posVal.startsWith(currentProjectPrefix) && p.pos_no === posVal.replace(currentProjectPrefix, '')) ||
             p.pos_no.toLowerCase() === posVal.toLowerCase()
         );
+    }
+
+    function validateBatchRowQty(idx) {
+        const posInp = document.getElementById(`b_pos_${idx}`);
+        const qtyInp = document.getElementById(`b_qty_${idx}`);
+        const errDiv = document.getElementById(`qty_err_${idx}`);
+        if (!posInp || !qtyInp) return { valid: true };
+
+        const posVal = posInp.value.trim();
+        const qtyValStr = qtyInp.value.trim();
+        if (!posVal || !qtyValStr) {
+            qtyInp.classList.remove('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) { errDiv.innerHTML = ''; errDiv.className = 'hidden'; }
+            return { valid: true };
+        }
+
+        const match = findMatchingPart(posVal);
+        if (!match) {
+            qtyInp.classList.remove('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) { errDiv.innerHTML = ''; errDiv.className = 'hidden'; }
+            return { valid: true };
+        }
+
+        const remQty = match.remaining_quantity !== undefined ? match.remaining_quantity : (match.quantity - (match.cut_quantity || 0));
+        const typedQty = parseMathOrInt(qtyValStr);
+
+        if (typedQty > remQty) {
+            qtyInp.classList.add('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) {
+                errDiv.className = 'text-[10px] text-rose-400 font-bold mt-1 flex items-center justify-end gap-1 animate-pulse';
+                errDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Değer fazla! Kalan: ${remQty} adet`;
+            }
+            return { valid: false, pos: match.pos_no, typed: typedQty, rem: remQty, element: qtyInp };
+        } else {
+            qtyInp.classList.remove('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) {
+                errDiv.innerHTML = '';
+                errDiv.className = 'hidden';
+            }
+            return { valid: true, pos: match.pos_no, typed: typedQty, rem: remQty };
+        }
+    }
+
+    function onBatchRowQtyTyped(idx) {
+        validateBatchRowQty(idx);
+    }
+
+    function onBatchRowPosTyped(idx) {
+        let posVal = document.getElementById(`b_pos_${idx}`).value.trim();
+        if (!posVal) return;
+
+        let match = findMatchingPart(posVal);
 
         if (match) {
             const profInp = document.getElementById(`b_profile_${idx}`);
@@ -682,6 +746,7 @@
                 qtyInput.value = match.remaining_quantity > 0 ? match.remaining_quantity : 1;
             }
         }
+        validateBatchRowQty(idx);
     }
 
     // EXCEL KLAVYE YÖN VE ENTER KONTROLLERİ
@@ -791,6 +856,7 @@
                 if (qtyInp) qtyInp.value = qty;
 
                 onBatchRowPosTyped(curRowIdx);
+                onBatchRowQtyTyped(curRowIdx);
                 curRowIdx++;
                 addedCount++;
             }
@@ -832,7 +898,10 @@
 
         const items = [];
         const rows = document.querySelectorAll('#batchCutRows tr');
+        let hasExcessError = null;
+
         rows.forEach(tr => {
+            const rowIdx = tr.dataset.rowIndex || (tr.id ? tr.id.replace('batchRow_', '') : '');
             const posInput = tr.querySelector('input[id^="b_pos_"]');
             const pos_no = posInput ? posInput.value.trim() : '';
             const profileInput = tr.querySelector('input[id^="b_profile_"]');
@@ -841,12 +910,27 @@
             const cut_quantity = qtyInput ? qtyInput.value.trim() : '';
 
             if (pos_no && cut_quantity) {
+                if (rowIdx) {
+                    const valRes = validateBatchRowQty(rowIdx);
+                    if (!valRes.valid && !hasExcessError) {
+                        hasExcessError = valRes;
+                    }
+                }
                 items.push({ pos_no, profile, cut_quantity, prefix: currentProjectPrefix });
             }
         });
 
         if (items.length === 0) {
             alert('Lütfen en az bir poz ve kesilen adet girin.');
+            return;
+        }
+
+        if (hasExcessError) {
+            alert(`⚠️ HATA: "${hasExcessError.pos}" pozu için girilen kesim adedi (${hasExcessError.typed}), kalan kesim miktarından (${hasExcessError.rem} adet) fazladır!\nLütfen kutucuktaki değeri düzeltiniz.`);
+            if (hasExcessError.element) {
+                hasExcessError.element.focus();
+                hasExcessError.element.select();
+            }
             return;
         }
 
@@ -973,6 +1057,9 @@
             const unitWt = parseFloat(it.unit_weight || 0.0);
             const qty = parseInt(it.cut_quantity || 0);
             const ton = ((qty * unitWt) / 1000.0).toFixed(3);
+            const maxAllowed = (it.part_remaining !== undefined ? parseInt(it.part_remaining) : 0) + qty;
+            tr.dataset.maxAllowed = maxAllowed;
+            tr.dataset.posNo = it.pos_no;
 
             tr.innerHTML = `
                 <td class="py-2.5 px-2 text-center font-mono text-slate-500 text-[11px]">${index + 1}</td>
@@ -981,7 +1068,8 @@
                 <td class="py-2.5 px-3 text-right font-mono text-slate-400 text-xs">${it.part_total_qty || '-'}</td>
                 <td class="py-2.5 px-3 text-right font-mono font-bold text-emerald-400 text-xs">${it.part_remaining !== undefined ? it.part_remaining : '-'}</td>
                 <td class="py-1 px-2 text-right bg-yellow-500/5">
-                    <input type="number" min="0" value="${qty}" id="modalQtyInput_${it.id}" oninput="onModalItemQtyChanged(${it.id})" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:outline-none focus:border-yellow-400">
+                    <input type="number" min="0" max="${maxAllowed}" value="${qty}" id="modalQtyInput_${it.id}" oninput="onModalItemQtyChanged(${it.id})" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-yellow-400 font-mono font-black text-xs text-right focus:outline-none focus:border-yellow-400" title="Kalan kesim hakkıyla birlikte maksimum: ${maxAllowed} adet">
+                    <div id="modalQtyErr_${it.id}" class="hidden"></div>
                 </td>
                 <td class="py-2.5 px-3 text-right font-mono text-slate-400 text-xs">${unitWt.toFixed(2)}</td>
                 <td class="py-2.5 px-3 text-right font-mono font-black text-yellow-400 text-xs" id="modalItemTon_${it.id}">${ton}</td>
@@ -1001,11 +1089,27 @@
         const tr = document.getElementById(`modalItemRow_${entryId}`);
         if (!tr) return;
         const inp = document.getElementById(`modalQtyInput_${entryId}`);
+        const errDiv = document.getElementById(`modalQtyErr_${entryId}`);
         const qty = Math.max(0, parseInt(inp.value) || 0);
+        const maxAllowed = parseInt(tr.dataset.maxAllowed) || 999999;
         const unitWt = parseFloat(tr.dataset.unitWeight || 0.0);
         const ton = ((qty * unitWt) / 1000.0).toFixed(3);
         const tonCell = document.getElementById(`modalItemTon_${entryId}`);
         if (tonCell) tonCell.innerText = ton;
+
+        if (qty > maxAllowed) {
+            inp.classList.add('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) {
+                errDiv.className = 'text-[9px] text-rose-400 font-bold mt-0.5 animate-pulse';
+                errDiv.innerText = `Fazla! (Maks: ${maxAllowed})`;
+            }
+        } else {
+            inp.classList.remove('border-rose-500', 'bg-rose-950/60', 'text-rose-300', 'ring-2', 'ring-rose-500/50');
+            if (errDiv) {
+                errDiv.className = 'hidden';
+                errDiv.innerText = '';
+            }
+        }
 
         recalcBatchModalSummary();
     }
@@ -1060,12 +1164,19 @@
         if (!activeBatchData) return;
         const rows = document.querySelectorAll('#modalBatchItemsBody tr[id^="modalItemRow_"]');
         const items = [];
+        let hasError = null;
 
         rows.forEach(tr => {
             const entryId = parseInt(tr.dataset.entryId);
             const isDel = tr.dataset.isDeleted === 'true';
             const inp = document.getElementById(`modalQtyInput_${entryId}`);
             const qty = isDel ? 0 : Math.max(0, parseInt(inp.value) || 0);
+            const maxAllowed = parseInt(tr.dataset.maxAllowed) || 999999;
+            const pos = tr.dataset.posNo || 'Poz';
+
+            if (!isDel && qty > maxAllowed && !hasError) {
+                hasError = { pos, qty, maxAllowed, element: inp };
+            }
 
             items.push({
                 entry_id: entryId,
@@ -1073,6 +1184,15 @@
                 is_deleted: isDel
             });
         });
+
+        if (hasError) {
+            alert(`⚠️ HATA: "${hasError.pos}" pozu için girilen kesim adedi (${hasError.qty}), kalan kesim hakkından (${hasError.maxAllowed} adet) fazladır!\nLütfen kutucuktaki değeri düzeltiniz.`);
+            if (hasError.element) {
+                hasError.element.focus();
+                hasError.element.select();
+            }
+            return;
+        }
 
         const btn = document.getElementById('btnSaveBatchModal');
         btn.disabled = true;

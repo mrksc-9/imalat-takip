@@ -1308,6 +1308,13 @@ def api_assembly_yukle(project_id):
                 total_weight = excluded.total_weight,
                 material_grade = excluded.material_grade
             ''', (project_id, a['assembly_pos'], a.get('description', 'İmalat Elemanı'), a.get('profile_type', '-'), a.get('quantity', 1), a.get('unit_weight', 0.0), a.get('total_weight', 0.0), a.get('material_grade', 'S275JR')))
+        
+        # Proje toplam tonajını hesapla ve güncelle
+        cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM assemblies WHERE project_id = ?", (project_id,))
+        calc_ton = cursor.fetchone()[0] or 0.0
+        if calc_ton > 0:
+            cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (round(calc_ton, 3), project_id))
+
         conn.commit()
         conn.close()
 
@@ -1316,13 +1323,13 @@ def api_assembly_yukle(project_id):
             action="Montaj Listesi Yüklendi",
             entity_type="assemblies",
             entity_id=project_id,
-            details=f"{len(assemblies)} adet montaj markası sisteme aktarıldı.",
+            details=f"{len(assemblies)} adet montaj markası sisteme aktarıldı ({calc_ton:.2f} Ton).",
             username=u.get('username', 'Kullanıcı'),
             user_id=u.get('id'),
             ip_address=request.remote_addr
         )
 
-        flash(f"Başarılı! {len(assemblies)} montaj markası başarıyla yüklendi/güncellendi.", "success")
+        flash(f"Başarılı! {len(assemblies)} montaj markası başarıyla yüklendi/güncellendi ({calc_ton:.2f} Ton).", "success")
     except Exception as e:
         flash(f"Montaj listesi aktarılırken hata: {str(e)}", "danger")
 
@@ -1350,6 +1357,27 @@ def api_assembly_parts_yukle(project_id):
 
         conn = get_db()
         cursor = conn.cursor()
+
+        # Eksik üst montaj (assembly) kayıtlarını otomatik tamamla
+        parent_map = {}
+        for ap in assembly_parts:
+            a_pos = ap.get('assembly_pos', '').strip()
+            if a_pos and a_pos not in parent_map:
+                parent_map[a_pos] = {
+                    'description': ap.get('description', 'İmalat Elemanı'),
+                    'profile_type': ap.get('profile_type', '-'),
+                    'quantity': max(1, ap.get('total_quantity', 1) // max(1, ap.get('quantity_per_assembly', 1))),
+                    'material_grade': ap.get('material_grade', 'S275JR')
+                }
+
+        for a_pos, a_info in parent_map.items():
+            cursor.execute("SELECT id FROM assemblies WHERE project_id = ? AND assembly_pos = ?", (project_id, a_pos))
+            if not cursor.fetchone():
+                cursor.execute('''
+                INSERT INTO assemblies (project_id, assembly_pos, description, profile_type, quantity, material_grade)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''', (project_id, a_pos, a_info['description'], a_info['profile_type'], a_info['quantity'], a_info['material_grade']))
+
         for ap in assembly_parts:
             cursor.execute("SELECT id FROM assemblies WHERE project_id = ? AND assembly_pos = ?", (project_id, ap['assembly_pos']))
             ass_row = cursor.fetchone()
@@ -1359,6 +1387,13 @@ def api_assembly_parts_yukle(project_id):
             INSERT INTO assembly_parts (project_id, assembly_id, assembly_pos, part_pos, description, profile_type, quantity_per_assembly, total_quantity, length, unit_weight, total_weight, material_grade)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (project_id, ass_id, ap['assembly_pos'], ap['part_pos'], ap.get('description', ''), ap.get('profile_type', '-'), ap.get('quantity_per_assembly', 1), ap.get('total_quantity', 1), ap.get('length', 0.0), ap.get('unit_weight', 0.0), ap.get('total_weight', 0.0), ap.get('material_grade', 'S275JR')))
+        
+        # Proje toplam tonajını güncelle
+        cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM assemblies WHERE project_id = ?", (project_id,))
+        calc_ton = cursor.fetchone()[0] or 0.0
+        if calc_ton > 0:
+            cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (round(calc_ton, 3), project_id))
+
         conn.commit()
         conn.close()
 
@@ -1406,6 +1441,16 @@ def api_parts_yukle(project_id):
             INSERT INTO parts (project_id, pos_no, name, profile_type, quantity, length, unit_weight, total_weight, material_grade)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (project_id, p['pos_no'], p.get('name', 'Poz Parçası'), p.get('profile_type', '-'), p.get('quantity', 1), p.get('length', 0.0), p.get('unit_weight', 0.0), p.get('total_weight', 0.0), p.get('material_grade', 'S275JR')))
+        
+        # Eğer henüz assembly tonajı yoksa parça toplam tonajını projeye yaz
+        cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM assemblies WHERE project_id = ?", (project_id,))
+        calc_ass_ton = cursor.fetchone()[0] or 0.0
+        if calc_ass_ton <= 0:
+            cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM parts WHERE project_id = ?", (project_id,))
+            calc_parts_ton = cursor.fetchone()[0] or 0.0
+            if calc_parts_ton > 0:
+                cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (round(calc_parts_ton, 3), project_id))
+
         conn.commit()
         conn.close()
 
@@ -1479,6 +1524,17 @@ def api_tekla_yukle(project_id):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (project_id, p['pos_no'], p['name'], p['profile_type'], p['quantity'], p.get('length', 0), p['unit_weight'], p['total_weight'], p['material_grade']))
 
+        # Proje toplam tonajını güncelle
+        cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM assemblies WHERE project_id = ?", (project_id,))
+        calc_ton = cursor.fetchone()[0] or 0.0
+        if calc_ton > 0:
+            cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (round(calc_ton, 3), project_id))
+        else:
+            cursor.execute("SELECT COALESCE(SUM(total_weight), 0) / 1000.0 FROM parts WHERE project_id = ?", (project_id,))
+            calc_p_ton = cursor.fetchone()[0] or 0.0
+            if calc_p_ton > 0:
+                cursor.execute("UPDATE projects SET target_tonnage = ? WHERE id = ?", (round(calc_p_ton, 3), project_id))
+
         conn.commit()
         conn.close()
 
@@ -1487,7 +1543,7 @@ def api_tekla_yukle(project_id):
             action="Tekla Excel Yüklendi",
             entity_type="projects",
             entity_id=project_id,
-            details=f"{len(assemblies)} Montaj, {len(parts)} Poz Tekla dosyasından aktarıldı.",
+            details=f"{len(assemblies)} Montaj, {len(parts)} Poz Tekla dosyasından aktarıldı ({calc_ton:.2f} Ton).",
             username=u.get('username', 'Kullanıcı'),
             user_id=u.get('id'),
             ip_address=request.remote_addr
@@ -2269,7 +2325,45 @@ def api_kesim_toplu_kaydet():
     next_batch_no = b_row['next_no'] if b_row else 1
     batch_code = f"Giriş #{next_batch_no}"
 
-    # 2. cutting_batches kaydını oluştur
+    # 2. Ön Doğrulama: Hiçbir poz için kalan kesim miktarından fazla girilemez
+    for it in items:
+        prefix = str(it.get('prefix', '')).strip()
+        raw_pos = str(it.get('pos_no', '')).strip()
+        pos_no = (prefix + raw_pos) if (prefix and not raw_pos.startswith(prefix)) else raw_pos
+        cut_qty = eval_math(it.get('cut_quantity', 0))
+        profile = str(it.get('profile', '')).strip()
+        
+        if not pos_no or cut_qty <= 0:
+            continue
+            
+        cursor.execute("""
+        SELECT id, pos_no, quantity, cut_quantity, profile_type, unit_weight 
+        FROM parts 
+        WHERE project_id = ? AND (
+            pos_no = ? OR pos_no = ? OR pos_no = ? OR LOWER(pos_no) = LOWER(?) OR LOWER(pos_no) = LOWER(?)
+        )
+        ORDER BY CASE WHEN pos_no = ? THEN 1 WHEN pos_no = ? THEN 2 ELSE 3 END
+        LIMIT 1
+        """, (project_id, pos_no, raw_pos, (prefix + raw_pos) if prefix else raw_pos, pos_no, raw_pos, pos_no, raw_pos))
+        p_row = cursor.fetchone()
+        if not p_row and profile:
+            cursor.execute("""
+            SELECT id, pos_no, quantity, cut_quantity, profile_type, unit_weight 
+            FROM parts WHERE project_id = ? AND profile_type = ? AND (pos_no LIKE ? OR pos_no LIKE ?) LIMIT 1
+            """, (project_id, profile, f"%{raw_pos}%", f"%{pos_no}%"))
+            p_row = cursor.fetchone()
+            
+        if p_row:
+            cur_cut = p_row['cut_quantity'] or 0
+            max_can = max(0, p_row['quantity'] - cur_cut)
+            if cut_qty > max_can:
+                conn.close()
+                if max_can <= 0:
+                    return jsonify({'status': 'error', 'message': f"'{pos_no}' pozunun kesimi zaten tamamlanmıştır (Kalan: 0 adet)!"}), 400
+                else:
+                    return jsonify({'status': 'error', 'message': f"'{pos_no}' pozu için girilen adet ({cut_qty}), kalan kesim miktarından ({max_can} adet) fazladır! Lütfen kutucuktaki değeri düzeltiniz."}), 400
+
+    # 3. cutting_batches kaydını oluştur
     cursor.execute('''
     INSERT INTO cutting_batches (batch_no, batch_code, project_id, project_code, project_name, cut_date, machine, operator, helper, shift, total_items, total_quantity, total_tonnage, notes, user_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?)
@@ -2298,7 +2392,7 @@ def api_kesim_toplu_kaydet():
         if not pos_no or cut_quantity <= 0:
             continue
 
-        # Parça listesini güncelle ve birim ağırlığı al (Poz prefixli veya prefixsiz aranır)
+        # Parça listesini güncelle ve birim ağırlığı al
         cursor.execute("""
         SELECT id, pos_no, quantity, cut_quantity, profile_type, unit_weight 
         FROM parts 
@@ -2323,7 +2417,10 @@ def api_kesim_toplu_kaydet():
             part_row = cursor.fetchone()
         unit_weight = 0.0
         if part_row:
-            new_cut_total = part_row['cut_quantity'] + cut_quantity
+            current_cut = part_row['cut_quantity'] or 0
+            max_can_cut = max(0, part_row['quantity'] - current_cut)
+            cut_quantity = min(cut_quantity, max_can_cut)
+            new_cut_total = current_cut + cut_quantity
             cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
                            (new_cut_total, max(0, part_row['quantity'] - new_cut_total), part_row['id']))
             if not profile:
@@ -2368,6 +2465,15 @@ def api_kesim_toplu_kaydet():
             username=u.get('username', 'Kullanıcı'),
             user_id=u.get('id'),
             ip_address=request.remote_addr
+        )
+
+        add_notification(
+            category='kesim_islem',
+            title=f"✂️ Kesim Listesi İşlendi: {p_code or 'Proje'}",
+            message=f"{saved_count} poz kesimi ({machine or 'İstasyon'}) '{batch_code}' olarak sisteme işlendi.",
+            icon='fa-scissors',
+            color='amber',
+            link_url=url_for('kesim_takip')
         )
 
     return jsonify({
@@ -2467,16 +2573,23 @@ def api_kesim_kaydet():
     part_row = cursor.fetchone()
 
     unit_weight = 0.0
-    is_overcut = False
     if part_row:
-        new_cut_total = part_row['cut_quantity'] + cut_quantity
+        current_cut = part_row['cut_quantity'] or 0
+        max_can_cut = max(0, part_row['quantity'] - current_cut)
+        if cut_quantity > max_can_cut:
+            conn.close()
+            if max_can_cut <= 0:
+                flash(f"'{pos_no}' pozunun kesimi zaten tamamlanmıştır (Kalan: 0 adet)!", "danger")
+            else:
+                flash(f"'{pos_no}' pozu için girilen adet ({cut_quantity}), kalan kesim miktarından ({max_can_cut} adet) fazladır!", "danger")
+            return redirect(url_for('kesim_takip'))
+            
+        new_cut_total = current_cut + cut_quantity
         cursor.execute("UPDATE parts SET cut_quantity = ?, remaining_quantity = ? WHERE id = ?",
                        (new_cut_total, max(0, part_row['quantity'] - new_cut_total), part_row['id']))
         if not profile:
             profile = part_row['profile_type']
         unit_weight = float(part_row['unit_weight'] or 0.0)
-        if new_cut_total > part_row['quantity']:
-            is_overcut = True
 
     cut_tonnage = round((cut_quantity * unit_weight) / 1000.0, 4)
 
@@ -2515,6 +2628,15 @@ def api_kesim_kaydet():
         username=u.get('username', 'Kullanıcı'),
         user_id=u.get('id'),
         ip_address=request.remote_addr
+    )
+
+    add_notification(
+        category='kesim_islem',
+        title=f"✂️ Kesim Yapıldı: {pos_no}",
+        message=f"{cut_quantity} adet parça kesimi ({machine or 'İstasyon'}) sisteme kaydedildi ({cut_tonnage:.3f} Ton).",
+        icon='fa-scissors',
+        color='amber',
+        link_url=url_for('kesim_takip')
     )
 
     if is_overcut:
@@ -2604,13 +2726,27 @@ def imalat_takip():
 def api_imalat_asama_guncelle():
     """Çatım, Kaynak ve Temizlik aşamalarındaki kısmi adetleri günceller."""
     assembly_id = request.form.get('assembly_id')
-    fitup_qty = clean_int(request.form.get('fab_fitup_qty', 0))
-    welding_qty = clean_int(request.form.get('fab_welding_qty', 0))
-    cleaning_qty = clean_int(request.form.get('fab_cleaning_qty', 0))
-    done_qty = clean_int(request.form.get('fab_done_qty', 0))
+    fitup_qty = max(0, clean_int(request.form.get('fab_fitup_qty', 0)))
+    welding_qty = max(0, clean_int(request.form.get('fab_welding_qty', 0)))
+    cleaning_qty = max(0, clean_int(request.form.get('fab_cleaning_qty', 0)))
+    done_qty = max(0, clean_int(request.form.get('fab_done_qty', 0)))
 
     conn = get_db()
     cursor = conn.cursor()
+    cursor.execute("SELECT * FROM assemblies WHERE id = ?", (assembly_id,))
+    ass = cursor.fetchone()
+    if not ass:
+        conn.close()
+        flash("Montaj kaydı bulunamadı!", "warning")
+        return redirect(request.referrer or url_for('imalat_takip'))
+
+    max_q = ass['quantity']
+    # Sınırlandırma: Hiçbir aşama toplam montaj hedef adedini aşamaz
+    fitup_qty = min(fitup_qty, max_q)
+    welding_qty = min(welding_qty, max_q)
+    cleaning_qty = min(cleaning_qty, max_q)
+    done_qty = min(done_qty, max_q)
+
     cursor.execute('''
     UPDATE assemblies SET
         fab_fitup_qty = ?,
@@ -2622,7 +2758,16 @@ def api_imalat_asama_guncelle():
     conn.commit()
     conn.close()
 
-    flash("İmalat aşama adetleri güncellendi.", "success")
+    add_notification(
+        category='imalat_guncelleme',
+        title=f"⚙️ İmalat Güncellemesi: {ass['assembly_pos']}",
+        message=f"Tamamlanan: {done_qty}/{max_q} adet (Çatım: {fitup_qty}, Kaynak: {welding_qty}, Temizlik: {cleaning_qty}).",
+        icon='fa-industry',
+        color='blue',
+        link_url=url_for('imalat_takip')
+    )
+
+    flash(f"'{ass['assembly_pos']}' imalat aşama adetleri güncellendi (Maksimum: {max_q} Adet).", "success")
     return redirect(request.referrer or url_for('imalat_takip'))
 
 @app.route('/api/imalat-takip/kaliteye-gonder', methods=['POST'])
@@ -2639,8 +2784,21 @@ def api_imalat_kaliteye_gonder():
     ass = cursor.fetchone()
 
     if not ass or send_qty <= 0:
+        conn.close()
         flash("Geçersiz işlem!", "warning")
         return redirect(request.referrer or url_for('imalat_takip'))
+
+    # Sınırlandırma: Kaliteye gönderilen toplam adet hedef montaj adedini aşamaz
+    already_sent = ass['qa_pending_qty'] + ass['qa_approved_qty']
+    max_can_send = max(0, ass['quantity'] - already_sent)
+    if max_can_send <= 0:
+        conn.close()
+        flash(f"'{ass['assembly_pos']}' markasının tüm adetleri ({ass['quantity']} Adet) zaten kalite kontrol havuzuna gönderilmiş veya onaylanmış!", "warning")
+        return redirect(request.referrer or url_for('imalat_takip'))
+
+    if send_qty > max_can_send:
+        send_qty = max_can_send
+        flash(f"'{ass['assembly_pos']}' için gönderilen miktar kalan limite ({max_can_send} Adet) sınırlandırıldı.", "info")
 
     new_pending = ass['qa_pending_qty'] + send_qty
     cursor.execute("UPDATE assemblies SET qa_pending_qty = ? WHERE id = ?", (new_pending, assembly_id))
@@ -2761,10 +2919,10 @@ def api_kalite_karar():
         cursor.execute("SELECT * FROM assemblies WHERE id = ?", (qa['assembly_id'],))
         ass = cursor.fetchone()
         if ass:
-            qty = qa['quantity']
+            qty = min(qa['quantity'], ass['qa_pending_qty']) if ass['qa_pending_qty'] > 0 else qa['quantity']
             new_pending = max(0, ass['qa_pending_qty'] - qty)
             if decision == 'Onaylandı':
-                new_approved = ass['qa_approved_qty'] + qty
+                new_approved = min(ass['quantity'], ass['qa_approved_qty'] + qty)
                 new_paint_sandblast = ass['paint_sandblast_qty'] + qty
                 cursor.execute('''
                 UPDATE assemblies SET
@@ -2833,6 +2991,19 @@ def api_kalite_boyaya_sevk():
     if not ass:
         conn.close()
         flash("Montaj kaydı bulunamadı.", "warning")
+        return redirect(url_for('kalite_kontrol'))
+
+    # Sınırlandırma: Boyaya sevk miktarı onaylanan kalite adedini ve toplam adedi aşamaz
+    max_avail = max(0, min(ass['quantity'], ass['qa_approved_qty']) - (ass['paint_done_qty']))
+    if max_avail <= 0:
+        max_avail = max(0, ass['quantity'] - ass['paint_done_qty'])
+
+    if quantity > max_avail and max_avail > 0:
+        quantity = max_avail
+        flash(f"'{qa['assembly_pos']}' için boyaya sevk adedi ({quantity} Adet) olarak sınırlandırıldı.", "info")
+    elif quantity <= 0:
+        conn.close()
+        flash("Sevk edilecek geçerli miktar bulunamadı.", "warning")
         return redirect(url_for('kalite_kontrol'))
 
     # Hedef istasyon ve durum güncellemesi
@@ -2959,8 +3130,20 @@ def api_boya_kaydet():
     ass = cursor.fetchone()
 
     if not ass or quantity <= 0:
+        conn.close()
         flash("Geçersiz işlem!", "warning")
         return redirect(url_for('boya_takip'))
+
+    # Sınırlandırma: Boya tamamlanma adedi toplam montaj adedini aşamaz
+    max_can_paint = max(0, ass['quantity'] - ass['paint_done_qty'])
+    if max_can_paint <= 0:
+        conn.close()
+        flash(f"'{ass['assembly_pos']}' markasının tüm adetleri ({ass['quantity']} Adet) zaten boyanmış!", "warning")
+        return redirect(url_for('boya_takip'))
+
+    if quantity > max_can_paint:
+        quantity = max_can_paint
+        flash(f"'{ass['assembly_pos']}' boyanan miktar kalan boyanabilir adede ({max_can_paint} Adet) sınırlandırıldı.", "info")
 
     # Boya kaydını logla
     u = session.get('user', {})
@@ -3113,6 +3296,19 @@ def api_sevk_olustur():
         cursor.execute("SELECT * FROM assemblies WHERE id = ?", (a_id,))
         ass = cursor.fetchone()
         if not ass: continue
+
+        # Sınırlandırma: Sevk edilecek miktar, boyası bitmiş ve henüz sevk edilmemiş adedi aşamaz!
+        ready_qty = max(0, min(ass['quantity'], ass['paint_done_qty']) - ass['shipped_qty'])
+        if ready_qty <= 0 and ass['paint_done_qty'] == 0:
+            ready_qty = max(0, ass['quantity'] - ass['shipped_qty'])
+
+        if qty_val > ready_qty:
+            if ready_qty > 0:
+                flash(f"'{ass['assembly_pos']}' markasından en fazla {ready_qty} adet sevk edilebilir. Miktar {ready_qty} olarak düzeltildi.", "warning")
+                qty_val = ready_qty
+            else:
+                flash(f"'{ass['assembly_pos']}' markasından sevk edilebilir hazır adet kalmamış!", "danger")
+                continue
 
         u_wt = ass['unit_weight']
         tot_wt = qty_val * u_wt
@@ -4469,6 +4665,15 @@ def api_duyuru_ekle():
         ip_address=request.remote_addr
     )
 
+    add_notification(
+        category='duyuru',
+        title=f"📢 Yeni Duyuru: {title}",
+        message=f"{u.get('full_name', 'Personel')} yeni bir duyuru yayınladı: {content[:90]}...",
+        icon='fa-bullhorn',
+        color='amber',
+        link_url='/'
+    )
+
     flash("Duyurunuz başarıyla yayınlandı ve tüm personelin ekranına yansıtıldı.", "success")
     return redirect(request.referrer or url_for('index'))
 
@@ -4588,6 +4793,16 @@ def api_isg_ekle():
         photo_url = f"/static/uploads/{fname}"
         
     add_isg_record(title, category, location, description, photo_url, priority, status, corrective_action, assigned_to, reported_by)
+
+    add_notification(
+        category='isg_bildirim',
+        title=f"⚠️ Yeni İSG Bildirimi: {title}",
+        message=f"{category} alanında {reported_by} tarafından bildirim kaydedildi: {description[:80]}...",
+        icon='fa-shield-heart',
+        color='amber',
+        link_url=url_for('isg_takip')
+    )
+
     flash("İSG bildirimi başarıyla kaydedildi.", "success")
     return redirect(url_for('isg_takip'))
 
@@ -4759,6 +4974,23 @@ def api_depo_sarf_cikis():
     )
     if ok:
         flash(msg, "success")
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT name, unit, current_qty, critical_level FROM inventory_consumables WHERE id = ?", (material_id,))
+            c_item = cursor.fetchone()
+            conn.close()
+            if c_item and c_item['current_qty'] <= c_item['critical_level']:
+                add_notification(
+                    category='depo_kritik',
+                    title=f"🚨 Kritik Stok Uyarısı: {c_item['name']}",
+                    message=f"Kalan: {c_item['current_qty']} {c_item['unit']}. Kritik eşik ({c_item['critical_level']} {c_item['unit']}) altına düştü, sipariş verilmeli!",
+                    icon='fa-boxes-stacked',
+                    color='rose',
+                    link_url=url_for('depo_sarf')
+                )
+        except Exception as ex:
+            print(f"Depo critical notif error: {ex}")
     else:
         flash(msg, "danger")
     return redirect(url_for('depo_sarf'))

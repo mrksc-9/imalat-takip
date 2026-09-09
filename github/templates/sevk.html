@@ -243,7 +243,7 @@
                                 <td class="p-2 text-slate-400">{{ ra.profile_type }} ({{ ra.description }})</td>
                                 <td class="p-2 text-right font-mono font-bold text-yellow-400">{{ ra.ready_qty }}</td>
                                 <td class="p-2 text-right">
-                                    <input type="number" name="qty_{{ ra.id }}" value="{{ ra.ready_qty }}" min="1" max="{{ ra.ready_qty }}" class="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right font-mono font-bold text-emerald-400">
+                                    <input type="number" name="qty_{{ ra.id }}" value="{{ ra.ready_qty }}" min="1" max="{{ ra.ready_qty }}" oninput="const m = parseInt(this.max) || 1; if(parseInt(this.value) > m) this.value = m; if(parseInt(this.value) < 1) this.value = 1;" class="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right font-mono font-bold text-emerald-400">
                                 </td>
                                 <td class="p-2 text-right font-mono text-slate-400">{{ ra.unit_weight | format_num }}</td>
                             </tr>

@@ -278,14 +278,21 @@
     }
 
     function openBoyaSevkModal(id, pos, qty, prjCode, profile) {
+        const safeMax = Math.max(1, parseInt(qty) || 1);
         document.getElementById('sevk_inspection_id').value = id;
         document.getElementById('sevk_ass_pos').innerText = pos;
         document.getElementById('sevk_prj_prof').innerText = `${prjCode} | ${profile || '-'}`;
-        document.getElementById('sevk_max_qty').innerText = `${qty} Adet`;
+        document.getElementById('sevk_max_qty').innerText = `${safeMax} Adet`;
         const qtyInput = document.getElementById('sevk_quantity');
-        qtyInput.value = qty;
-        qtyInput.max = qty;
-        document.getElementById('boyaSevkModalTitle').innerText = `${pos} - Boyahaneye Sevk`;
+        qtyInput.value = safeMax;
+        qtyInput.max = safeMax;
+        qtyInput.min = 1;
+        qtyInput.oninput = function() {
+            const val = parseInt(this.value) || 1;
+            if (val > safeMax) this.value = safeMax;
+            if (val < 1) this.value = 1;
+        };
+        document.getElementById('boyaSevkModalTitle').innerText = `${pos} - Boyahaneye Sevk (Maks: ${safeMax} Adet)`;
         openModal('boyaSevkModal');
     }
 
